@@ -5,6 +5,9 @@ import Patient from '@/models/Patient';
 import LabResult from '@/models/LabResult';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { parsePagination, resolveTenantFilter } from '../_lib/patient-scope';
+import { linkedRecords } from '../_lib/linked-records';
+import { PATIENT_LAB_RESULT_HIDDEN } from '../_lib/lab-result-fields';
 
 /**
  * GET /api/patients/me/lab-results
@@ -24,7 +27,7 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
 
-    const patient = await Patient.findById(session.patientId).lean();
+    const patient = await Patient.findById(session.patientId).select('active email tenantIds accountId').lean();
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
     }
@@ -34,22 +37,18 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
-    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') ?? '10', 10)));
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = parsePagination(searchParams, { defaultLimit: 10, maxLimit: 50 });
 
-    const tenantIdParam = searchParams.get('tenantId');
-    const patientTenantIds = (patient as any).tenantIds ?? [];
+    // This person's records at every clinic (one per clinic when linked by phone).
+    const linked = await linkedRecords(patient as any);
+    const tenant = resolveTenantFilter(linked.tenantIds, session, searchParams.get('tenantId'));
+    if (!tenant.ok) return tenant.response;
 
-    const query: any = { patient: session.patientId };
-    if (tenantIdParam) {
-      query.tenantId = tenantIdParam;
-    } else if (patientTenantIds.length > 0) {
-      query.tenantId = { $in: patientTenantIds };
-    }
+    const query: any = { patient: { $in: linked.patientIds }, ...tenant.filter };
 
     const [labResults, total] = await Promise.all([
       LabResult.find(query)
+        .select(PATIENT_LAB_RESULT_HIDDEN)
         .sort({ orderDate: -1 })
         .skip(skip)
         .limit(limit)

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Prescription from '@/models/Prescription';
+import { PRESCRIBER_POPULATE, prescriptionVisitPopulate } from '../../_lib/prescription-visit';
 import logger from '@/lib/logger';
 import { ownedRecordContext, isOwnedRecordError, recordNotFound } from '../../_lib/owned-record';
 
@@ -16,8 +17,10 @@ export async function GET(
     const ctx = await ownedRecordContext(request, id, 'Prescription');
     if (isOwnedRecordError(ctx)) return ctx;
 
+    const tenantFilter = ctx.filter.tenantId !== undefined ? { tenantId: ctx.filter.tenantId } : {};
     const prescription = await Prescription.findOne(ctx.filter)
-      .populate({ path: 'prescribedBy', select: 'firstName lastName email' })
+      .populate(PRESCRIBER_POPULATE)
+      .populate(prescriptionVisitPopulate(ctx.linked.patientIds, tenantFilter))
       .lean();
     if (!prescription) return recordNotFound('Prescription');
 

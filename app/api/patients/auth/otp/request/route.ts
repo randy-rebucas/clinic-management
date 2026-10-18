@@ -7,7 +7,14 @@ import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { sendSMS } from '@/lib/sms';
 import { normalizePhone } from '@/lib/phone';
-import { invalidTenantResponse, maskPhone, parseOptionalTenantId, phoneFilter } from '../../shared';
+import {
+  invalidTenantResponse,
+  maskPhone,
+  parseOptionalTenantId,
+  phoneFilter,
+  phoneRateKey,
+  phoneVariants,
+} from '../../shared';
 
 const OTP_EXPIRY_MINUTES = 5;
 const OTP_LENGTH = 6;
@@ -47,19 +54,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Per-destination cap (SMS bombing / cost abuse), independent of the caller's IP
-    const perPhoneLimit = await applyRateLimit(request, rateLimiters.otpSend, `otp:${phone}`);
+    // Per-destination cap (SMS bombing / cost abuse), independent of the caller's IP. Keyed on
+    // the normalized number so "0917…" and "+63917…" share one bucket.
+    const perPhoneLimit = await applyRateLimit(request, rateLimiters.otpSend, phoneRateKey(phone));
     if (perPhoneLimit) return perPhoneLimit;
 
     await connectDB();
 
-    // Build tenant-scoped query — search both phone and contacts.phone
+    // Build tenant-scoped query — search both phone and contacts.phone, in every stored spelling
     const query: Record<string, unknown> = phoneFilter(phone);
     if (tenant.tenantId) {
       query.tenantIds = tenant.tenantId;
     }
 
-    const patient = await Patient.findOne(query);
+    // Prefer an active record whose own phone this is (sign-in then links the person's records at
+    // other clinics); fall back to one listing it as a contact number.
+    const ownPhone: Record<string, unknown> = { phone: { $in: phoneVariants(phone) }, active: { $ne: false } };
+    if (tenant.tenantId) ownPhone.tenantIds = tenant.tenantId;
+    const patient = (await Patient.findOne(ownPhone).sort({ updatedAt: -1 })) ?? (await Patient.findOne(query));
 
     // Always respond with success to avoid phone number enumeration
     const genericResponse = NextResponse.json({
@@ -92,6 +104,12 @@ export async function POST(request: NextRequest) {
       to: normalizedPhone,
       message: `Your clinic login code is: ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes. Do not share this code.`,
     });
+
+    // Local development without Twilio: show the code in the dev server console so phone sign-in
+    // can be tested. Never in production.
+    if (smsResult.skipped && process.env.NODE_ENV !== 'production') {
+      console.warn(`[dev] Patient OTP for ${maskPhone(normalizedPhone)}: ${otp}`);
+    }
 
     if (!smsResult.success && smsResult.error && !smsResult.error.includes('logged only')) {
       logger.error('Failed to send OTP SMS', new Error(smsResult.error), {

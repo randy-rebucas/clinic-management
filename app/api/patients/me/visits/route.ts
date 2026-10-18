@@ -5,6 +5,8 @@ import Patient from '@/models/Patient';
 import Visit from '@/models/Visit';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { parsePagination, resolveTenantFilter } from '../_lib/patient-scope';
+import { linkedRecords } from '../_lib/linked-records';
 
 /**
  * GET /api/patients/me/visits
@@ -24,7 +26,7 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
 
-    const patient = await Patient.findById(session.patientId).lean();
+    const patient = await Patient.findById(session.patientId).select('active email tenantIds accountId').lean();
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
     }
@@ -34,24 +36,19 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
-    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') ?? '10', 10)));
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = parsePagination(searchParams, { defaultLimit: 10, maxLimit: 50 });
 
-    // Allow multi-clinic patients to filter by a specific tenant
-    const tenantIdParam = searchParams.get('tenantId');
-    const patientTenantIds = (patient as any).tenantIds ?? [];
+    // Allow multi-clinic patients to filter by a specific tenant (within the session's scope)
+    // This person's records at every clinic (one per clinic when linked by phone).
+    const linked = await linkedRecords(patient as any);
+    const tenant = resolveTenantFilter(linked.tenantIds, session, searchParams.get('tenantId'));
+    if (!tenant.ok) return tenant.response;
 
-    const visitQuery: any = { patient: session.patientId };
-    if (tenantIdParam) {
-      visitQuery.tenantId = tenantIdParam;
-    } else if (patientTenantIds.length > 0) {
-      visitQuery.tenantId = { $in: patientTenantIds };
-    }
+    const visitQuery: any = { patient: { $in: linked.patientIds }, ...tenant.filter };
 
     const [visits, total] = await Promise.all([
       Visit.find(visitQuery)
-        .populate({ path: 'provider', select: 'firstName lastName email' })
+        .populate({ path: 'provider', select: 'name' })
         .sort({ date: -1 })
         .skip(skip)
         .limit(limit)

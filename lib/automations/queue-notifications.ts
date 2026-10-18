@@ -93,7 +93,7 @@ export async function notifyQueuePatient(options: QueueNotificationOptions): Pro
         body: pushBody,
         tag: `queue-${queueId}`,
         url: '/queue',
-      }).catch((e) =>
+      }, { tenantId: tenantObjectId }).catch((e) =>
         console.error('[queue-notifications] Push error:', e)
       );
     }

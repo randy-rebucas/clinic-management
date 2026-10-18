@@ -7,6 +7,8 @@ import { verifyPatientAuth } from '@/app/lib/patient-auth';
 import { isValidId } from '@/lib/api/tenant-session';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { combineDateAndTimeInTz } from '@/lib/tz';
+import { memberTenantIds } from '../../me/_lib/patient-scope';
+import { linkedRecords } from '../../me/_lib/linked-records';
 
 /**
  * Cancel an appointment for logged-in patient
@@ -26,24 +28,26 @@ export async function DELETE(
 
     await connectDB();
 
-    const patient = await Patient.findById(sessionData.patientId).select('tenantIds').lean();
+    const patient = await Patient.findById(sessionData.patientId).select('tenantIds accountId').lean();
     if (!patient) {
       return NextResponse.json(
         { success: false, error: 'Patient not found' },
         { status: 404 }
       );
     }
+    const linked = await linkedRecords(patient as any);
 
     const { id } = await params;
     if (!isValidId(id)) {
       return NextResponse.json({ success: false, error: 'Appointment not found' }, { status: 404 });
     }
 
-    // Only the patient's own appointments at one of their clinics.
+    // Only the patient's own appointments (on any linked record) at one of their clinics (the
+    // session's clinic, when bound).
     const appointment = await Appointment.findOne({
       _id: id,
-      patient: (patient as any)._id,
-      tenantId: { $in: (patient as any).tenantIds || [] },
+      patient: { $in: linked.patientIds },
+      tenantId: { $in: memberTenantIds(linked.tenantIds, sessionData) },
     });
 
     if (!appointment) {

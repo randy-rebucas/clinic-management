@@ -5,6 +5,8 @@ import Visit from '@/models/Visit';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { parsePagination, resolveTenantFilter } from '../_lib/patient-scope';
+import { linkedRecords } from '../_lib/linked-records';
 
 /**
  * GET /api/patients/me/vitals
@@ -23,7 +25,7 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
 
-    const patient = await Patient.findById(session.patientId).lean();
+    const patient = await Patient.findById(session.patientId).select('active email tenantIds accountId').lean();
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
     }
@@ -33,19 +35,17 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)));
-    const tenantIdParam = searchParams.get('tenantId');
-    const patientTenantIds = (patient as any).tenantIds ?? [];
+    const { limit } = parsePagination(searchParams, { defaultLimit: 20, maxLimit: 100 });
+    // This person's records at every clinic (one per clinic when linked by phone).
+    const linked = await linkedRecords(patient as any);
+    const tenant = resolveTenantFilter(linked.tenantIds, session, searchParams.get('tenantId'));
+    if (!tenant.ok) return tenant.response;
 
     const query: any = {
-      patient: session.patientId,
+      patient: { $in: linked.patientIds },
       vitals: { $exists: true },
+      ...tenant.filter,
     };
-    if (tenantIdParam) {
-      query.tenantId = tenantIdParam;
-    } else if (patientTenantIds.length > 0) {
-      query.tenantId = { $in: patientTenantIds };
-    }
 
     const visits = await Visit.find(query)
       .select('date vitals visitType visitCode')

@@ -17,13 +17,15 @@ function hashToken(token: string): string {
 
 /**
  * Issue a refresh token for a mobile sign-in. Pass `family` when rotating so reuse of any
- * earlier token in the chain can revoke the whole chain.
+ * earlier token in the chain can revoke the whole chain. `scope.tid` (patients) is the clinic
+ * scope of the sign-in; the refresh endpoint copies it into every token it mints.
  */
 export async function issueRefreshToken(
   subjectType: RefreshSubjectType,
   subjectId: string | Types.ObjectId,
   sessionVersion: number,
-  family: string = randomUUID()
+  family: string = randomUUID(),
+  scope: { tid?: string | null } = {}
 ): Promise<string> {
   await connectDB();
   const token = randomBytes(32).toString('base64url');
@@ -33,6 +35,7 @@ export async function issueRefreshToken(
     subjectType,
     subjectId: new Types.ObjectId(String(subjectId)),
     sessionVersion,
+    ...(scope.tid ? { scopeTenantId: new Types.ObjectId(String(scope.tid)) } : {}),
     expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000),
   });
   return token;
@@ -42,6 +45,8 @@ export type ConsumedRefreshToken = {
   subjectId: string;
   sessionVersion: number;
   family: string;
+  /** Clinic scope the chain was issued with (patients); absent = unscoped. */
+  tid?: string;
 };
 
 export type ConsumeResult =
@@ -68,12 +73,17 @@ export async function consumeRefreshToken(
     { tokenHash, subjectType, usedAt: null, revokedAt: null, expiresAt: { $gt: now } },
     { $set: { usedAt: now } },
     { new: true }
-  ).lean<{ subjectId: Types.ObjectId; sessionVersion?: number; family: string } | null>();
+  ).lean<{ subjectId: Types.ObjectId; sessionVersion?: number; family: string; scopeTenantId?: Types.ObjectId } | null>();
 
   if (row) {
     return {
       ok: true,
-      value: { subjectId: row.subjectId.toString(), sessionVersion: row.sessionVersion ?? 0, family: row.family },
+      value: {
+        subjectId: row.subjectId.toString(),
+        sessionVersion: row.sessionVersion ?? 0,
+        family: row.family,
+        ...(row.scopeTenantId ? { tid: row.scopeTenantId.toString() } : {}),
+      },
     };
   }
 
@@ -106,6 +116,29 @@ export async function revokeRefreshToken(
     .select('family')
     .lean<{ family: string } | null>();
   if (row) await revokeRefreshFamily(row.family);
+}
+
+/**
+ * Who a still-live refresh token belongs to (unused, unrevoked, unexpired), without spending it.
+ * Lets sign-out identify the caller when their access token has already expired. The caller
+ * must still check `sessionVersion` against the subject's current version.
+ */
+export async function findRefreshTokenSubject(
+  rawToken: unknown,
+  subjectType: RefreshSubjectType
+): Promise<{ subjectId: string; sessionVersion: number } | null> {
+  if (typeof rawToken !== 'string' || !TOKEN_FORMAT.test(rawToken)) return null;
+  await connectDB();
+  const row = await RefreshToken.findOne({
+    tokenHash: hashToken(rawToken),
+    subjectType,
+    usedAt: null,
+    revokedAt: null,
+    expiresAt: { $gt: new Date() },
+  })
+    .select('subjectId sessionVersion')
+    .lean<{ subjectId: Types.ObjectId; sessionVersion?: number } | null>();
+  return row ? { subjectId: row.subjectId.toString(), sessionVersion: row.sessionVersion ?? 0 } : null;
 }
 
 /** Read `{ refreshToken }` from an optional JSON body (e.g. on DELETE). Never throws. */

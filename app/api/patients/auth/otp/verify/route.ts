@@ -8,7 +8,9 @@ import {
   parseOptionalTenantId,
   patientLoginResponse,
   phoneFilter,
+  phoneRateKey,
 } from '../../shared';
+import { linkRecordsByVerifiedPhone } from '../../../me/_lib/linked-records';
 
 /**
  * Verify OTP and issue patient_session cookie
@@ -39,7 +41,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const rateLimitResponse = await applyAuthRateLimits(request, `otp:${phone}`);
+    const rateLimitResponse = await applyAuthRateLimits(request, phoneRateKey(phone));
     if (rateLimitResponse) return rateLimitResponse;
 
     const filter: Record<string, unknown> = phoneFilter(phone);
@@ -50,11 +52,16 @@ export async function POST(request: NextRequest) {
     const result = await consumePatientOtp(filter, otp);
     if (!result.ok) return otpFailureResponse(result.reason);
 
+    // The phone is now proven: join this person's records at other clinics to this login.
+    await linkRecordsByVerifiedPhone(result.patient._id.toString(), phone).catch((error) =>
+      logger.error('Linking patient records by phone failed', error as Error, { patientId: result.patient._id.toString() })
+    );
+
     logger.info('Patient OTP login successful', {
       patientId: result.patient._id.toString(),
     });
 
-    return await patientLoginResponse(result.patient);
+    return await patientLoginResponse(result.patient, { amr: 'otp' });
   } catch (error: any) {
     logger.error('Error in patient OTP verification', error as Error);
     return NextResponse.json(

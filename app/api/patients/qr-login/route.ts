@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
-import { findPatientByLoginQr, patientLoginResponse, readLoginQrToken } from '../auth/shared';
+import { patientLoginResponse, readLoginQrToken, redeemPatientLoginQr } from '../auth/shared';
 
 /**
  * Patient QR Code Login
  * POST /api/patients/qr-login
  * Body: { qrCode: '{"type":"patient_login","token":"<server-issued token>"}' }
  *
- * The QR must carry a random token issued by GET /api/patients/me/login-qr (stored hashed,
- * expiring, revocable). Patient codes / ids alone are not credentials.
+ * The QR must carry a random token issued by POST /api/patients/me/login-qr or by staff via
+ * POST /api/patients/[id]/login-qr (stored hashed, single use, expires after 15 minutes,
+ * revocable). Patient codes / ids alone are not credentials. A staff-issued QR gives a session
+ * limited to that clinic (`tid`).
  * Sets the patient_session cookie; the mobile app uses POST /api/patients/auth/token with
  * method "qr" to get a Bearer token instead.
  */
@@ -42,20 +44,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const patient = await findPatientByLoginQr(token);
+    const redeemed = await redeemPatientLoginQr(token);
 
-    if (!patient) {
+    if (!redeemed) {
       return NextResponse.json(
-        { success: false, error: 'This QR code is invalid or has expired.' },
+        { success: false, error: 'This QR code is invalid, has expired or was already used.' },
         { status: 401 }
       );
     }
+    const { patient, tid } = redeemed;
 
     logger.info('Patient QR code login successful', {
       patientId: patient._id.toString(),
     });
 
-    return await patientLoginResponse(patient);
+    return await patientLoginResponse(patient, { tid, amr: 'qr' });
   } catch (error: any) {
     logger.error('Error in patient QR code login', error as Error, {
       name: error?.name,

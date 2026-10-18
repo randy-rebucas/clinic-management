@@ -16,6 +16,7 @@ import { normalizePhone } from '@/lib/phone';
 import { checkSubscriptionLimit } from '@/lib/subscription-limits';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { formatInTz } from '@/lib/tz';
+import { weekSummary } from '@/lib/doctors';
 import {
   ACTIVE_APPOINTMENT_STATUSES,
   appointmentDayRange,
@@ -25,17 +26,47 @@ import {
   timeToMinutes,
   isSlotDuplicateError,
 } from '@/lib/appointment-booking';
+import { memberTenantIds } from '../me/_lib/patient-scope';
+import { linkedRecords, recordAtClinic } from '../me/_lib/linked-records';
+import {
+  SLOT_MINUTES,
+  bookingHorizon,
+  bookingWindow,
+  candidateSlots,
+  clinicClock,
+  minutesToHHmm,
+  slotRejection,
+} from './_lib/booking-slots';
 
 /**
  * Which of the patient's clinics this request is for: the subdomain's clinic (when the
  * patient belongs to it), else an explicitly requested one, else their first clinic.
+ * `clinicIds` is already narrowed to the session's clinic (memberTenantIds). A malformed
+ * `tenantId` is a 400 and one outside that scope a 403, as on the /me list routes.
  */
-async function resolvePatientClinic(patientTenantIds: Types.ObjectId[], requested?: string | null) {
-  const ids = (patientTenantIds || []).map(String);
+async function resolvePatientClinic(
+  clinicIds: unknown[],
+  requested?: string | null
+): Promise<Types.ObjectId | null | NextResponse> {
+  const ids = clinicIds.map(String);
+  const param = requested?.trim();
+  if (param && !isValidId(param)) {
+    return NextResponse.json({ success: false, error: 'Invalid tenantId.' }, { status: 400 });
+  }
+  if (param && !ids.includes(param)) {
+    return NextResponse.json({ success: false, error: 'Not available for this clinic.' }, { status: 403 });
+  }
   const ctx = await getTenantContext();
   if (ctx.tenantId) return ids.includes(ctx.tenantId) ? new Types.ObjectId(ctx.tenantId) : null;
-  if (requested && isValidId(requested)) return ids.includes(requested) ? new Types.ObjectId(requested) : null;
+  if (param) return new Types.ObjectId(param);
   return ids[0] ? new Types.ObjectId(ids[0]) : null;
+}
+
+/** The booked appointment as the patient sees it: no internal staff notes. */
+function toPatientBooking(appointment: { toObject?: () => Record<string, any> } & Record<string, any>) {
+  const { notes: _notes, createdBy: _createdBy, ...rest } =
+    typeof appointment.toObject === 'function' ? appointment.toObject() : appointment;
+  return rest;
 }
 
 /**
@@ -53,35 +84,52 @@ export async function GET(request: NextRequest) {
 
     await connectDB();
 
-    const patient = await Patient.findById(sessionData.patientId).select('tenantIds').lean();
+    const patient = await Patient.findById(sessionData.patientId).select('tenantIds accountId').lean();
     if (!patient) {
       return NextResponse.json(
         { success: false, error: 'Patient not found' },
         { status: 404 }
       );
     }
+    // Every clinic this person is registered at (their linked records included).
+    const linked = await linkedRecords(patient as any);
 
     const searchParams = request.nextUrl.searchParams;
     const date = searchParams.get('date');
     const doctorId = searchParams.get('doctorId');
 
-    const tenantId = await resolvePatientClinic((patient as any).tenantIds, searchParams.get('tenantId'));
+    const tenantId = await resolvePatientClinic(
+      memberTenantIds(linked.tenantIds, sessionData),
+      searchParams.get('tenantId')
+    );
+    if (tenantId instanceof NextResponse) return tenantId;
     if (!tenantId) {
       return NextResponse.json({ success: true, data: { doctors: [] } });
     }
 
-    const doctors = (
-      await Doctor.find({ status: 'active', tenantId })
-        .select('firstName lastName specializationId schedule')
-        .populate(PATIENT_DOCTOR_POPULATE.populate)
-        .lean<Record<string, any>[]>()
-    ).map(doctorSummary);
+    const tz = await getTenantTimezone(tenantId);
+    const clock = clinicClock(tz);
+    const horizon = bookingHorizon(clock.today);
+
+    const records = await Doctor.find({ status: 'active', tenantId })
+      .select('firstName lastName specializationId schedule availabilityOverrides')
+      .populate(PATIENT_DOCTOR_POPULATE.populate)
+      .lean<Record<string, any>[]>();
+    // Patients get computed availability, not the raw schedule (time-off reasons stay private).
+    const doctors = records.map(({ schedule, availabilityOverrides, ...doctor }) => ({
+      ...doctorSummary(doctor),
+      hoursSummary: weekSummary(schedule ?? []),
+      bookableDates: horizon.filter((key) => bookingWindow({ schedule, availabilityOverrides }, key)),
+    }));
 
     if (date && doctorId) {
       if (!isValidId(doctorId) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return NextResponse.json({ success: false, error: 'Invalid date or doctor' }, { status: 400 });
       }
-      const tz = await getTenantTimezone(tenantId);
+      const record = records.find((d) => String(d._id) === doctorId);
+      if (!record || !horizon.includes(date) || !bookingWindow(record, date)) {
+        return NextResponse.json({ success: true, data: { availableSlots: [], dayOff: true, doctors } });
+      }
       const { start, end } = appointmentDayRange(date, tz);
 
       const existingAppointments = await Appointment.find({
@@ -99,17 +147,11 @@ export async function GET(request: NextRequest) {
         if (s !== null) booked.push([s, s + (apt.duration || 30)]);
       }
 
-      // Generate available time slots (9 AM to 5 PM, 30-minute intervals)
-      const availableSlots: string[] = [];
-      for (let hour = 9; hour < 17; hour++) {
-        for (let minute = 0; minute < 60; minute += 30) {
-          const slotStart = hour * 60 + minute;
-          const taken = booked.some(([s, e]) => slotStart < e && s < slotStart + 30);
-          if (!taken) {
-            availableSlots.push(`${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`);
-          }
-        }
-      }
+      // The doctor's 30-minute grid that day, today's past slots dropped (clinic time); the
+      // POST accepts exactly these (slotRejection), minus what is already booked.
+      const availableSlots = candidateSlots(record, date, clock)
+        .filter((slotStart) => !booked.some(([s, e]) => slotStart < e && s < slotStart + SLOT_MINUTES))
+        .map(minutesToHHmm);
 
       return NextResponse.json({
         success: true,
@@ -166,17 +208,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid appointment date.' }, { status: 400 });
     }
 
-    const patient = await Patient.findById(sessionData.patientId).select('tenantIds firstName phone').lean() as any;
-    if (!patient) {
+    const signedIn = await Patient.findById(sessionData.patientId).select('tenantIds accountId').lean() as any;
+    if (!signedIn) {
       return NextResponse.json(
         { success: false, error: 'Patient not found' },
         { status: 404 }
       );
     }
+    const linked = await linkedRecords(signedIn);
 
     // The clinic is the doctor's clinic, and the patient must be registered there.
-    const doctor = await Doctor.findOne({ _id: doctorId, status: 'active' }).select('tenantId firstName lastName').lean() as any;
-    const patientClinics: string[] = (patient.tenantIds || []).map(String);
+    const doctor = await Doctor.findOne({ _id: doctorId, status: 'active' })
+      .select('tenantId firstName lastName schedule availabilityOverrides')
+      .lean() as any;
+    // The patient's clinics, narrowed to the session's clinic when it carries one.
+    const patientClinics: string[] = memberTenantIds(linked.tenantIds, sessionData).map(String);
     if (!doctor?.tenantId || !patientClinics.includes(String(doctor.tenantId))) {
       return NextResponse.json(
         { success: false, error: 'Doctor not found' },
@@ -184,14 +230,31 @@ export async function POST(request: NextRequest) {
       );
     }
     const tenantId = doctor.tenantId as Types.ObjectId;
+    // Book on this person's record at the doctor's clinic (each clinic keeps its own record).
+    const patientId = recordAtClinic(linked, tenantId);
+    const patient = patientId
+      ? ((await Patient.findById(patientId).select('tenantIds firstName phone').lean()) as any)
+      : null;
+    if (!patient) {
+      return NextResponse.json({ success: false, error: 'Doctor not found' }, { status: 404 });
+    }
     const ctx = await getTenantContext();
     if (ctx.tenantId && ctx.tenantId !== String(tenantId)) {
       return NextResponse.json({ success: false, error: 'Doctor not found' }, { status: 404 });
     }
 
+    // Only a slot the GET could have offered: not in the past (clinic time), inside the
+    // booking horizon, inside the doctor's hours and on the 30-minute grid.
     const tz = await getTenantTimezone(tenantId);
-    if (formatInTz(new Date(), 'yyyy-MM-dd', tz) > appointmentDate) {
-      return NextResponse.json({ success: false, error: 'Please choose a future date.' }, { status: 400 });
+    const rejection = slotRejection(doctor, appointmentDate, timeToMinutes(appointmentTime), clinicClock(tz));
+    if (rejection) {
+      const error = {
+        past: 'Please choose a future date and time.',
+        'beyond-horizon': 'Appointments can only be booked up to 60 days ahead.',
+        'not-working': `Dr. ${doctor.lastName} isn't seeing patients at that time. Please choose another time.`,
+        'off-grid': 'Please choose one of the offered appointment times.',
+      }[rejection];
+      return NextResponse.json({ success: false, error, code: `SLOT_${rejection.toUpperCase().replace('-', '_')}` }, { status: 400 });
     }
 
     const conflictingAppointment = await findDoctorConflict({
@@ -284,7 +347,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        data: appointment,
+        data: toPatientBooking(appointment as any),
         message: 'Appointment request submitted successfully. You will receive a confirmation shortly.',
       },
       { status: 201 }

@@ -78,12 +78,19 @@ export async function sendPushToUser(
  *
  * Invalid/unregistered tokens (DeviceNotRegistered) are cleared so we stop
  * retrying them.
+ *
+ * A device signed in with a clinic-scoped session (MobileDevice.tenantId set) only receives
+ * pushes about that clinic: pass `options.tenantId` (the record's clinic). Without it, only
+ * unscoped devices are notified.
  */
 export async function sendPushToPatientDevices(
   patientId: string,
-  payload: PushPayload
+  payload: PushPayload,
+  options: { tenantId?: string | Types.ObjectId | null } = {}
 ): Promise<{ sent: boolean }> {
-  return sendToMobileDevices({ patientId: new Types.ObjectId(patientId) }, payload);
+  const scopes: Record<string, unknown>[] = [{ tenantId: null }];
+  if (options.tenantId) scopes.push({ tenantId: new Types.ObjectId(String(options.tenantId)) });
+  return sendToMobileDevices({ patientId: new Types.ObjectId(patientId), $or: scopes }, payload);
 }
 
 /**
@@ -98,7 +105,7 @@ export async function sendPushToUserDevices(
 }
 
 async function sendToMobileDevices(
-  owner: { patientId: Types.ObjectId } | { userId: Types.ObjectId },
+  owner: { patientId: Types.ObjectId; $or?: Record<string, unknown>[] } | { userId: Types.ObjectId },
   payload: PushPayload
 ): Promise<{ sent: boolean }> {
   await connectDB();

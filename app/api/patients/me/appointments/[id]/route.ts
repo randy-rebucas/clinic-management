@@ -19,6 +19,8 @@ export async function GET(
     if (isOwnedRecordError(ctx)) return ctx;
 
     const appointment = await Appointment.findOne(ctx.filter)
+      // Staff notes are internal; the patient sees `reason`.
+      .select('-notes -createdBy')
       .populate(PATIENT_DOCTOR_POPULATE)
       .lean<Record<string, any>>();
     if (!appointment) return recordNotFound('Appointment');

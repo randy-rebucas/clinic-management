@@ -124,8 +124,8 @@ export default function ContactPage() {
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900 mb-1">Email</h3>
-                      <a href="mailto:support@myclinicsoft.com" className="text-blue-600 hover:text-blue-700">
-                        support@myclinicsoft.com
+                      <a href="mailto:support@myclinicsoft.solutions" className="text-blue-600 hover:text-blue-700">
+                        support@myclinicsoft.solutions
                       </a>
                     </div>
                   </div>

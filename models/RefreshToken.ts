@@ -14,6 +14,11 @@ export interface IRefreshToken extends Document {
   subjectId: Types.ObjectId;
   /** Patient.sessionVersion / User.sessionVersion at issue time. */
   sessionVersion: number;
+  /**
+   * Patient tokens only: the clinic scope (`tid`) of the sign-in this chain started from.
+   * Every access token minted from the chain carries the same scope.
+   */
+  scopeTenantId?: Types.ObjectId;
   expiresAt: Date;
   usedAt?: Date;
   revokedAt?: Date;
@@ -28,6 +33,7 @@ const RefreshTokenSchema = new Schema<IRefreshToken>(
     subjectType: { type: String, enum: ['patient', 'user'], required: true },
     subjectId: { type: Schema.Types.ObjectId, required: true, index: true },
     sessionVersion: { type: Number, default: 0 },
+    scopeTenantId: { type: Schema.Types.ObjectId },
     expiresAt: { type: Date, required: true },
     usedAt: { type: Date },
     revokedAt: { type: Date },
