@@ -161,6 +161,32 @@ async function auditLogin(user: any, roleName: string, ip: string, tenantId: str
   }
 }
 
+/**
+ * A refused sign-in for an account that exists, so the audit log can show wrong passwords
+ * and attempts on suspended or closed accounts. Unknown emails have no account to name and
+ * are only rate-limited.
+ */
+async function auditFailedLogin(user: any, reason: string, ip: string, tenantId: string | null) {
+  try {
+    const { createAuditLog } = await import('@/lib/audit');
+    await createAuditLog({
+      userId: user._id.toString(),
+      userEmail: user.email,
+      userRole: (user.role as any)?.name,
+      tenantId: tenantId ?? user.tenantId ?? undefined,
+      action: 'login',
+      resource: 'system',
+      success: false,
+      errorMessage: reason,
+      ipAddress: ip,
+      userAgent: (await headers()).get('user-agent') ?? undefined,
+      description: `Sign-in refused: ${reason.charAt(0).toLowerCase()}${reason.slice(1)}`,
+    });
+  } catch (error) {
+    console.error('Error logging refused sign-in:', error);
+  }
+}
+
 function tenantUserQuery(email: string, tenantId: string | null): Record<string, unknown> {
   // Find user by email within tenant scope if tenant exists
   return tenantId
@@ -214,14 +240,18 @@ export async function login(
     // Always run bcrypt so response time does not reveal whether the account exists
     const passwordMatch = await bcrypt.compare(password, user?.password || getDummyHash());
     if (!user || !user.password || !passwordMatch) {
+      // Not awaited: the response time must not reveal that the account exists.
+      if (user) void auditFailedLogin(user, user.password ? 'Wrong password' : 'No password set yet', ip, tenantId);
       return { errors: { email: [INVALID_CREDENTIALS] } };
     }
 
     // Password is correct, so it is safe to say why access is refused
     if (user.mustSetPassword) {
+      await auditFailedLogin(user, 'Invite not accepted yet', ip, tenantId);
       return { errors: { email: [SET_PASSWORD_FIRST] } };
     }
     if (user.status !== 'active') {
+      await auditFailedLogin(user, user.status === 'suspended' ? 'Account is suspended' : 'Account is closed', ip, tenantId);
       return {
         errors: {
           email: ['Your account is not active. Please contact your administrator.'],

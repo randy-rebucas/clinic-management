@@ -130,7 +130,8 @@ async function generateReceiptHTML(invoice: any, tenantId: string | null | undef
   const clinicAddress = settings.clinicAddress || '';
   const clinicPhone = settings.clinicPhone || '';
   const clinicEmail = settings.clinicEmail || '';
-  
+  const clinicTin = settings.taxId || '';
+
   const patient = invoice.patient || {};
   const protection = sealedDocumentParts({
     seal,
@@ -482,6 +483,7 @@ async function generateReceiptHTML(invoice: any, tenantId: string | null | undef
     ${clinicAddress ? `<p>${e(clinicAddress)}</p>` : ''}
     ${clinicPhone ? `<p>Phone: ${e(clinicPhone)}</p>` : ''}
     ${clinicEmail ? `<p>Email: ${e(clinicEmail)}</p>` : ''}
+    ${clinicTin ? `<p>TIN: ${e(clinicTin)}</p>` : ''}
     <p style="margin-top: 20px;"><strong>This is an official receipt. Please keep this for your records.</strong></p>
     <p style="margin-top: 10px;">Generated on ${new Date().toLocaleString()}</p>
   </div>

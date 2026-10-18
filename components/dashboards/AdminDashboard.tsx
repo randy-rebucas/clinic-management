@@ -149,7 +149,7 @@ export default function AdminDashboard() {
             items={[
               { title: 'Manage Users', href: '/users', description: 'Manage user accounts and roles', icon: 'user' },
               { title: 'Roles & Permissions', href: '/roles', description: 'Configure roles and permissions', icon: 'shield' },
-              { title: 'System Settings', href: '/settings', description: 'Configure system settings', icon: 'settings' },
+              { title: 'System Settings', href: '/admin/settings', description: 'Configure system settings', icon: 'settings' },
               { title: 'View Reports', href: '/reports', description: 'View system reports and analytics', icon: 'report' },
             ]}
           />

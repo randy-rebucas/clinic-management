@@ -34,6 +34,9 @@ export type AuditResource =
   | 'notification'
   | 'referral'
   | 'membership'
+  | 'staff'
+  | 'medicine'
+  | 'settings'
   | 'system';
 
 export interface IAuditLog extends Document {
@@ -112,7 +115,7 @@ const AuditLogSchema: Schema = new Schema(
     },
     resource: {
       type: String,
-      enum: ['patient', 'visit', 'appointment', 'prescription', 'lab_result', 'invoice', 'document', 'user', 'doctor', 'room', 'service', 'notification', 'referral', 'membership', 'system'],
+      enum: ['patient', 'visit', 'appointment', 'prescription', 'lab_result', 'invoice', 'document', 'user', 'doctor', 'room', 'service', 'notification', 'referral', 'membership', 'staff', 'medicine', 'settings', 'system'],
       required: true,
       index: true,
     },

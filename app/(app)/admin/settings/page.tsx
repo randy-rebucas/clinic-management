@@ -1,16 +1,13 @@
-import { getUser } from '@/app/lib/dal';
-import { redirect } from 'next/navigation';
-import SettingsPageClient from '@/components/SettingsPageClient';
+import { requireAdmin } from '@/app/lib/auth-helpers';
+import { loadClinicSettingsPage } from '@/lib/clinic-settings-page';
+import ClinicSettingsClient from '@/components/admin/ClinicSettingsClient';
 
-export default async function SettingsPage() {
-  const user = await getUser();
-  
-  if (!user || !('role' in user)) {
-    redirect('/login');
-  }
+export const dynamic = 'force-dynamic';
 
-  // Ensure user is a plain object before passing to Client Component
-  const safeUser = user ? JSON.parse(JSON.stringify(user)) : null;
-  return <SettingsPageClient user={safeUser as { role: string; [key: string]: any }} />;
+/** Administrators and owners only (the save route already refused anyone else). */
+export default async function ClinicSettingsPage() {
+  const session = await requireAdmin();
+  if (!session?.tenantId) throw new Error('No clinic on this session');
+  const data = await loadClinicSettingsPage(session.tenantId);
+  return <ClinicSettingsClient data={data} />;
 }
-

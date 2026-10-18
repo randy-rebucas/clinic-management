@@ -47,9 +47,10 @@ export async function GET(request: NextRequest) {
       return notFound('Patient');
     }
 
+    // Every entry that names the patient: several writers set dataSubject without isSensitive
+    // (documents, referrals, memberships), and those were left out of the patient's history.
     const logs = await AuditLog.find(tenantFilter(tenantId, {
       dataSubject: patientId,
-      isSensitive: true,
     }))
       .populate('userId', 'name email role')
       .sort({ timestamp: -1 })

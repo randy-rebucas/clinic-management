@@ -92,7 +92,7 @@ async function sendTrialExpirationNotifications(tenant: any): Promise<void> {
     const settings = await getSettings(tenant._id.toString());
     const clinicName = settings?.clinicName || tenant.name || 'Clinic';
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
-    const subscriptionUrl = `${baseUrl}/subscription`;
+    const subscriptionUrl = `${baseUrl}/admin/subscription`;
 
     // Send notifications to all admins
     for (const admin of adminUsers) {
@@ -254,7 +254,7 @@ export async function sendTrialExpirationWarnings(): Promise<{
         const settings = await getSettings(tenant._id.toString());
         const clinicName = settings?.clinicName || tenant.name || 'Clinic';
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
-        const subscriptionUrl = `${baseUrl}/subscription`;
+        const subscriptionUrl = `${baseUrl}/admin/subscription`;
 
         for (const admin of adminUsers) {
           // Send email warning

@@ -44,6 +44,12 @@ export async function PUT(
     const role = await Role.findOne(tenantFilter(tenantId, { _id: roleId }));
     if (!role) return notFound('Role');
 
+    const before = await User.findOne(tenantFilter(tenantId, { _id: id }))
+      .select('role')
+      .populate({ path: 'role', select: 'name', match: tenantFilter(tenantId) })
+      .lean<{ role?: { name?: string } | null } | null>();
+    const previousRole = before?.role?.name;
+
     const user = await User.findOneAndUpdate(
       tenantFilter(tenantId, { _id: id }),
       { $set: { role: role._id } },
@@ -66,8 +72,8 @@ export async function PUT(
       action: 'permission_change',
       resource: 'user',
       resourceId: id,
-      description: `Changed role for user ${id} to ${role.name}`,
-      changes: [{ field: 'role', newValue: role.name }],
+      description: `Changed ${(user as { name?: string }).name ?? 'an account'}’s role to ${role.displayName || role.name}`,
+      changes: [{ field: 'role', oldValue: previousRole, newValue: role.name }],
     });
 
     return NextResponse.json({ success: true, data: user });

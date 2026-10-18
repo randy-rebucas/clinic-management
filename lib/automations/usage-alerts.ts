@@ -124,7 +124,7 @@ export async function checkAndSendUsageAlerts(tenantId: string | Types.ObjectId)
       const settings = await getSettings(tenantIdObj.toString());
       const clinicName = settings?.clinicName || tenant.name || 'Clinic';
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
-      const subscriptionUrl = `${baseUrl}/subscription`;
+      const subscriptionUrl = `${baseUrl}/admin/subscription`;
 
       // Group alerts by threshold
       const criticalAlerts = newAlerts.filter(a => a.threshold === 100);

@@ -2,13 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import { Nurse, Receptionist, Accountant, User } from '@/models';
-import { isAdmin } from '@/app/lib/auth-helpers';
-import { sanitizeSearch } from '@/lib/utils';
+import { forbiddenResponse, isAdmin } from '@/app/lib/auth-helpers';
+import { createAuditLog } from '@/lib/audit';
 import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zEmail, zPhone, zShortText } from '@/lib/api/validate';
 import { checkSubscriptionLimit } from '@/lib/subscription-limits';
+import { STAFF_STATUSES, STAFF_TYPE, STAFF_TYPES, isStaffStatus, type StaffRow, type StaffType } from '@/lib/staff';
+import type { UserStatus } from '@/lib/users';
 
-const STAFF_STATUSES = ['active', 'inactive', 'on-leave'] as const;
+/** A staff roster is small; the page loads it whole and filters on the client. */
+const MAX_PER_TYPE = 500;
+
+const MODELS = { nurse: Nurse, receptionist: Receptionist, accountant: Accountant } as const;
+
+const LIST_FIELDS =
+  'firstName lastName email phone title employeeId department specialization licenseNumber certification address hireDate status createdAt';
 
 const optionalText = z.preprocess((v) => (v === '' || v === null ? undefined : v), zShortText.optional());
 const optionalDate = z.preprocess(
@@ -17,9 +25,9 @@ const optionalDate = z.preprocess(
 );
 
 const createStaffSchema = z.object({
-  staffType: z.enum(['nurse', 'receptionist', 'accountant']),
-  firstName: zShortText.min(1),
-  lastName: zShortText.min(1),
+  staffType: z.enum(STAFF_TYPES),
+  firstName: zShortText.min(1, 'First name is required'),
+  lastName: zShortText.min(1, 'Last name is required'),
   email: zEmail,
   phone: zPhone,
   employeeId: optionalText,
@@ -29,131 +37,106 @@ const createStaffSchema = z.object({
   certification: optionalText,
   title: optionalText,
   address: z.preprocess((v) => (v === '' || v === null ? undefined : v), z.string().trim().max(500).optional()),
-  bio: z.preprocess((v) => (v === '' || v === null ? undefined : v), z.string().max(5000).optional()),
   hireDate: optionalDate,
   status: z.enum(STAFF_STATUSES).optional(),
 });
 
-// GET /api/staff - Get all staff members (nurses, receptionists, accountants)
-export async function GET(request: NextRequest) {
+type LeanProfile = Record<string, unknown> & { _id: unknown; status?: string; createdAt?: Date };
+type LeanAccount = {
+  _id: unknown;
+  status?: string;
+  mustSetPassword?: boolean;
+  inviteExpiresAt?: Date | null;
+  lastLogin?: Date | null;
+} & Record<string, unknown>;
+
+const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v : null);
+const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : typeof v === 'string' ? v : null);
+
+function toRow(type: StaffType, p: LeanProfile, account: LeanAccount | undefined): StaffRow {
+  return {
+    _id: String(p._id),
+    staffType: type,
+    firstName: String(p.firstName ?? ''),
+    lastName: String(p.lastName ?? ''),
+    email: String(p.email ?? ''),
+    phone: String(p.phone ?? ''),
+    title: text(p.title),
+    employeeId: text(p.employeeId),
+    department: text(p.department),
+    specialization: text(p.specialization),
+    licenseNumber: text(p.licenseNumber),
+    certification: text(p.certification),
+    address: text(p.address),
+    hireDate: iso(p.hireDate),
+    status: isStaffStatus(p.status) ? p.status : 'active',
+    createdAt: iso(p.createdAt) ?? new Date(0).toISOString(),
+    account: account
+      ? {
+          userId: String(account._id),
+          status: (account.status === 'suspended' || account.status === 'inactive' ? account.status : 'active') as UserStatus,
+          mustSetPassword: !!account.mustSetPassword,
+          inviteExpiresAt: iso(account.inviteExpiresAt),
+          lastLogin: iso(account.lastLogin),
+        }
+      : null,
+  };
+}
+
+/**
+ * GET /api/staff — admin only. Every nurse, receptionist and accountant in the clinic, each
+ * with the state of their login account. `truncated` is true if a job has more than 500.
+ */
+export async function GET() {
   try {
     const ctx = await requireTenantSession();
     if (isTenantSessionError(ctx)) return ctx;
-    const { tenantId } = ctx;
+    const { session, tenantId } = ctx;
+    // Names, emails, phones and addresses of every employee: administrators only.
+    if (!isAdmin(session)) return forbiddenResponse('Admin access required');
 
     await connectDB();
 
-    const { searchParams } = new URL(request.url);
-    const type = searchParams.get('type'); // 'nurse', 'receptionist', 'accountant', or 'all'
-    const status = searchParams.get('status');
-    const search = searchParams.get('search');
-    const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1);
-    const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') || '20') || 20));
-    const skip = (page - 1) * limit;
+    const profiles = await Promise.all(
+      STAFF_TYPES.map((type) =>
+        MODELS[type].find(tenantFilter(tenantId)).select(LIST_FIELDS).sort({ lastName: 1, firstName: 1 }).limit(MAX_PER_TYPE + 1).lean<LeanProfile[]>()
+      )
+    );
+    const truncated = profiles.some((list) => list.length > MAX_PER_TYPE);
+    const lists = profiles.map((list) => list.slice(0, MAX_PER_TYPE));
 
-    const buildQuery = () => {
-      const extra: Record<string, unknown> = {};
-      if (status && (STAFF_STATUSES as readonly string[]).includes(status)) extra.status = status;
-      if (search) {
-        const safeSearch = sanitizeSearch(search);
-        extra.$or = [
-          { firstName: { $regex: safeSearch, $options: 'i' } },
-          { lastName: { $regex: safeSearch, $options: 'i' } },
-          { email: { $regex: safeSearch, $options: 'i' } },
-          { employeeId: { $regex: safeSearch, $options: 'i' } },
-        ];
+    const or = STAFF_TYPES.map((type, i) => ({ [STAFF_TYPE[type].profileField]: { $in: lists[i].map((p) => p._id) } }));
+    const accounts = await User.find(tenantFilter(tenantId, { $or: or }))
+      .select('status mustSetPassword inviteExpiresAt lastLogin nurseProfile receptionistProfile accountantProfile')
+      .lean<LeanAccount[]>();
+
+    const byProfile = new Map<string, LeanAccount>();
+    for (const a of accounts) {
+      for (const type of STAFF_TYPES) {
+        const ref = a[STAFF_TYPE[type].profileField];
+        if (ref) byProfile.set(`${type}:${String(ref)}`, a);
       }
-      return tenantFilter(tenantId, extra);
-    };
-
-    const results: any = { nurses: [], receptionists: [], accountants: [] };
-    let totalCount = 0;
-
-    if (!type || type === 'all' || type === 'nurse') {
-      const nurseQuery = buildQuery();
-      const [nurses, nurseCount] = await Promise.all([
-        Nurse.find(nurseQuery).sort({ createdAt: -1 }).skip(type === 'nurse' ? skip : 0).limit(type === 'nurse' ? limit : 100).lean(),
-        Nurse.countDocuments(nurseQuery),
-      ]);
-      results.nurses = nurses.map((n: any) => ({ ...n, staffType: 'nurse' }));
-      if (type === 'nurse') totalCount = nurseCount;
     }
 
-    if (!type || type === 'all' || type === 'receptionist') {
-      const receptionistQuery = buildQuery();
-      const [receptionists, receptionistCount] = await Promise.all([
-        Receptionist.find(receptionistQuery).sort({ createdAt: -1 }).skip(type === 'receptionist' ? skip : 0).limit(type === 'receptionist' ? limit : 100).lean(),
-        Receptionist.countDocuments(receptionistQuery),
-      ]);
-      results.receptionists = receptionists.map((r: any) => ({ ...r, staffType: 'receptionist' }));
-      if (type === 'receptionist') totalCount = receptionistCount;
-    }
-
-    if (!type || type === 'all' || type === 'accountant') {
-      const accountantQuery = buildQuery();
-      const [accountants, accountantCount] = await Promise.all([
-        Accountant.find(accountantQuery).sort({ createdAt: -1 }).skip(type === 'accountant' ? skip : 0).limit(type === 'accountant' ? limit : 100).lean(),
-        Accountant.countDocuments(accountantQuery),
-      ]);
-      results.accountants = accountants.map((a: any) => ({ ...a, staffType: 'accountant' }));
-      if (type === 'accountant') totalCount = accountantCount;
-    }
-
-    if (!type || type === 'all') {
-      const allStaff = [
-        ...results.nurses,
-        ...results.receptionists,
-        ...results.accountants,
-      ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-      totalCount = allStaff.length;
-      const paginatedStaff = allStaff.slice(skip, skip + limit);
-
-      return NextResponse.json({
-        staff: paginatedStaff,
-        pagination: {
-          page,
-          limit,
-          total: totalCount,
-          pages: Math.ceil(totalCount / limit),
-        },
-        counts: {
-          nurses: results.nurses.length,
-          receptionists: results.receptionists.length,
-          accountants: results.accountants.length,
-        },
-      });
-    }
-
-    const staffList = type === 'nurse' ? results.nurses :
-                      type === 'receptionist' ? results.receptionists :
-                      results.accountants;
-
-    return NextResponse.json({
-      staff: staffList,
-      pagination: {
-        page,
-        limit,
-        total: totalCount,
-        pages: Math.ceil(totalCount / limit),
-      },
-    });
-  } catch (error: any) {
+    const rows = STAFF_TYPES.flatMap((type, i) => lists[i].map((p) => toRow(type, p, byProfile.get(`${type}:${String(p._id)}`))));
+    return NextResponse.json({ success: true, data: rows, truncated });
+  } catch (error) {
     console.error('Error fetching staff:', error);
-    return NextResponse.json({ error: 'Failed to fetch staff' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Failed to load the staff list' }, { status: 500 });
   }
 }
 
-// POST /api/staff - Create a new staff member
+/**
+ * POST /api/staff — admin only. Adds a profile; the model's save hook makes the login account
+ * and emails a set-password invite (or links an account this clinic already has for that email).
+ */
 export async function POST(request: NextRequest) {
   try {
     const ctx = await requireTenantSession();
     if (isTenantSessionError(ctx)) return ctx;
     const { session, tenantId, tenantObjectId } = ctx;
 
-    if (!isAdmin(session)) {
-      return NextResponse.json({ error: 'Only admins can create staff' }, { status: 403 });
-    }
+    if (!isAdmin(session)) return forbiddenResponse('Only administrators can add staff');
 
     await connectDB();
 
@@ -166,7 +149,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: limitCheck.reason || 'Subscription limit exceeded',
+          error: limitCheck.reason || 'The plan’s account limit is reached, so no one else can be added.',
           limit: limitCheck.limit,
           current: limitCheck.current,
           remaining: limitCheck.remaining,
@@ -179,42 +162,58 @@ export async function POST(request: NextRequest) {
     // an account that belongs to another clinic.
     const existingUser = await User.findOne({ email: staffData.email }).select('tenantId').lean<{ tenantId?: unknown } | null>();
     if (existingUser && String(existingUser.tenantId ?? '') !== tenantId) {
-      return NextResponse.json({ error: 'A user with this email already exists' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'That email address is already used by another account.' }, { status: 409 });
     }
 
-    const doc = { ...staffData, tenantId: tenantObjectId };
-    let staff;
-    switch (staffType) {
-      case 'nurse':
-        staff = await Nurse.create(doc);
-        break;
-      case 'receptionist':
-        staff = await Receptionist.create(doc);
-        break;
-      case 'accountant':
-        staff = await Accountant.create(doc);
-        break;
+    const Model = MODELS[staffType];
+    const staff = await Model.create({ ...staffData, tenantId: tenantObjectId });
+
+    const profileField = STAFF_TYPE[staffType].profileField;
+    const findAccount = () =>
+      User.findOne(tenantFilter(tenantId, { [profileField]: staff._id }))
+        .select('status mustSetPassword inviteExpiresAt lastLogin')
+        .lean<LeanAccount | null>();
+    let user = await findAccount();
+    if (!user) {
+      // The save hook may still be finishing; look once more before reporting no account.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      user = await findAccount();
     }
 
-    // The post-save hook creates the User account; give it a moment before reading it back.
-    await new Promise(resolve => setTimeout(resolve, 500));
+    const name = `${staffData.firstName} ${staffData.lastName}`;
+    await createAuditLog({
+      userId: session.userId,
+      userEmail: session.email,
+      userRole: session.role,
+      tenantId,
+      action: 'create',
+      resource: 'staff',
+      resourceId: String(staff._id),
+      description: `Added ${name} as ${STAFF_TYPE[staffType].label.toLowerCase()}`,
+      metadata: { staffType, account: user ? String(user._id) : null },
+    });
 
-    const profileField = `${staffType}Profile`;
-    const user = await User.findOne(tenantFilter(tenantId, { [profileField]: staff._id })).lean();
-
-    return NextResponse.json({
-      message: `${staffType.charAt(0).toUpperCase() + staffType.slice(1)} created successfully`,
-      staff: { ...staff.toObject(), staffType },
-      user: user && !Array.isArray(user) ? { email: user.email, name: user.name } : null,
-    }, { status: 201 });
-  } catch (error: any) {
-    console.error('Error creating staff:', error);
-    if (error.code === 11000) {
-      return NextResponse.json({ error: 'A staff member with this email already exists' }, { status: 400 });
+    const row = toRow(staffType, staff.toObject() as LeanProfile, user ?? undefined);
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          staff: row,
+          // invited: a new account waiting for its owner to set a password; linked: an account this clinic already had.
+          account: !user ? 'none' : user.mustSetPassword ? 'invited' : 'linked',
+        },
+      },
+      { status: 201 }
+    );
+  } catch (err) {
+    console.error('Error creating staff:', err);
+    const error = err as { code?: number; name?: string } | null;
+    if (error?.code === 11000) {
+      return NextResponse.json({ success: false, error: 'Someone with this email is already on the staff list.' }, { status: 409 });
     }
-    if (error.name === 'ValidationError') {
-      return NextResponse.json({ error: 'Invalid staff data' }, { status: 400 });
+    if (error?.name === 'ValidationError') {
+      return NextResponse.json({ success: false, error: 'Some details aren’t valid. Check the form and try again.' }, { status: 400 });
     }
-    return NextResponse.json({ error: 'Failed to create staff' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Failed to add the staff member' }, { status: 500 });
   }
 }

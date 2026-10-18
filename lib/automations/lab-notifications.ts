@@ -163,6 +163,9 @@ export async function processLabNotifications(tenantId?: string | Types.ObjectId
 
   const runs = await forEachTenant(tenantId, async (tenant) => {
     const out: LabNotificationBatchResult = { processed: 0, sent: 0, failed: 0, gaveUp: 0, errors: [] };
+    // Switched off: leave the results untouched. Counting these runs as failed attempts used to
+    // retire every result after five runs, so turning the switch back on sent nothing.
+    if (!automationEnabled(await getSettings(tenant.tenantId), 'autoLabNotifications')) return out;
     const pending = await LabResult.find({
       tenantId: tenant.tenantObjectId,
       status: { $in: ['completed', 'reviewed'] },

@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { useSidebar } from './SidebarContext';
 import MessagingProvider from './messaging/MessagingProvider';
 import ChatDock from './messaging/ChatDock';
+import { ACCOUNT_UPDATED_EVENT } from './account/shared';
 
 interface LayoutWrapperProps {
   children: ReactNode;
@@ -44,6 +45,16 @@ export default function LayoutWrapper({ children }: LayoutWrapperProps) {
         .catch(err => console.error('Error fetching user:', err));
     }
   }, [isAuthPage]);
+
+  // The profile page reports a rename so the header's name and initials follow at once.
+  useEffect(() => {
+    const onUpdated = (e: Event) => {
+      const name = (e as CustomEvent<{ name?: string }>).detail?.name;
+      if (name) setUser((prev) => (prev ? { ...prev, name } : prev));
+    };
+    window.addEventListener(ACCOUNT_UPDATED_EVENT, onUpdated);
+    return () => window.removeEventListener(ACCOUNT_UPDATED_EVENT, onUpdated);
+  }, []);
 
   if (isAuthPage) {
     return <>{children}</>;

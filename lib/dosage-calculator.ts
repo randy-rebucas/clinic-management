@@ -89,6 +89,24 @@ export function calculateDosage(
 }
 
 /**
+ * Doses a day as the prescription form reads a frequency, or null when it can't tell
+ * (the form then counts one a day). The medicines page uses this to warn about wordings
+ * the count can't read.
+ */
+export function timesPerDay(frequency: string): number | null {
+  const f = frequency.toLowerCase();
+  if (f.includes('once') || f.includes('qd')) return 1;
+  if (f.includes('bid') || f.includes('twice')) return 2;
+  if (f.includes('tid') || f.includes('three')) return 3;
+  if (f.includes('qid') || f.includes('four')) return 4;
+  if (f.includes('every')) {
+    const match = frequency.match(/every\s*(\d+)\s*h/i);
+    if (match && parseInt(match[1]) > 0) return Math.floor(24 / parseInt(match[1]));
+  }
+  return null;
+}
+
+/**
  * Calculate total quantity needed based on frequency and duration
  */
 export function calculateQuantity(
@@ -96,28 +114,7 @@ export function calculateQuantity(
   durationDays: number,
   dose: string
 ): number {
-  // Parse frequency to get times per day
-  let timesPerDay = 1;
-  
-  if (frequency.toLowerCase().includes('once') || frequency.toLowerCase().includes('qd')) {
-    timesPerDay = 1;
-  } else if (frequency.toLowerCase().includes('bid') || frequency.toLowerCase().includes('twice')) {
-    timesPerDay = 2;
-  } else if (frequency.toLowerCase().includes('tid') || frequency.toLowerCase().includes('three')) {
-    timesPerDay = 3;
-  } else if (frequency.toLowerCase().includes('qid') || frequency.toLowerCase().includes('four')) {
-    timesPerDay = 4;
-  } else if (frequency.toLowerCase().includes('every')) {
-    const match = frequency.match(/every\s*(\d+)\s*h/i);
-    if (match) {
-      timesPerDay = Math.floor(24 / parseInt(match[1]));
-    }
-  }
-
-  // Calculate total quantity
-  const totalQuantity = timesPerDay * durationDays;
-  
-  return totalQuantity;
+  return (timesPerDay(frequency) ?? 1) * durationDays;
 }
 
 /**

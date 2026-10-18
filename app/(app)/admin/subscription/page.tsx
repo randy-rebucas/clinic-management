@@ -1,29 +1,20 @@
-import { getUser } from '@/app/lib/dal';
 import { redirect } from 'next/navigation';
-import { getTenantContext } from '@/lib/tenant';
-import SubscriptionPageClient from '@/components/SubscriptionPageClient';
+import { requireAdmin } from '@/app/lib/auth-helpers';
+import { verifySession } from '@/app/lib/dal';
+import { loadSubscriptionPage } from '@/lib/subscription-page';
+import SubscriptionClient from '@/components/admin/SubscriptionClient';
 
-export default async function SubscriptionPage() {
-  const user = await getUser();
-  
-  if (!user || !('role' in user)) {
-    redirect('/login');
-  }
+export const dynamic = 'force-dynamic';
 
-  if (!['admin', 'owner'].includes(user.role as string)) {
-    redirect('/dashboard');
-  }
+export default async function SubscriptionPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ canceled?: string }>;
+}) {
+  await requireAdmin();
+  const session = await verifySession();
+  if (!session) redirect('/login');
 
-  // Get tenant context to check subscription
-  const tenantContext = await getTenantContext();
-  
-  if (!tenantContext.tenantId) {
-    redirect('/login');
-  }
-
-  // Ensure user is a plain object before passing to Client Component
-  const safeUser = user ? JSON.parse(JSON.stringify(user)) : null;
-  const safeTenant = tenantContext.tenant ? JSON.parse(JSON.stringify(tenantContext.tenant)) : null;
-  
-  return <SubscriptionPageClient user={safeUser as { role: string; [key: string]: any }} tenant={safeTenant} />;
+  const [data, params] = await Promise.all([loadSubscriptionPage(session), searchParams]);
+  return <SubscriptionClient data={data} canceled={Boolean(params.canceled)} />;
 }

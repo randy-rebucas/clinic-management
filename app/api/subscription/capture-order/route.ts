@@ -9,6 +9,17 @@ import { activateSubscriptionFromOrder } from '@/lib/subscription';
 // A 'processing' claim older than this is treated as abandoned (crashed request) and may be retried.
 const STALE_CLAIM_MS = 2 * 60 * 1000;
 
+/**
+ * What the return page should tell the payer: `retry` = the outcome is unknown or the payment
+ * is still being applied (paying again would pay twice); `declined` = PayPal took nothing for
+ * this order; `problem` = needs a person (amount mismatch, unknown order).
+ */
+type CaptureCode = 'retry' | 'declined' | 'problem';
+
+function fail(code: CaptureCode, error: string, status: number) {
+  return NextResponse.json({ success: false, code, error }, { status });
+}
+
 function subscriptionPayload(sub: any) {
   return {
     plan: sub?.plan,
@@ -27,18 +38,18 @@ export async function POST(request: NextRequest) {
 
     // Only admin/owner may capture payments
     if (!['admin', 'owner'].includes(session.role)) {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      return fail('problem', 'Only an administrator can confirm a payment', 403);
     }
 
     let body: any;
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
+      return fail('problem', 'Invalid JSON body', 400);
     }
     const orderId = body?.orderId;
     if (!isValidPayPalOrderId(orderId)) {
-      return NextResponse.json({ success: false, error: 'Order ID is required' }, { status: 400 });
+      return fail('problem', 'Order ID is required', 400);
     }
 
     await connectDB();
@@ -60,7 +71,7 @@ export async function POST(request: NextRequest) {
     if (!claimed) {
       const existing = await PaypalOrder.findOne({ orderId, tenantId: tenantObjectId }).lean<any>();
       if (!existing) {
-        return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
+        return fail('problem', 'This payment wasn’t started from this clinic, or it has lapsed', 404);
       }
       if (existing.status === 'completed') {
         // Already applied (by an earlier request or the webhook): report success idempotently.
@@ -76,7 +87,10 @@ export async function POST(request: NextRequest) {
           });
         }
       }
-      return NextResponse.json({ success: false, error: 'Order is being processed, please retry shortly' }, { status: 409 });
+      if (existing.status === 'failed') {
+        return fail('declined', 'PayPal didn’t take this payment', 400);
+      }
+      return fail('retry', 'Order is being processed, please retry shortly', 409);
     }
 
     // ── Capture with PayPal ──────────────────────────────────────────────────
@@ -93,10 +107,9 @@ export async function POST(request: NextRequest) {
         { orderId },
         { $set: { status: capture.transient ? 'pending' : 'failed' } }
       );
-      return NextResponse.json(
-        { success: false, error: capture.transient ? 'Payment provider unavailable, please retry' : 'Payment capture failed' },
-        { status: capture.transient ? 502 : 400 }
-      );
+      return capture.transient
+        ? fail('retry', 'PayPal didn’t answer, please retry', 502)
+        : fail('declined', 'PayPal didn’t take this payment', 400);
     }
 
     // ── Update tenant subscription (idempotent per order) ───────────────────
@@ -106,15 +119,12 @@ export async function POST(request: NextRequest) {
     } catch (err) {
       // Money is captured; leave the claim to go stale so a retry or the webhook can finish activation.
       console.error(`Activation failed after capture for order ${orderId}:`, err);
-      return NextResponse.json(
-        { success: false, error: 'Payment received but activation is delayed. Please retry in a few minutes.' },
-        { status: 503 }
-      );
+      return fail('retry', 'Payment received but activation is delayed. Please retry in a few minutes.', 503);
     }
 
     if (!result.ok) {
       console.error(`Activation rejected for order ${orderId}: ${result.error}`);
-      return NextResponse.json({ success: false, error: result.error }, { status: result.status });
+      return fail(result.status === 409 ? 'retry' : 'problem', result.error, result.status);
     }
 
     return NextResponse.json({
@@ -125,9 +135,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Error capturing subscription order:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to process payment' },
-      { status: 500 }
-    );
+    return fail('retry', 'Failed to process payment', 500);
   }
 }

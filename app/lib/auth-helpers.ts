@@ -7,6 +7,7 @@ import Permission from '@/models/Permission';
 import { Types } from 'mongoose';
 import { verifySession, verifySessionToken, deriveKey } from './dal';
 import { safeEqual } from '@/lib/cron-auth';
+import { BUILT_IN } from '@/lib/roles';
 
 export interface JWTPayload {
   userId: string;
@@ -90,7 +91,7 @@ export async function requireAdmin(request?: NextRequest): Promise<JWTPayload | 
     if (session.role !== 'admin' && session.role !== 'owner') {
       redirect('/dashboard?error=admin_required');
     }
-    return;
+    return session;
   }
 
   // API route path (with request)
@@ -112,36 +113,10 @@ export function isAdmin(session: { role?: string } | null): boolean {
 }
 
 /**
- * Default permissions by role — single source of truth for this module.
- * Referenced by hasPermission, requirePermission, and requirePagePermission.
+ * Access every role has regardless of its Permission documents. Lives in `lib/roles.ts` so
+ * /admin/roles can show it as built in.
  */
-const defaultRolePermissions: Record<string, Record<string, string[]>> = {
-  doctor: {
-    read: ['patients', 'visits', 'appointments', 'prescriptions', 'lab-results', 'documents', 'queue', 'referrals', 'reports', 'medicines', 'services', 'rooms'],
-    write: ['patients', 'visits', 'appointments', 'prescriptions', 'lab-results', 'documents', 'queue', 'referrals'],
-    delete: ['prescriptions'],
-  },
-  nurse: {
-    read: ['patients', 'visits', 'appointments', 'prescriptions', 'lab-results', 'queue', 'medicines', 'rooms'],
-    write: ['patients', 'visits', 'queue', 'lab-results'],
-    delete: [],
-  },
-  receptionist: {
-    read: ['patients', 'appointments', 'queue', 'invoices', 'visits', 'doctors', 'services', 'rooms'],
-    write: ['patients', 'appointments', 'queue', 'invoices'],
-    delete: [],
-  },
-  accountant: {
-    read: ['patients', 'invoices', 'reports', 'visits'],
-    write: ['invoices'],
-    delete: [],
-  },
-  'medical-representative': {
-    read: ['doctors', 'appointments'],
-    write: [],
-    delete: [],
-  },
-};
+const defaultRolePermissions = BUILT_IN;
 
 type PermissionSubject = { userId?: string; role?: string; roleId?: string; tenantId?: string } | null;
 

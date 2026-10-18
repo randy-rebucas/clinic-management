@@ -603,6 +603,8 @@ export function TrendChart({
   format,
   formatTick,
   caption,
+  selected = null,
+  onSelect,
 }: {
   days: TrendDay[];
   today: string;
@@ -610,6 +612,10 @@ export function TrendChart({
   format: (v: number) => string;
   formatTick?: (v: number) => string;
   caption: string;
+  /** The day the list below is filtered to: its columns turn teal-dark, the rest drop back. */
+  selected?: string | null;
+  /** Makes the chart a filter: a click (or Enter) on a day picks it. */
+  onSelect?: (date: string) => void;
 }) {
   const [wrapRef, width] = useElementWidth<HTMLDivElement>();
   const tip = useTooltip();
@@ -669,7 +675,22 @@ export function TrendChart({
     showIndex(i, e.currentTarget);
   };
 
+  const selectedIdx = selected ? days.findIndex((d) => d.date === selected) : -1;
+  const pick = (i: number | null) => {
+    if (onSelect && i !== null && i <= lastIdx) onSelect(days[i].date);
+  };
+  const onClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!onSelect || !band) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    pick(Math.min(days.length - 1, Math.max(0, Math.floor((e.clientX - r.left - PAD_L) / band))));
+  };
+
   const onKey = (e: KeyboardEvent<SVGSVGElement>) => {
+    if (onSelect && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      pick(active);
+      return;
+    }
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
     e.preventDefault();
     const cur = active ?? lastIdx;
@@ -703,11 +724,14 @@ export function TrendChart({
             onPointerLeave={clear}
             onKeyDown={onKey}
             onBlur={clear}
-            className="block touch-pan-y outline-none focus-visible:ring-2 focus-visible:ring-brand-teal focus-visible:ring-offset-2 rounded"
+            onClick={onSelect ? onClick : undefined}
+            className={`block touch-pan-y outline-none focus-visible:ring-2 focus-visible:ring-brand-teal focus-visible:ring-offset-2 rounded ${onSelect ? 'cursor-pointer' : ''}`}
           >
             <title id={`${id}-cap`}>{caption}</title>
             <desc id={`${id}-desc`}>
               {lastValues.map(({ s, v }) => `${s.label}: ${format(v)} on the latest day.`).join(' ')} Use left and right arrow keys to read each day.
+              {onSelect ? ' Press Enter to show that day below.' : ''}
+              {selectedIdx !== -1 ? ` Showing ${dayFmt(days[selectedIdx].date, { month: 'long', day: 'numeric' })}.` : ''}
             </desc>
 
             {/* Grid + y ticks */}
@@ -748,8 +772,8 @@ export function TrendChart({
                     className="motion-col-grow"
                     style={{ animationDelay: `${Math.min(240, i * 12)}ms` }}
                     d={`M${x},${baseline} V${top + r} Q${x},${top} ${x + r},${top} H${x + w - r} Q${x + w},${top} ${x + w},${top + r} V${baseline} Z`}
-                    fill={s.color}
-                    opacity={active === null || active === i ? 1 : 0.55}
+                    fill={selectedIdx === i ? '#0A7F7E' : s.color}
+                    opacity={selectedIdx !== -1 ? (selectedIdx === i ? 1 : 0.3) : active === null || active === i ? 1 : 0.55}
                   />
                 );
               });
