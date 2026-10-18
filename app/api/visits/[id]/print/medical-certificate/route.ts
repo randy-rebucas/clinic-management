@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
+import { logPrinted } from '@/lib/audit';
 import connectDB from '@/lib/mongodb';
 import Visit from '@/models/Visit';
 import { requirePermission } from '@/app/lib/auth-helpers';
@@ -66,6 +67,9 @@ export async function GET(
 
     // Generate HTML for printable medical certificate
     const html = generateMedicalCertificateHTML(visit, settings, seal, tz);
+    after(() =>
+      logPrinted({ session, tenantId, resource: 'visit', resourceId: id, patientId: visit.patient?._id, what: 'a medical certificate', seal, request })
+    );
 
     return new NextResponse(withScriptNonce(html, request), { headers: PROTECTED_DOCUMENT_HEADERS });
   } catch (error: any) {

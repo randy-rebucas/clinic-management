@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import PatientNote from '@/models/PatientNote';
-import { requirePermission } from '@/app/lib/auth-helpers';
+import { requirePermission, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
 import { Types } from 'mongoose';
 
@@ -40,10 +40,7 @@ export async function PUT(
 
     // Only author or admin can edit
     if (note.author.userId.toString() !== session.userId && session.role !== 'admin' && session.role !== 'owner') {
-      return NextResponse.json(
-        { success: false, error: 'You do not have permission to edit this note' },
-        { status: 403 }
-      );
+      return refuseAccess(session, 'You do not have permission to edit this note', 'patients', 'update');
     }
 
     const body = await request.json().catch(() => ({}));
@@ -115,10 +112,7 @@ export async function DELETE(
 
     // Only author or admin can delete
     if (note.author.userId.toString() !== session.userId && session.role !== 'admin' && session.role !== 'owner') {
-      return NextResponse.json(
-        { success: false, error: 'You do not have permission to delete this note' },
-        { status: 403 }
-      );
+      return refuseAccess(session, 'You do not have permission to delete this note', 'patients', 'delete');
     }
 
     await PatientNote.deleteOne(query);

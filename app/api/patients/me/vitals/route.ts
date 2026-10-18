@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { recordPatientRefused } from '@/lib/audit';
 import connectDB from '@/lib/mongodb';
 import Visit from '@/models/Visit';
 import Patient from '@/models/Patient';
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
     }
     if ((patient as any).active === false) {
+      await recordPatientRefused(patient as any, request, 'access');
       return NextResponse.json({ success: false, error: 'Account is inactive.' }, { status: 403 });
     }
 

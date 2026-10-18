@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import connectDB from '@/lib/mongodb';
+import { logRecordOpened } from '@/lib/audit';
 import { z } from 'zod';
 import { Types } from 'mongoose';
 import Invoice from '@/models/Invoice';
@@ -88,6 +89,9 @@ export async function GET(
       }
     }
 
+    after(() =>
+      logRecordOpened({ session, tenantId, resource: 'invoice', resourceId: id, patientId: invoiceData.patient?._id, request })
+    );
     return NextResponse.json({ success: true, data: invoiceData });
   } catch (error: any) {
     console.error('Error fetching invoice:', error);

@@ -7,22 +7,43 @@ const VALID_PRODUCT_STATUSES = ['active', 'discontinued', 'inactive'] as const;
 
 /**
  * GET /api/medical-representatives/products
- * Get all products for a medical representative
+ * The rep's products, newest first.
+ * Query params: page (default 1), limit (default 50, max 100),
+ *   status? (active | discontinued | inactive)
  */
 export async function GET(request: NextRequest) {
   try {
     const rep = await requireRepSession();
     if (isRepSessionError(rep)) return rep;
 
+    const searchParams = request.nextUrl.searchParams;
+    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10) || 50));
+
+    const query: Record<string, unknown> = { ...rep.ownerFilter };
+    const status = searchParams.get('status');
+    if (status) {
+      if (!VALID_PRODUCT_STATUSES.includes(status as typeof VALID_PRODUCT_STATUSES[number])) {
+        return NextResponse.json({ success: false, error: 'Invalid status value.' }, { status: 400 });
+      }
+      query.status = status;
+    }
+
     await connectDB();
 
-    const products = await Product.find(rep.ownerFilter)
-      .sort({ createdAt: -1 })
-      .lean();
+    const [products, total] = await Promise.all([
+      Product.find(query)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Product.countDocuments(query),
+    ]);
 
     return NextResponse.json({
       success: true,
       data: products,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     });
   } catch (error: any) {
     console.error('Get products error:', error);

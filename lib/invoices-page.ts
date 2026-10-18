@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
-import { getPermissionChecker } from '@/app/lib/auth-helpers';
+import { denyPage, getPermissionChecker } from '@/app/lib/auth-helpers';
 
 export interface InvoicesPagePermissions {
   /** Create invoices and record payments (invoices:write). */
@@ -20,17 +20,17 @@ async function checker() {
   const session = await verifySession();
   if (!session) redirect('/login');
   const can = await getPermissionChecker(session);
-  if (!can('invoices', 'read')) redirect('/dashboard?error=access_denied');
-  return can;
+  if (!can('invoices', 'read')) await denyPage(session, 'invoices', 'read', '/dashboard?error=access_denied');
+  return { session, can };
 }
 
 export async function loadInvoicesPagePermissions(): Promise<InvoicesPagePermissions> {
-  const can = await checker();
+  const { can } = await checker();
   return { canWrite: can('invoices', 'write') };
 }
 
 export async function loadInvoiceDetailPermissions(): Promise<InvoiceDetailPermissions> {
-  const can = await checker();
+  const { can } = await checker();
   return {
     canPay: can('invoices', 'write'),
     canRefund: can('invoices', 'update'),
@@ -41,7 +41,7 @@ export async function loadInvoiceDetailPermissions(): Promise<InvoiceDetailPermi
 
 /** The new-invoice page: invoices:write (no role is granted a separate "create"). */
 export async function requireInvoiceWriter(): Promise<{ canSeePatient: boolean }> {
-  const can = await checker();
-  if (!can('invoices', 'write')) redirect('/dashboard?error=access_denied');
+  const { session, can } = await checker();
+  if (!can('invoices', 'write')) await denyPage(session, 'invoices', 'write', '/dashboard?error=access_denied');
   return { canSeePatient: can('patients', 'read') };
 }

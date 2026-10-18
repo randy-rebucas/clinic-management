@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import { User, Role } from '@/models';
-import { isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { USER_STATES, userShowFilter, type UserInsights, type UserState } from '@/lib/users';
 
@@ -15,7 +15,7 @@ export async function GET() {
   if (isTenantSessionError(ctx)) return ctx;
   const { session, tenantObjectId: tenantId } = ctx;
   if (!isAdmin(session)) {
-    return NextResponse.json({ success: false, error: 'Admin access required' }, { status: 403 });
+    return refuseAccess(session, 'Admin access required', 'users');
   }
 
   try {

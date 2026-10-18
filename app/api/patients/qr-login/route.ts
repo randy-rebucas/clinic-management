@@ -1,26 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
-import { hashLoginQrToken, patientLoginResponse } from '../auth/shared';
-
-const TOKEN_FORMAT = /^[A-Za-z0-9_-]{43,128}$/;
-
-function readQrToken(qrCode: unknown): string | null {
-  let data: unknown = qrCode;
-  if (typeof qrCode === 'string') {
-    try {
-      data = JSON.parse(qrCode);
-    } catch {
-      return null;
-    }
-  }
-  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
-  const { type, token } = data as Record<string, unknown>;
-  if (type !== 'patient_login' || typeof token !== 'string' || !TOKEN_FORMAT.test(token)) return null;
-  return token;
-}
+import { findPatientByLoginQr, patientLoginResponse, readLoginQrToken } from '../auth/shared';
 
 /**
  * Patient QR Code Login
@@ -29,6 +10,8 @@ function readQrToken(qrCode: unknown): string | null {
  *
  * The QR must carry a random token issued by GET /api/patients/me/login-qr (stored hashed,
  * expiring, revocable). Patient codes / ids alone are not credentials.
+ * Sets the patient_session cookie; the mobile app uses POST /api/patients/auth/token with
+ * method "qr" to get a Bearer token instead.
  */
 export async function POST(request: NextRequest) {
   const rateLimitResponse = await applyRateLimit(request, rateLimiters.auth);
@@ -51,7 +34,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const token = readQrToken(body.qrCode);
+    const token = readLoginQrToken(body.qrCode);
     if (!token) {
       return NextResponse.json(
         { success: false, error: 'This QR code is not valid for login. Please ask the clinic for a new one or sign in another way.' },
@@ -59,13 +42,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await connectDB();
-
-    const patient = await Patient.findOne({
-      loginQrTokenHash: hashLoginQrToken(token),
-      loginQrTokenExpiry: { $gt: new Date() },
-      active: { $ne: false },
-    });
+    const patient = await findPatientByLoginQr(token);
 
     if (!patient) {
       return NextResponse.json(

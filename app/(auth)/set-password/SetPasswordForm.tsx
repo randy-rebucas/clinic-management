@@ -25,9 +25,13 @@ export default function SetPasswordForm({ token }: { token: string }) {
     return (
       <div className="p-4 bg-green-50 border border-green-200 rounded-md text-sm text-green-800">
         <p className="font-semibold">Your password has been set.</p>
-        <Link href={state.loginPath || '/login'} className="underline mt-1 inline-block">
-          Continue to sign in
-        </Link>
+        {state.mobileApp ? (
+          <p className="mt-1">Sign in with this password in the MyClinicSoft mobile app.</p>
+        ) : (
+          <Link href={state.loginPath || '/login'} className="underline mt-1 inline-block">
+            Continue to sign in
+          </Link>
+        )}
       </div>
     );
   }

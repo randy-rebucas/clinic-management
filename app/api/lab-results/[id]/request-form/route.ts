@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
+import { logPrinted } from '@/lib/audit';
 import connectDB from '@/lib/mongodb';
 import LabResult from '@/models/LabResult';
 import { requirePermission } from '@/app/lib/auth-helpers';
@@ -66,6 +67,9 @@ export async function GET(
 
     // Generate HTML for printable lab request form
     const html = generateLabRequestFormHTML(labResult, settings, seal, tz);
+    after(() =>
+      logPrinted({ session, tenantId, resource: 'lab_result', resourceId: id, patientId: labResult.patient?._id, what: 'a lab request form', seal, request })
+    );
 
     return new NextResponse(withScriptNonce(html, request), { headers: PROTECTED_DOCUMENT_HEADERS });
   } catch (error: any) {

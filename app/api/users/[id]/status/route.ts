@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
-import { forbiddenResponse, isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { changeAccountStatus } from '@/lib/account-status';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
@@ -21,7 +21,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const ctx = await requireTenantSession();
   if (isTenantSessionError(ctx)) return ctx;
   const { session, tenantId } = ctx;
-  if (!isAdmin(session)) return forbiddenResponse('Admin access required');
+  if (!isAdmin(session)) return refuseAccess(session, 'Admin access required');
 
   try {
     const { id } = await params;

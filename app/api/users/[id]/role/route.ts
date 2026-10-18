@@ -3,7 +3,7 @@ import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import Role from '@/models/Role';
-import { forbiddenResponse, isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
 import { revokeUserSessions } from '@/app/lib/dal';
 import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
@@ -21,7 +21,7 @@ export async function PUT(
   const { session, tenantId } = ctx;
 
   if (!isAdmin(session)) {
-    return forbiddenResponse('Admin access required');
+    return refuseAccess(session, 'Admin access required');
   }
 
   try {

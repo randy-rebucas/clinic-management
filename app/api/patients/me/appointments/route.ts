@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { recordPatientRefused } from '@/lib/audit';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import Appointment from '@/models/Appointment';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { PATIENT_DOCTOR_POPULATE, withDoctorSummary } from '../../_lib/doctor-summary';
 
 /**
  * GET /api/patients/me/appointments
@@ -29,6 +31,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
     }
     if ((patient as any).active === false) {
+      await recordPatientRefused(patient as any, request, 'access');
       return NextResponse.json({ success: false, error: 'Account is inactive.' }, { status: 403 });
     }
 
@@ -53,17 +56,17 @@ export async function GET(request: NextRequest) {
 
     const [appointments, total] = await Promise.all([
       Appointment.find(query)
-        .populate('doctor', 'firstName lastName specialization')
+        .populate(PATIENT_DOCTOR_POPULATE)
         .sort({ appointmentDate: -1, scheduledAt: -1, createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .lean(),
+        .lean<Record<string, any>[]>(),
       Appointment.countDocuments(query),
     ]);
 
     return NextResponse.json({
       success: true,
-      data: appointments,
+      data: appointments.map(withDoctorSummary),
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (error) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { recordPatientRefused } from '@/lib/audit';
 import bcrypt from 'bcryptjs';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest) {
     if (!patient || !patient.password || !passwordMatch) return invalidCredentialsError;
 
     if (patient.active === false) {
+      await recordPatientRefused(patient as any, request, 'sign-in');
       return NextResponse.json(
         { success: false, error: 'Patient account is inactive. Please contact the clinic.' },
         { status: 403 }

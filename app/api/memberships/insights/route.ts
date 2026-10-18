@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Membership from '@/models/Membership';
 import Patient from '@/models/Patient';
-import { getPermissionChecker, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { getPermissionChecker, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { membershipPermissions } from '@/lib/membership-access';
 import { RENEWAL_DAYS } from '@/lib/memberships';
@@ -22,7 +22,7 @@ export async function GET() {
   if (isTenantSessionError(ctx)) return ctx;
   const { session, tenantObjectId } = ctx;
 
-  if (!membershipPermissions(await getPermissionChecker(session)).canRead) return forbiddenResponse('Cannot read memberships');
+  if (!membershipPermissions(await getPermissionChecker(session)).canRead) return refuseAccess(session, 'Cannot read memberships', 'memberships');
 
   try {
     await connectDB();

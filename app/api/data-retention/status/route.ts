@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import { isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { getDefaultRetentionPolicies } from '@/lib/automations/data-retention';
 import Appointment from '@/models/Appointment';
@@ -21,10 +21,7 @@ export async function GET(request: NextRequest) {
   const { session, tenantObjectId: tenantIdObj } = ctx;
 
   if (!isAdmin(session)) {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized - Admin access required' },
-      { status: 403 }
-    );
+    return refuseAccess(session, 'Unauthorized - Admin access required', 'data-retention');
   }
 
   try {

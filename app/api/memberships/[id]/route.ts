@@ -4,7 +4,7 @@ import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Membership from '@/models/Membership';
 import User from '@/models/User';
-import { getPermissionChecker, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { getPermissionChecker, refuseAccess } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
 import {
   requireTenantSession,
@@ -48,7 +48,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   if (isTenantSessionError(ctx)) return ctx;
 
   const can = await getPermissionChecker(ctx.session);
-  if (!membershipPermissions(can).canRead) return forbiddenResponse('Cannot read memberships');
+  if (!membershipPermissions(can).canRead) return refuseAccess(ctx.session, 'Cannot read memberships', 'memberships');
 
   const { id } = await params;
   if (!isValidId(id)) return notFound('Membership');
@@ -134,7 +134,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const renew = 'action' in body;
 
   if (renew ? !perms.canRenew : !perms.canManage) {
-    return forbiddenResponse(renew ? 'Cannot renew memberships' : 'Only someone who manages memberships can change this');
+    return refuseAccess(
+      ctx.session,
+      renew ? 'Cannot renew memberships' : 'Only someone who manages memberships can change this',
+      'memberships',
+      renew ? 'update' : 'write'
+    );
   }
 
   try {

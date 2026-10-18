@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
-import { getPermissionChecker } from '@/app/lib/auth-helpers';
+import { denyPage, getPermissionChecker } from '@/app/lib/auth-helpers';
 
 export interface DocumentPermissions {
   /** Upload a document (documents:write, the POST check). */
@@ -18,7 +18,7 @@ export async function loadDocumentPermissions(required: 'read' | 'write' = 'read
   const session = await verifySession();
   if (!session) redirect('/login');
   const can = await getPermissionChecker(session);
-  if (!can('documents', 'read')) redirect('/dashboard?error=access_denied');
-  if (required === 'write' && !can('documents', 'write')) redirect('/documents?error=access_denied');
+  if (!can('documents', 'read')) await denyPage(session, 'documents', 'read', '/dashboard?error=access_denied');
+  if (required === 'write' && !can('documents', 'write')) await denyPage(session, 'documents', 'write', '/documents?error=access_denied');
   return { canUpload: can('documents', 'write'), canEdit: can('documents', 'update') };
 }

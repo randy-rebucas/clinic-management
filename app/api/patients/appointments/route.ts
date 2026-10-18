@@ -8,6 +8,7 @@ import Patient from '@/models/Patient';
 import { sendSMS } from '@/lib/sms';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { doctorSummary, PATIENT_DOCTOR_POPULATE } from '../_lib/doctor-summary';
 import { getTenantContext } from '@/lib/tenant';
 import { isValidId } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
@@ -69,9 +70,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, data: { doctors: [] } });
     }
 
-    const doctors = await Doctor.find({ status: 'active', tenantId })
-      .select('firstName lastName specialization schedule')
-      .lean();
+    const doctors = (
+      await Doctor.find({ status: 'active', tenantId })
+        .select('firstName lastName specializationId schedule')
+        .populate(PATIENT_DOCTOR_POPULATE.populate)
+        .lean<Record<string, any>[]>()
+    ).map(doctorSummary);
 
     if (date && doctorId) {
       if (!isValidId(doctorId) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {

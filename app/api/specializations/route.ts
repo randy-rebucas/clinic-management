@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Specialization from '@/models/Specialization';
-import { isAdmin, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zShortText, escapeRegex } from '@/lib/api/validate';
 import { sanitizeSearch } from '@/lib/utils';
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
   if (isTenantSessionError(ctx)) return ctx;
 
   if (!isAdmin(ctx.session)) {
-    return forbiddenResponse('Only admins can create specializations');
+    return refuseAccess(ctx.session, 'Only admins can create specializations');
   }
 
   const parsed = await parseBody(request, specializationCreateSchema);

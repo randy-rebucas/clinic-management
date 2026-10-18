@@ -402,7 +402,7 @@ export default function PublicOnboardingClient() {
                         Your Patient QR Code
                       </h4>
                       <p className="text-xs text-gray-600 mb-3 text-center">
-                        Scan this QR code to quickly log in to your patient portal
+                        Scan this QR code to quickly sign in to the mobile app
                       </p>
                       <div className="flex justify-center mb-3">
                         <div className="p-3 bg-white border-2 border-gray-200 rounded-lg inline-block">
@@ -415,15 +415,9 @@ export default function PublicOnboardingClient() {
                         </div>
                       </div>
                       <div className="text-center">
-                        <p className="text-xs text-gray-500 mb-2">
-                          Save this QR code to your phone for quick access
+                        <p className="text-xs text-gray-500">
+                          Save this QR code — scan it in the MyClinicSoft mobile app to sign in
                         </p>
-                        <Link
-                          href="/patient/login"
-                          className="text-xs text-brand-teal hover:text-brand-teal-dark font-medium underline"
-                        >
-                          Go to patient login
-                        </Link>
                       </div>
                     </div>
                   )}

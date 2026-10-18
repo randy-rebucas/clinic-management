@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
-import { isAdmin, forbiddenResponse } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, patientTenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
 import { escapeHtml } from '@/lib/document-protection';
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
   if (isTenantSessionError(ctx)) return ctx;
 
   if (!isAdmin(ctx.session)) {
-    return forbiddenResponse('Admin access required to send bulk communications');
+    return refuseAccess(ctx.session, 'Admin access required to send bulk communications');
   }
 
   const parsed = await parseBody(request, bulkSchema);

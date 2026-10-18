@@ -4,7 +4,7 @@ import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import Role from '@/models/Role';
 import Permission from '@/models/Permission'; // Import to register model for populate
-import { forbiddenResponse, isAdmin } from '@/app/lib/auth-helpers';
+import { forbiddenResponse, isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zShortText } from '@/lib/api/validate';
 import { createAuditLog } from '@/lib/audit';
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
   const { session, tenantId, tenantObjectId } = ctx;
 
   if (!isAdmin(session)) {
-    return forbiddenResponse('Admin access required');
+    return refuseAccess(session, 'Admin access required');
   }
 
   try {

@@ -1,104 +1,112 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import { isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
-import mongoose from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import BackupRecord from '@/models/BackupRecord';
+import User from '@/models/User';
+import { MAX_BACKUP_BYTES, SECRET_FIELDS, SKIPPED_COLLECTIONS, sizeLabel, type BackupRow, type BackupSummary } from '@/lib/backups';
 
 const { EJSON } = mongoose.mongo.BSON;
 
-// GET /api/backups — list all backup records for the tenant
+type LeanBackup = {
+  _id: Types.ObjectId;
+  label?: string;
+  status: BackupRow['status'];
+  createdAt: Date;
+  createdBy?: Types.ObjectId;
+  createdByEmail?: string;
+  collections?: string[];
+  counts?: Record<string, number>;
+  totalDocuments?: number;
+  sizeBytes?: number;
+  errorMessage?: string;
+};
+
+/**
+ * GET /api/backups — clinic administrators only. The clinic's backups, newest first, without
+ * their contents, each naming who made it; plus how many are kept, how much they take up, and
+ * the newest one's size (what the next backup will be measured against).
+ */
 export async function GET(request: NextRequest) {
   const ctx = await requireTenantSession();
   if (isTenantSessionError(ctx)) return ctx;
   const { session, tenantObjectId } = ctx;
-
-  if (!isAdmin(session)) {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized - Admin access required' },
-      { status: 403 }
-    );
-  }
+  if (!isAdmin(session)) return refuseAccess(session, 'Only clinic administrators can see backups', 'backups');
 
   try {
     await connectDB();
-
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1);
     const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') || '20') || 20));
-    const skip = (page - 1) * limit;
-
     const filter = { tenantId: tenantObjectId };
 
-    const [backups, total] = await Promise.all([
-      BackupRecord.find(filter, { data: 0 }) // exclude raw data from list
+    const [backups, total, stored, last] = await Promise.all([
+      BackupRecord.find(filter, { data: 0 })
         .sort({ createdAt: -1 })
-        .skip(skip)
+        .skip((page - 1) * limit)
         .limit(limit)
-        .lean(),
+        .lean<LeanBackup[]>(),
       BackupRecord.countDocuments(filter),
+      BackupRecord.aggregate<{ bytes: number }>([{ $match: filter }, { $group: { _id: null, bytes: { $sum: '$sizeBytes' } } }]),
+      BackupRecord.findOne({ ...filter, status: 'completed' }, { createdAt: 1, sizeBytes: 1 })
+        .sort({ createdAt: -1 })
+        .lean<{ createdAt: Date; sizeBytes?: number } | null>(),
     ]);
+
+    const userIds = [...new Set(backups.map((b) => b.createdBy?.toString()).filter(Boolean))] as string[];
+    const names = new Map(
+      (await User.find({ _id: { $in: userIds }, tenantId: tenantObjectId }).select('name email').lean<{ _id: Types.ObjectId; name?: string; email?: string }[]>()).map(
+        (u) => [u._id.toString(), u]
+      )
+    );
+
+    const data: BackupRow[] = backups.map((b) => {
+      const uid = b.createdBy?.toString() ?? null;
+      const u = uid ? names.get(uid) : undefined;
+      return {
+        _id: b._id.toString(),
+        label: b.label?.trim() || null,
+        status: b.status,
+        createdAt: new Date(b.createdAt).toISOString(),
+        createdBy: { _id: uid, name: u?.name?.trim() || null, email: u?.email || b.createdByEmail || null },
+        collections: b.collections ?? [],
+        counts: b.counts && typeof b.counts === 'object' ? b.counts : null,
+        totalDocuments: b.totalDocuments ?? 0,
+        sizeBytes: b.sizeBytes ?? 0,
+        errorMessage: b.errorMessage?.trim() || null,
+      };
+    });
+    const summary: BackupSummary = {
+      total,
+      storedBytes: stored[0]?.bytes ?? 0,
+      last: last ? { at: new Date(last.createdAt).toISOString(), sizeBytes: last.sizeBytes ?? 0 } : null,
+    };
 
     return NextResponse.json({
       success: true,
-      data: backups,
-      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+      data,
+      summary,
+      pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) },
     });
   } catch (error) {
     console.error('Error listing backups:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to list backups' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to list backups' }, { status: 500 });
   }
 }
 
-// Stay well under MongoDB's 16MB document limit (the snapshot is stored in one BackupRecord).
-const MAX_BACKUP_BYTES = 12 * 1024 * 1024;
-
-// Never copied into a backup: credentials, OTPs and device tokens.
-const SECRET_FIELDS = [
-  'password',
-  'defaultPassword',
-  'totpSecret',
-  'totpLastUsedStep',
-  'otp',
-  'otpExpiry',
-  'otpAttempts',
-  'loginQrTokenHash',
-  'loginQrTokenExpiry',
-  'pushToken',
-  'feedbackToken',
-  'resetPasswordToken',
-  'resetPasswordExpires',
-];
 const SECRET_PROJECTION = Object.fromEntries(SECRET_FIELDS.map((f) => [f, 0]));
-
-// Platform-level or credential-only collections that are not part of a clinic's data export.
-const SKIPPED_COLLECTIONS = new Set([
-  'backuprecords',
-  'mobiledevices',
-  'pushsubscriptions',
-  'paypalorders',
-  'counters',
-  'specializations',
-]);
+const SKIPPED = new Set(SKIPPED_COLLECTIONS);
 
 class BackupTooLargeError extends Error {}
 
-// POST /api/backups — snapshot THIS clinic's data (never other tenants', never credentials)
+/** POST /api/backups — snapshot THIS clinic's data (never other clinics', never credentials). */
 export async function POST(request: NextRequest) {
   const ctx = await requireTenantSession();
   if (isTenantSessionError(ctx)) return ctx;
   const { session, tenantId, tenantObjectId } = ctx;
-
-  if (!isAdmin(session)) {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized - Admin access required' },
-      { status: 403 }
-    );
-  }
+  if (!isAdmin(session)) return refuseAccess(session, 'Only clinic administrators can make backups', 'backups', 'write');
 
   try {
     await connectDB();
@@ -115,7 +123,7 @@ export async function POST(request: NextRequest) {
     let sizeBytes = 0;
 
     for (const col of collections) {
-      if (col.name.startsWith('system.') || SKIPPED_COLLECTIONS.has(col.name)) continue;
+      if (col.name.startsWith('system.') || SKIPPED.has(col.name)) continue;
 
       const filter =
         col.name === 'tenants'
@@ -132,7 +140,8 @@ export async function POST(request: NextRequest) {
     }
 
     const collectionNames = Object.keys(backupData);
-    const totalDocuments = Object.values(backupData).reduce((s, d) => s + d.length, 0);
+    const counts = Object.fromEntries(collectionNames.map((name) => [name, backupData[name].length]));
+    const totalDocuments = Object.values(counts).reduce((s, n) => s + n, 0);
 
     const record = await BackupRecord.create({
       tenantId: tenantObjectId,
@@ -141,6 +150,7 @@ export async function POST(request: NextRequest) {
       label,
       status: 'completed',
       collections: collectionNames,
+      counts,
       totalDocuments,
       sizeBytes,
       version: '2.0',
@@ -154,32 +164,23 @@ export async function POST(request: NextRequest) {
       tenantId,
       action: 'backup',
       resource: 'system',
-      resourceId: record._id as any,
-      description: `Clinic data backup created${label ? `: ${label}` : ''}`,
+      resourceId: record._id as Types.ObjectId,
+      description: `Made a backup${label ? ` (${label})` : ''}: ${totalDocuments.toLocaleString('en-US')} records, ${sizeLabel(sizeBytes)}`,
       metadata: { collections: collectionNames, totalDocuments, sizeBytes },
     });
 
-    // Return metadata only (not the raw data blob)
-    const { data: _omit, ...meta } = record.toObject();
-    return NextResponse.json(
-      { success: true, data: meta, message: 'Backup created successfully' },
-      { status: 201 }
-    );
+    return NextResponse.json({ success: true, data: { _id: String(record._id), totalDocuments, sizeBytes } }, { status: 201 });
   } catch (error) {
     if (error instanceof BackupTooLargeError) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            'Your clinic data is too large for an in-app backup (limit ~12MB). Use MongoDB Atlas snapshots or mongodump (scripts/backup/backup.sh) instead.',
+          error: `The clinic’s records are larger than an in-app backup can hold (${sizeLabel(MAX_BACKUP_BYTES)}). Use database-level backups instead: MongoDB Atlas snapshots or scripts/backup/backup.sh.`,
         },
         { status: 413 }
       );
     }
     console.error('Error creating backup:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to create backup' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to create backup' }, { status: 500 });
   }
 }

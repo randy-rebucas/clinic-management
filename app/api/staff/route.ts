@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import { Nurse, Receptionist, Accountant, User } from '@/models';
-import { forbiddenResponse, isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
 import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zEmail, zPhone, zShortText } from '@/lib/api/validate';
@@ -93,7 +93,7 @@ export async function GET() {
     if (isTenantSessionError(ctx)) return ctx;
     const { session, tenantId } = ctx;
     // Names, emails, phones and addresses of every employee: administrators only.
-    if (!isAdmin(session)) return forbiddenResponse('Admin access required');
+    if (!isAdmin(session)) return refuseAccess(session, 'Admin access required');
 
     await connectDB();
 
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
     if (isTenantSessionError(ctx)) return ctx;
     const { session, tenantId, tenantObjectId } = ctx;
 
-    if (!isAdmin(session)) return forbiddenResponse('Only administrators can add staff');
+    if (!isAdmin(session)) return refuseAccess(session, 'Only administrators can add staff');
 
     await connectDB();
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { forbiddenResponse, isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { revokeSeal } from '@/lib/document-seal';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 
@@ -16,7 +16,7 @@ export async function POST(
   const { session, tenantId } = ctx;
 
   if (!isAdmin(session)) {
-    return forbiddenResponse('Only administrators can revoke document seals');
+    return refuseAccess(session, 'Only administrators can revoke document seals');
   }
 
   try {

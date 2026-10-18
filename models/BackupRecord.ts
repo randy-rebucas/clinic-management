@@ -10,6 +10,8 @@ export interface IBackupRecord extends Document {
   status: BackupStatus;
   collections: string[];
   totalDocuments: number;
+  /** Records per collection, so the backups page can say what a backup holds without loading it. */
+  counts?: Record<string, number>;
   sizeBytes: number;
   version: string;
   data: Record<string, unknown[]>;
@@ -34,6 +36,7 @@ const BackupRecordSchema = new Schema<IBackupRecord>(
     },
     collections: [{ type: String }],
     totalDocuments: { type: Number, default: 0 },
+    counts: { type: Schema.Types.Mixed },
     sizeBytes: { type: Number, default: 0 },
     version: { type: String, default: '1.0' },
     data: { type: Schema.Types.Mixed, required: true },

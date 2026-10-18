@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { refuseAccess } from '@/app/lib/auth-helpers';
 import connectDB from '@/lib/mongodb';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { getSubscriptionUsage } from '@/lib/subscription-limits';
@@ -19,7 +20,7 @@ export async function GET(_request: NextRequest) {
 
   // Only admin/owner may view billing dashboard
   if (!['admin', 'owner'].includes(session.role)) {
-    return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    return refuseAccess(session, 'Forbidden', 'subscription');
   }
 
   try {

@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
+import { logPrinted } from '@/lib/audit';
 import connectDB from '@/lib/mongodb';
 import Prescription from '@/models/Prescription';
 import { requirePermission } from '@/app/lib/auth-helpers';
@@ -111,6 +112,18 @@ export async function GET(
 
     // Generate HTML for printable prescription
     const html = generatePrescriptionHTML(prescription, copyType, showSignature, settingInfo, seal, paperSize, tz);
+    after(() =>
+      logPrinted({
+        session,
+        tenantId,
+        resource: 'prescription',
+        resourceId: id,
+        patientId: prescription.patient?._id,
+        what: `the prescription (${copyType === 'clinic' ? 'clinic' : 'patient'} copy)`,
+        seal,
+        request,
+      })
+    );
 
     return new NextResponse(withScriptNonce(html, request), { headers: PROTECTED_DOCUMENT_HEADERS });
   } catch (error: any) {

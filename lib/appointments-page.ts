@@ -3,7 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Doctor from '@/models/Doctor';
 import '@/models/Specialization';
 import { verifySession } from '@/app/lib/dal';
-import { getPermissionChecker } from '@/app/lib/auth-helpers';
+import { denyPage, getPermissionChecker } from '@/app/lib/auth-helpers';
 import { tenantFilter } from '@/lib/api/tenant-session';
 
 export interface SchedulingDoctor {
@@ -44,7 +44,7 @@ export async function loadAppointmentsPageContext(required: 'read' | 'write') {
   if (!session) redirect('/login');
 
   const can = await getPermissionChecker(session);
-  if (!can('appointments', required)) redirect('/dashboard?error=access_denied');
+  if (!can('appointments', required)) await denyPage(session, 'appointments', required, '/dashboard?error=access_denied');
 
   return {
     doctors: session.tenantId ? await loadClinicDoctors(session.tenantId) : [],

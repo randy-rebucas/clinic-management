@@ -4,7 +4,7 @@ import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import Role from '@/models/Role';
 import Permission from '@/models/Permission'; // Import to register model for populate
-import { forbiddenResponse, isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
 import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zShortText } from '@/lib/api/validate';
@@ -44,7 +44,7 @@ export async function GET(
   const { session, tenantId } = ctx;
 
   if (!isAdmin(session)) {
-    return forbiddenResponse('Admin access required');
+    return refuseAccess(session, 'Admin access required');
   }
 
   try {
@@ -80,7 +80,7 @@ export async function PUT(
   const { session, tenantId } = ctx;
 
   if (!isAdmin(session)) {
-    return forbiddenResponse('Admin access required');
+    return refuseAccess(session, 'Admin access required');
   }
 
   try {
@@ -160,7 +160,7 @@ export async function DELETE(
   const { session, tenantId } = ctx;
 
   if (!isAdmin(session)) {
-    return forbiddenResponse('Admin access required');
+    return refuseAccess(session, 'Admin access required');
   }
 
   try {

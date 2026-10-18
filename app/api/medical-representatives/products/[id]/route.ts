@@ -24,6 +24,36 @@ const updateProductSchema = z.object({
 });
 
 /**
+ * GET /api/medical-representatives/products/[id]
+ * One of the rep's products.
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const rep = await requireRepSession();
+    if (isRepSessionError(rep)) return rep;
+
+    const { id: productId } = await params;
+    if (!isValidId(productId)) return notFound('Product');
+
+    await connectDB();
+
+    const product = await Product.findOne({ ...rep.ownerFilter, _id: productId }).lean();
+    if (!product) return notFound('Product');
+
+    return NextResponse.json({ success: true, data: product });
+  } catch (error: any) {
+    console.error('Get product error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * PUT /api/medical-representatives/products/[id]
  * Update a product
  */
@@ -44,9 +74,17 @@ export async function PUT(
 
     await connectDB();
 
+    // A new expiry date gets a fresh "expires soon" alert.
+    const current = await Product.findOne({ ...rep.ownerFilter, _id: productId })
+      .select('expiryDate')
+      .lean<{ expiryDate?: Date } | null>();
+    if (!current) return notFound('Product');
+    const expiryChanged = current.expiryDate?.getTime() !== body.expiryDate.getTime();
+
     const updatedProduct = await Product.findOneAndUpdate(
       { ...rep.ownerFilter, _id: productId },
       {
+        ...(expiryChanged ? { $unset: { expiryAlertSentAt: 1 } } : {}),
         $set: {
           name: body.name,
           category: body.category,

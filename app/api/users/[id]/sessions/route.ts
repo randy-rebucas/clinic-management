@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
-import { forbiddenResponse, isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
 import { revokeUserSessions } from '@/app/lib/dal';
 import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
@@ -15,7 +15,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   const ctx = await requireTenantSession();
   if (isTenantSessionError(ctx)) return ctx;
   const { session, tenantId } = ctx;
-  if (!isAdmin(session)) return forbiddenResponse('Admin access required');
+  if (!isAdmin(session)) return refuseAccess(session, 'Admin access required');
 
   try {
     const { id } = await params;

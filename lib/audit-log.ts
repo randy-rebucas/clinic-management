@@ -119,6 +119,13 @@ export function actionPhrase(action: string, resource: string, success: boolean)
       return 'changed what a role may do';
     case 'backup':
       return 'made a backup';
+    case 'download':
+      // The only system-level download is a backup file.
+      if (resource === 'system') return success ? 'downloaded a backup' : 'tried to download a backup';
+      break;
+    case 'delete':
+      if (resource === 'system') return success ? 'deleted a backup' : 'tried to delete a backup';
+      break;
     case 'restore':
       return 'restored a backup';
     case 'data_deletion':
@@ -145,6 +152,7 @@ const VERBS: Record<string, [string, string]> = {
 
 /** Where the record an entry is about can be opened, when it still can. */
 export function recordHref(resource: string, id: string | null, action: string): string | null {
+  if (resource === 'system' && ['backup', 'restore', 'download', 'delete'].includes(action)) return '/admin/backups';
   if (action === 'delete' || action === 'data_deletion') return null;
   const byId: Record<string, string> = {
     patient: '/patients/',

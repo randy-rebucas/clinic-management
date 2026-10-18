@@ -4,7 +4,7 @@ import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Role from '@/models/Role';
 import Permission from '@/models/Permission';
-import { forbiddenResponse, isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
 import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
@@ -29,7 +29,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const { session, tenantId, tenantObjectId } = ctx;
 
   if (!isAdmin(session)) {
-    return forbiddenResponse('Admin access required');
+    return refuseAccess(session, 'Admin access required');
   }
 
   try {

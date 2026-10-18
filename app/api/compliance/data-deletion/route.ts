@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
-import { isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { createAuditLog, logDataDeletion } from '@/lib/audit';
 import {
   requireTenantSession,
@@ -34,10 +34,7 @@ export async function POST(request: NextRequest) {
   const { session, tenantId, tenantObjectId } = ctx;
 
   if (!isAdmin(session)) {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized - Admin access required' },
-      { status: 403 }
-    );
+    return refuseAccess(session, 'Unauthorized - Admin access required', 'patient-data', 'delete');
   }
 
   try {

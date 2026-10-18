@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import { verifySession } from '@/app/lib/dal';
-import { getPermissionChecker } from '@/app/lib/auth-helpers';
+import { denyPage, getPermissionChecker } from '@/app/lib/auth-helpers';
 
 export interface PrescriptionsPageContext {
   canWrite: boolean;
@@ -24,7 +24,7 @@ export async function loadPrescriptionDetailPermissions(): Promise<PrescriptionD
   if (!session) redirect('/login');
 
   const can = await getPermissionChecker(session);
-  if (!can('prescriptions', 'read')) redirect('/dashboard?error=access_denied');
+  if (!can('prescriptions', 'read')) await denyPage(session, 'prescriptions', 'read', '/dashboard?error=access_denied');
 
   return { canUpdate: can('prescriptions', 'update'), canSeePatient: can('patients', 'read'), canSeeVisit: can('visits', 'read') };
 }
@@ -34,7 +34,7 @@ export async function loadPrescriptionsPageContext(): Promise<PrescriptionsPageC
   if (!session) redirect('/login');
 
   const can = await getPermissionChecker(session);
-  if (!can('prescriptions', 'read')) redirect('/dashboard?error=access_denied');
+  if (!can('prescriptions', 'read')) await denyPage(session, 'prescriptions', 'read', '/dashboard?error=access_denied');
 
   await connectDB();
   const user = (await User.findById(session.userId).select('name').lean()) as { name?: string } | null;

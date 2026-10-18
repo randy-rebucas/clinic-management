@@ -17,6 +17,7 @@ const SECTIONS = [
   { label: 'Medicines', href: '/admin/medicines' },
   { label: 'Clinic settings', href: '/admin/settings' },
   { label: 'Subscription', href: '/admin/subscription' },
+  { label: 'Backups', href: '/admin/backups' },
   { label: 'Audit log', href: '/admin/audit-logs' },
 ];
 

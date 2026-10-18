@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
-import { getPermissionChecker } from '@/app/lib/auth-helpers';
+import { denyPage, getPermissionChecker } from '@/app/lib/auth-helpers';
 import ReportsPageClient from '@/components/ReportsPageClient';
 import { REPORTS, canOpenReport, type ReportKey } from '@/lib/reports';
 
@@ -8,7 +8,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const session = await verifySession();
   if (!session) redirect('/login');
   const can = await getPermissionChecker(session);
-  if (!can('reports', 'read')) redirect('/dashboard?error=access_denied');
+  if (!can('reports', 'read')) await denyPage(session, 'reports', 'read', '/dashboard?error=access_denied');
 
   // Only the reports this person may open are offered (the routes check the same rule).
   const allowed = REPORTS.filter((r) => canOpenReport(can, r.key)).map((r) => r.key);

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { recordPatientRefused } from '@/lib/audit';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import Appointment from '@/models/Appointment';
@@ -18,9 +19,172 @@ type PatientNotification = {
   message: string;
   date: Date;
   read: boolean;
-  actionUrl?: string;
+  /** Where the mobile app should navigate when the notification is tapped. */
+  target: { screen: 'appointments' | 'lab-results' | 'invoices' | 'prescriptions'; id: string };
   metadata?: Record<string, any>;
 };
+
+const NOTIFICATION_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+
+/**
+ * Derive the patient's notification feed from recent clinical records (newest first).
+ * `read` is resolved against the ids the patient has marked read.
+ */
+async function buildPatientNotifications(
+  patientId: string,
+  patientTenantIds: unknown[],
+  readIds: string[]
+): Promise<PatientNotification[]> {
+  const tenantFilter = patientTenantIds.length > 0
+    ? { tenantId: { $in: patientTenantIds } }
+    : {};
+
+  const since = new Date(Date.now() - NOTIFICATION_WINDOW_MS);
+
+  // Fetch recent clinical events in parallel
+  const [appointments, labResults, unpaidInvoices, recentPrescriptions] = await Promise.all([
+    Appointment.find({
+      patient: patientId,
+      ...tenantFilter,
+      updatedAt: { $gte: since },
+      status: { $in: ['confirmed', 'cancelled', 'pending', 'scheduled'] },
+    })
+      .select('appointmentCode appointmentDate appointmentTime status reason updatedAt')
+      .sort({ updatedAt: -1 })
+      .limit(20)
+      .lean(),
+
+    LabResult.find({
+      patient: patientId,
+      ...tenantFilter,
+      updatedAt: { $gte: since },
+      // Results the patient can act on: entered (completed) or signed off (reviewed).
+      status: { $in: ['completed', 'reviewed'] },
+    })
+      .select('request.testType status abnormalFlags orderDate updatedAt')
+      .sort({ updatedAt: -1 })
+      .limit(10)
+      .lean(),
+
+    Invoice.find({
+      patient: patientId,
+      ...tenantFilter,
+      status: { $in: ['unpaid', 'partial'] },
+    })
+      .select('invoiceNumber total status createdAt')
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .lean(),
+
+    Prescription.find({
+      patient: patientId,
+      ...tenantFilter,
+      createdAt: { $gte: since },
+    })
+      .select('medications status issuedAt createdAt')
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .lean(),
+  ]);
+
+  const notifications: PatientNotification[] = [];
+
+  // Map appointments to notifications
+  for (const apt of appointments) {
+    const id = `apt-${(apt as any)._id.toString()}`;
+    const dateStr = apt.appointmentDate
+      ? new Date(apt.appointmentDate).toLocaleDateString('en-US', {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+        })
+      : '';
+
+    let title = '';
+    let message = '';
+
+    switch (apt.status) {
+      case 'confirmed':
+        title = 'Appointment Confirmed';
+        message = `Your appointment on ${dateStr} at ${apt.appointmentTime ?? ''} has been confirmed.`;
+        break;
+      case 'cancelled':
+        title = 'Appointment Cancelled';
+        message = `Your appointment on ${dateStr} has been cancelled.`;
+        break;
+      case 'pending':
+        title = 'Appointment Pending';
+        message = `Your appointment request for ${dateStr} is pending clinic confirmation.`;
+        break;
+      default:
+        title = 'Appointment Scheduled';
+        message = `You have an appointment on ${dateStr} at ${apt.appointmentTime ?? ''}.`;
+    }
+
+    notifications.push({
+      id,
+      type: 'appointment',
+      title,
+      message,
+      date: apt.updatedAt as Date,
+      read: readIds.includes(id),
+      target: { screen: 'appointments', id: (apt as any)._id.toString() },
+      metadata: { appointmentCode: apt.appointmentCode, status: apt.status },
+    });
+  }
+
+  // Map lab results to notifications
+  for (const lr of labResults) {
+    const id = `lab-${(lr as any)._id.toString()}`;
+    const testName: string | undefined = (lr as any).request?.testType;
+    // A value flagged high or low (LabResult has no "abnormal" status).
+    const isAbnormal = Object.values((lr as any).abnormalFlags ?? {}).some((f) => f === 'high' || f === 'low');
+    notifications.push({
+      id,
+      type: 'lab_result',
+      title: isAbnormal ? 'Lab Result Requires Attention' : 'Lab Result Available',
+      message: isAbnormal
+        ? `Your ${testName ?? 'lab'} result has values outside the normal range. Please contact your doctor.`
+        : `Your ${testName ?? 'lab'} result is now available.`,
+      date: lr.updatedAt as Date,
+      read: readIds.includes(id),
+      target: { screen: 'lab-results', id: (lr as any)._id.toString() },
+      metadata: { testName, status: lr.status, abnormal: isAbnormal },
+    });
+  }
+
+  // Map unpaid invoices to notifications
+  for (const inv of unpaidInvoices) {
+    const id = `inv-${(inv as any)._id.toString()}`;
+    notifications.push({
+      id,
+      type: 'invoice',
+      title: 'Outstanding Balance',
+      message: `Invoice #${inv.invoiceNumber ?? ''} has an outstanding balance of ${inv.total ?? 0}.`,
+      date: inv.createdAt as Date,
+      read: readIds.includes(id),
+      target: { screen: 'invoices', id: (inv as any)._id.toString() },
+      metadata: { invoiceNumber: inv.invoiceNumber, total: inv.total, status: inv.status },
+    });
+  }
+
+  // Map recent prescriptions to notifications
+  for (const rx of recentPrescriptions) {
+    const id = `rx-${(rx as any)._id.toString()}`;
+    notifications.push({
+      id,
+      type: 'prescription',
+      title: 'New Prescription',
+      message: 'A new prescription has been issued for you.',
+      date: rx.createdAt as Date,
+      read: readIds.includes(id),
+      target: { screen: 'prescriptions', id: (rx as any)._id.toString() },
+    });
+  }
+
+  notifications.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  return notifications;
+}
 
 /**
  * GET /api/patients/me/notifications
@@ -52,6 +216,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
     }
     if ((patient as any).active === false) {
+      await recordPatientRefused(patient as any, request, 'access');
       return NextResponse.json({ success: false, error: 'Account is inactive.' }, { status: 403 });
     }
 
@@ -60,155 +225,11 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)));
     const unreadOnly = searchParams.get('unreadOnly') === 'true';
 
-    const patientTenantIds = (patient as any).tenantIds ?? [];
-    const readIds: string[] = (patient as any).readNotificationIds ?? [];
-
-    const tenantFilter = patientTenantIds.length > 0
-      ? { tenantId: { $in: patientTenantIds } }
-      : {};
-
-    const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000); // last 90 days
-
-    // Fetch recent clinical events in parallel
-    const [appointments, labResults, unpaidInvoices, recentPrescriptions] = await Promise.all([
-      Appointment.find({
-        patient: session.patientId,
-        ...tenantFilter,
-        updatedAt: { $gte: since },
-        status: { $in: ['confirmed', 'cancelled', 'pending', 'scheduled'] },
-      })
-        .select('appointmentCode appointmentDate appointmentTime status reason updatedAt')
-        .sort({ updatedAt: -1 })
-        .limit(20)
-        .lean(),
-
-      LabResult.find({
-        patient: session.patientId,
-        ...tenantFilter,
-        updatedAt: { $gte: since },
-        status: { $in: ['available', 'abnormal', 'critical'] },
-      })
-        .select('testName status orderDate updatedAt')
-        .sort({ updatedAt: -1 })
-        .limit(10)
-        .lean(),
-
-      Invoice.find({
-        patient: session.patientId,
-        ...tenantFilter,
-        status: { $in: ['unpaid', 'partial'] },
-      })
-        .select('invoiceNumber total status createdAt')
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .lean(),
-
-      Prescription.find({
-        patient: session.patientId,
-        ...tenantFilter,
-        createdAt: { $gte: since },
-      })
-        .select('medications status issuedAt createdAt')
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .lean(),
-    ]);
-
-    const notifications: PatientNotification[] = [];
-
-    // Map appointments to notifications
-    for (const apt of appointments) {
-      const id = `apt-${(apt as any)._id.toString()}`;
-      const dateStr = apt.appointmentDate
-        ? new Date(apt.appointmentDate).toLocaleDateString('en-US', {
-            weekday: 'short',
-            month: 'short',
-            day: 'numeric',
-          })
-        : '';
-
-      let title = '';
-      let message = '';
-
-      switch (apt.status) {
-        case 'confirmed':
-          title = 'Appointment Confirmed';
-          message = `Your appointment on ${dateStr} at ${apt.appointmentTime ?? ''} has been confirmed.`;
-          break;
-        case 'cancelled':
-          title = 'Appointment Cancelled';
-          message = `Your appointment on ${dateStr} has been cancelled.`;
-          break;
-        case 'pending':
-          title = 'Appointment Pending';
-          message = `Your appointment request for ${dateStr} is pending clinic confirmation.`;
-          break;
-        default:
-          title = 'Appointment Scheduled';
-          message = `You have an appointment on ${dateStr} at ${apt.appointmentTime ?? ''}.`;
-      }
-
-      notifications.push({
-        id,
-        type: 'appointment',
-        title,
-        message,
-        date: apt.updatedAt as Date,
-        read: readIds.includes(id),
-        actionUrl: '/patient/portal?tab=appointments',
-        metadata: { appointmentCode: apt.appointmentCode, status: apt.status },
-      });
-    }
-
-    // Map lab results to notifications
-    for (const lr of labResults) {
-      const id = `lab-${(lr as any)._id.toString()}`;
-      const isAbnormal = lr.status === 'abnormal' || lr.status === 'critical';
-      notifications.push({
-        id,
-        type: 'lab_result',
-        title: isAbnormal ? 'Lab Result Requires Attention' : 'Lab Result Available',
-        message: isAbnormal
-          ? `Your ${lr.testName ?? 'lab'} result is ${lr.status}. Please contact your doctor.`
-          : `Your ${lr.testName ?? 'lab'} result is now available.`,
-        date: lr.updatedAt as Date,
-        read: readIds.includes(id),
-        actionUrl: '/patient/portal?tab=lab-results',
-        metadata: { testName: lr.testName, status: lr.status },
-      });
-    }
-
-    // Map unpaid invoices to notifications
-    for (const inv of unpaidInvoices) {
-      const id = `inv-${(inv as any)._id.toString()}`;
-      notifications.push({
-        id,
-        type: 'invoice',
-        title: 'Outstanding Balance',
-        message: `Invoice #${inv.invoiceNumber ?? ''} has an outstanding balance of ${inv.total ?? 0}.`,
-        date: inv.createdAt as Date,
-        read: readIds.includes(id),
-        actionUrl: '/patient/portal?tab=invoices',
-        metadata: { invoiceNumber: inv.invoiceNumber, total: inv.total, status: inv.status },
-      });
-    }
-
-    // Map recent prescriptions to notifications
-    for (const rx of recentPrescriptions) {
-      const id = `rx-${(rx as any)._id.toString()}`;
-      notifications.push({
-        id,
-        type: 'prescription',
-        title: 'New Prescription',
-        message: 'A new prescription has been issued for you.',
-        date: rx.createdAt as Date,
-        read: readIds.includes(id),
-        actionUrl: '/patient/portal?tab=prescriptions',
-      });
-    }
-
-    // Sort by date descending
-    notifications.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const notifications = await buildPatientNotifications(
+      session.patientId,
+      (patient as any).tenantIds ?? [],
+      (patient as any).readNotificationIds ?? []
+    );
 
     const filtered = unreadOnly ? notifications.filter((n) => !n.read) : notifications;
     const total = filtered.length;
@@ -265,22 +286,28 @@ export async function PATCH(request: NextRequest) {
     }
 
     const patient = await Patient.findById(session.patientId)
-      .select('active readNotificationIds')
+      .select('active tenantIds readNotificationIds')
       .lean();
 
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
     }
     if ((patient as any).active === false) {
+      await recordPatientRefused(patient as any, request, 'access');
       return NextResponse.json({ success: false, error: 'Account is inactive.' }, { status: 403 });
     }
 
     if (body.markAllRead) {
-      // Client already knows the current IDs; we clear the read list so new ones start fresh.
-      // The GET endpoint will re-derive the full list on next load.
+      // Record every id in the current feed as read. Replacing (not appending) also drops
+      // ids that have aged out of the feed, so the list stays bounded.
+      const current = await buildPatientNotifications(
+        session.patientId,
+        (patient as any).tenantIds ?? [],
+        []
+      );
       await Patient.updateOne(
         { _id: session.patientId },
-        { $set: { readNotificationIds: [] } }
+        { $set: { readNotificationIds: current.map((n) => n.id) } }
       );
       return NextResponse.json({ success: true, message: 'All notifications marked as read' });
     }

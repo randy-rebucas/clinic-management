@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import { MedicalRepresentative, User } from '@/models';
-import { isAdmin } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { revokeUserSessions } from '@/app/lib/dal';
 import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zEmail } from '@/lib/api/validate';
@@ -91,7 +91,7 @@ export async function PUT(
     const { session, tenantObjectId, tenantId } = ctx;
 
     if (!isAdmin(session)) {
-      return NextResponse.json({ success: false, error: 'Admin access required' }, { status: 403 });
+      return refuseAccess(session, 'Admin access required', 'medical-representatives', 'write');
     }
 
     await connectDB();
@@ -189,7 +189,7 @@ export async function DELETE(
     const { session, tenantObjectId } = ctx;
 
     if (!isAdmin(session)) {
-      return NextResponse.json({ success: false, error: 'Admin access required' }, { status: 403 });
+      return refuseAccess(session, 'Admin access required', 'medical-representatives', 'write');
     }
 
     await connectDB();

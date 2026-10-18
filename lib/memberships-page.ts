@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
-import { getPermissionChecker } from '@/app/lib/auth-helpers';
+import { denyPage, getPermissionChecker } from '@/app/lib/auth-helpers';
 import { membershipPermissions, type MembershipPermissions } from '@/lib/membership-access';
 
 export interface MembershipPagePermissions extends MembershipPermissions {
@@ -13,6 +13,6 @@ export async function loadMembershipPermissions(): Promise<MembershipPagePermiss
   if (!session) redirect('/login');
   const can = await getPermissionChecker(session);
   const perms = membershipPermissions(can);
-  if (!perms.canRead) redirect('/dashboard?error=access_denied');
+  if (!perms.canRead) await denyPage(session, 'memberships', 'read', '/dashboard?error=access_denied');
   return { ...perms, canSeePatient: can('patients', 'read') };
 }

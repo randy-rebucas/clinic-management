@@ -89,6 +89,7 @@ export async function requireAdmin(request?: NextRequest): Promise<JWTPayload | 
       redirect('/login');
     }
     if (session.role !== 'admin' && session.role !== 'owner') {
+      await refused(session, 'administration', 'read');
       redirect('/dashboard?error=admin_required');
     }
     return session;
@@ -195,6 +196,7 @@ export async function requirePermission(
   try {
     const check = await getPermissionChecker(session);
     if (check(resource, action)) return null;
+    await refused(session, resource, action);
     return forbiddenResponse(`Permission denied: Cannot ${action} ${resource}`);
   } catch (error) {
     console.error('Error checking permission:', error);
@@ -247,8 +249,46 @@ export async function requirePagePermission(
   }
 
   if (!allowed) {
-    redirect('/dashboard?error=access_denied');
+    await denyPage(session, resource, action, '/dashboard?error=access_denied');
   }
+}
+
+/**
+ * A 403 for a route that refuses by role rather than through `requirePermission` (admin-only
+ * routes), recorded in the audit log the same way.
+ */
+export async function refuseAccess(
+  session: PermissionSubject & { email?: string },
+  message = 'Only clinic administrators can do this',
+  resource = 'administration',
+  action = 'read'
+): Promise<NextResponse> {
+  await refused(session, resource, action);
+  return forbiddenResponse(message);
+}
+
+/** Records a refusal in the audit log; never lets a logging failure change the answer. */
+async function refused(session: PermissionSubject & { email?: string }, resource: string, action: string) {
+  try {
+    const { recordRefusedAccess } = await import('@/lib/audit');
+    await recordRefusedAccess(session, resource, action);
+  } catch (error) {
+    console.error('Error logging refused access:', error);
+  }
+}
+
+/**
+ * A page the person's role doesn't allow: record it in the audit log, then send them back.
+ * Every page-level permission check ends here, so refused access shows up in the log.
+ */
+export async function denyPage(
+  session: PermissionSubject & { email?: string },
+  resource: string,
+  action: string,
+  to: string
+): Promise<never> {
+  await refused(session, resource, action);
+  redirect(to);
 }
 
 /**

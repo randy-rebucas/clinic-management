@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
-import { getPermissionChecker } from '@/app/lib/auth-helpers';
+import { denyPage, getPermissionChecker } from '@/app/lib/auth-helpers';
 
 /** What the signed-in user may do from a patient's page (the API enforces each one again). */
 export interface PatientRecordPermissions {
@@ -19,7 +19,7 @@ export async function loadPatientRecordPermissions(): Promise<PatientRecordPermi
   if (!session) redirect('/login');
 
   const can = await getPermissionChecker(session);
-  if (!can('patients', 'read')) redirect('/dashboard?error=access_denied');
+  if (!can('patients', 'read')) await denyPage(session, 'patients', 'read', '/dashboard?error=access_denied');
 
   return {
     canEdit: can('patients', 'update'),

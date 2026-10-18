@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Doctor from '@/models/Doctor';
-import { getPermissionChecker, hasPermission } from '@/app/lib/auth-helpers';
+import { getPermissionChecker, hasPermission, refuseAccess } from '@/app/lib/auth-helpers';
 import { myDoctorProfileId } from '@/lib/doctor-access';
 import { WEEKDAY_LONG, hoursProblems, toMin } from '@/lib/doctors';
 import {
@@ -31,7 +31,7 @@ export async function GET(
   // Hours are read by the roster (doctors:read) and by booking (appointments:read).
   const can = await getPermissionChecker(session);
   if (!can('doctors', 'read') && !can('appointments', 'read')) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 });
+    return refuseAccess(session, 'Unauthorized', 'doctors');
   }
 
   try {
@@ -94,10 +94,7 @@ export async function PUT(
     if (!(await hasPermission(session, 'doctors', 'update'))) {
       const mine = await myDoctorProfileId(tenantId, session.userId);
       if (mine !== id) {
-        return NextResponse.json(
-          { success: false, error: 'Only the doctor themselves or someone who manages doctors can change these hours.' },
-          { status: 403 }
-        );
+        return refuseAccess(session, 'Only the doctor themselves or someone who manages doctors can change these hours.', 'doctors', 'update');
       }
     }
 
