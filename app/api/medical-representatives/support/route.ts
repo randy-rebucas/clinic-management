@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
     // Send email notification to support team
     try {
       await sendEmail({
-        to: 'support@myclinicsoft.com',
+        to: 'support@myclinicsoft.solutions',
         subject: `Support Request: ${escapeHtml(subject)}`,
         html: `
           <h2>New Support Request</h2>

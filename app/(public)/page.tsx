@@ -436,7 +436,7 @@ export default async function HomePage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
             <a
-              href="mailto:support@myclinicsoft.com"
+              href="mailto:support@myclinicsoft.solutions"
               className="inline-flex items-center justify-center gap-2 px-7 py-3.5 bg-white text-brand-navy rounded-md font-semibold hover:bg-slate-100 transition-colors duration-150 text-sm sm:text-base"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

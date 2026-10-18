@@ -43,6 +43,15 @@ const PatientSelfUpdateSchema = z
   })
   .strict();
 
+/**
+ * The profile fields the patient app reads (see clinic-management-mobile `PatientProfile`).
+ * An allowlist: auth state (password, otp*, sessionVersion, loginQr*), read-receipt lists,
+ * staff tags/flags, automation markers and attachments are never sent.
+ */
+const PATIENT_PROFILE_FIELDS =
+  'patientCode firstName middleName lastName suffix dateOfBirth sex email phone ' +
+  'contacts address emergencyContact allergies preExistingConditions';
+
 /** Flatten parsed input into dotted $set paths so untouched sub-fields are preserved. */
 function toSetPaths(input: Record<string, Record<string, string | undefined> | undefined>) {
   const set: Record<string, string> = {};
@@ -72,9 +81,10 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
 
-    // Select password existence flag without exposing the hash
+    // Profile fields plus what this handler needs internally (never sent): active, tenantIds
+    // for the refusal audit, and the password hash only to derive `hasPassword`.
     const patientWithPw = await Patient.findById(session.patientId)
-      .select('+password')
+      .select(`${PATIENT_PROFILE_FIELDS} active tenantIds +password`)
       .lean();
 
     if (!patientWithPw) {
@@ -92,8 +102,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Strip the actual hash before sending — only expose a boolean flag
-    const { password: _pw, otp: _otp, otpExpiry: _otpExpiry, otpAttempts: _otpAttempts, ...safePatient } = patientWithPw as any;
+    // Strip the internals before sending — only a boolean flag for the password
+    const { password: _pw, active: _active, tenantIds: _tenantIds, ...safePatient } = patientWithPw as any;
 
     return NextResponse.json({
       success: true,
@@ -170,7 +180,7 @@ export async function PATCH(request: NextRequest) {
       { $set: updates },
       { new: true, runValidators: true }
     )
-      .select('-otp -otpExpiry -otpAttempts')
+      .select(PATIENT_PROFILE_FIELDS)
       .lean();
 
     if (!patient) {

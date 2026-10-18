@@ -7,7 +7,11 @@ import LabResult from '@/models/LabResult';
 import Invoice from '@/models/Invoice';
 import Prescription from '@/models/Prescription';
 import logger from '@/lib/logger';
-import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { verifyPatientAuth, type PatientSessionPayload } from '@/app/lib/patient-auth';
+import { parsePagination, tenantScopeFilter } from '../_lib/patient-scope';
+import { notificationId } from '../_lib/notification-id';
+import { linkedRecords, type LinkedRecords } from '../_lib/linked-records';
+import { invoiceBalance } from '../_lib/invoice-balance';
 
 /**
  * Patient notification types derived from clinical activity
@@ -25,19 +29,32 @@ type PatientNotification = {
 };
 
 const NOTIFICATION_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+/** Upper bound on the stored read-id list (the feed itself is at most ~50 items per clinic). */
+const MAX_READ_IDS = 500;
+
+/**
+ * On mark-all-read, a stored read id is kept only when it could belong to a clinic outside this
+ * session's scope: a current-format id (`kind-<id>-<status>` / `rx-<id>`). Legacy ids from before
+ * statuses were part of the id (`apt-<id>` etc.) can never match again and are dropped.
+ */
+function isOutOfScopeCandidate(id: string): boolean {
+  return /^(apt|lab|inv)-[0-9a-f]{24}-[a-z0-9_-]+$/i.test(id) || /^rx-[0-9a-f]{24}$/i.test(id);
+}
 
 /**
  * Derive the patient's notification feed from recent clinical records (newest first).
  * `read` is resolved against the ids the patient has marked read.
  */
 async function buildPatientNotifications(
-  patientId: string,
-  patientTenantIds: unknown[],
+  session: PatientSessionPayload,
+  linked: LinkedRecords,
   readIds: string[]
 ): Promise<PatientNotification[]> {
-  const tenantFilter = patientTenantIds.length > 0
-    ? { tenantId: { $in: patientTenantIds } }
-    : {};
+  // This person's records at every clinic (one per clinic when linked by phone).
+  const patientId = { $in: linked.patientIds };
+  // The patient's clinics, narrowed to the session's clinic when it carries one.
+  const tenantFilter = tenantScopeFilter(linked.tenantIds, session);
+  const read = new Set(readIds.filter((id): id is string => typeof id === 'string'));
 
   const since = new Date(Date.now() - NOTIFICATION_WINDOW_MS);
 
@@ -71,7 +88,7 @@ async function buildPatientNotifications(
       ...tenantFilter,
       status: { $in: ['unpaid', 'partial'] },
     })
-      .select('invoiceNumber total status createdAt')
+      .select('invoiceNumber total payments status createdAt updatedAt')
       .sort({ createdAt: -1 })
       .limit(10)
       .lean(),
@@ -91,7 +108,7 @@ async function buildPatientNotifications(
 
   // Map appointments to notifications
   for (const apt of appointments) {
-    const id = `apt-${(apt as any)._id.toString()}`;
+    const id = notificationId('apt', (apt as any)._id, apt.status);
     const dateStr = apt.appointmentDate
       ? new Date(apt.appointmentDate).toLocaleDateString('en-US', {
           weekday: 'short',
@@ -127,7 +144,7 @@ async function buildPatientNotifications(
       title,
       message,
       date: apt.updatedAt as Date,
-      read: readIds.includes(id),
+      read: read.has(id),
       target: { screen: 'appointments', id: (apt as any)._id.toString() },
       metadata: { appointmentCode: apt.appointmentCode, status: apt.status },
     });
@@ -135,7 +152,7 @@ async function buildPatientNotifications(
 
   // Map lab results to notifications
   for (const lr of labResults) {
-    const id = `lab-${(lr as any)._id.toString()}`;
+    const id = notificationId('lab', (lr as any)._id, lr.status);
     const testName: string | undefined = (lr as any).request?.testType;
     // A value flagged high or low (LabResult has no "abnormal" status).
     const isAbnormal = Object.values((lr as any).abnormalFlags ?? {}).some((f) => f === 'high' || f === 'low');
@@ -147,7 +164,7 @@ async function buildPatientNotifications(
         ? `Your ${testName ?? 'lab'} result has values outside the normal range. Please contact your doctor.`
         : `Your ${testName ?? 'lab'} result is now available.`,
       date: lr.updatedAt as Date,
-      read: readIds.includes(id),
+      read: read.has(id),
       target: { screen: 'lab-results', id: (lr as any)._id.toString() },
       metadata: { testName, status: lr.status, abnormal: isAbnormal },
     });
@@ -155,29 +172,31 @@ async function buildPatientNotifications(
 
   // Map unpaid invoices to notifications
   for (const inv of unpaidInvoices) {
-    const id = `inv-${(inv as any)._id.toString()}`;
+    const id = notificationId('inv', (inv as any)._id, inv.status);
+    const { balance } = invoiceBalance(inv as any);
     notifications.push({
       id,
       type: 'invoice',
       title: 'Outstanding Balance',
-      message: `Invoice #${inv.invoiceNumber ?? ''} has an outstanding balance of ${inv.total ?? 0}.`,
-      date: inv.createdAt as Date,
-      read: readIds.includes(id),
+      message: `Invoice #${inv.invoiceNumber ?? ''} has an outstanding balance of ${balance}.`,
+      // A partial payment re-raises the notice, dated when it changed.
+      date: (inv.status === 'partial' ? inv.updatedAt ?? inv.createdAt : inv.createdAt) as Date,
+      read: read.has(id),
       target: { screen: 'invoices', id: (inv as any)._id.toString() },
-      metadata: { invoiceNumber: inv.invoiceNumber, total: inv.total, status: inv.status },
+      metadata: { invoiceNumber: inv.invoiceNumber, total: inv.total, balance, status: inv.status },
     });
   }
 
   // Map recent prescriptions to notifications
   for (const rx of recentPrescriptions) {
-    const id = `rx-${(rx as any)._id.toString()}`;
+    const id = notificationId('rx', (rx as any)._id);
     notifications.push({
       id,
       type: 'prescription',
       title: 'New Prescription',
       message: 'A new prescription has been issued for you.',
       date: rx.createdAt as Date,
-      read: readIds.includes(id),
+      read: read.has(id),
       target: { screen: 'prescriptions', id: (rx as any)._id.toString() },
     });
   }
@@ -209,7 +228,7 @@ export async function GET(request: NextRequest) {
     await connectDB();
 
     const patient = await Patient.findById(session.patientId)
-      .select('active tenantIds readNotificationIds')
+      .select('active tenantIds accountId readNotificationIds')
       .lean();
 
     if (!patient) {
@@ -221,13 +240,12 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
-    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)));
+    const { page, limit } = parsePagination(searchParams, { defaultLimit: 20, maxLimit: 50 });
     const unreadOnly = searchParams.get('unreadOnly') === 'true';
 
     const notifications = await buildPatientNotifications(
-      session.patientId,
-      (patient as any).tenantIds ?? [],
+      session,
+      await linkedRecords(patient as any),
       (patient as any).readNotificationIds ?? []
     );
 
@@ -286,7 +304,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const patient = await Patient.findById(session.patientId)
-      .select('active tenantIds readNotificationIds')
+      .select('active tenantIds accountId readNotificationIds')
       .lean();
 
     if (!patient) {
@@ -300,14 +318,15 @@ export async function PATCH(request: NextRequest) {
     if (body.markAllRead) {
       // Record every id in the current feed as read. Replacing (not appending) also drops
       // ids that have aged out of the feed, so the list stays bounded.
-      const current = await buildPatientNotifications(
-        session.patientId,
-        (patient as any).tenantIds ?? [],
-        []
+      const current = await buildPatientNotifications(session, await linkedRecords(patient as any), []);
+      // Ids of other clinics' notifications (outside this session's scope) stay as they were.
+      const inFeed = new Set(current.map((n) => n.id));
+      const kept = ((patient as any).readNotificationIds ?? []).filter(
+        (id: unknown) => typeof id === 'string' && !inFeed.has(id) && isOutOfScopeCandidate(id)
       );
       await Patient.updateOne(
         { _id: session.patientId },
-        { $set: { readNotificationIds: current.map((n) => n.id) } }
+        { $set: { readNotificationIds: [...kept, ...inFeed].slice(-MAX_READ_IDS) } }
       );
       return NextResponse.json({ success: true, message: 'All notifications marked as read' });
     }
@@ -320,15 +339,23 @@ export async function PATCH(request: NextRequest) {
     }
 
     const sanitizedIds = body.ids
-      .filter((id) => typeof id === 'string')
+      .filter((id): id is string => typeof id === 'string')
       .map((id) => id.trim())
+      .filter((id) => id.length > 0 && id.length <= 80)
       .slice(0, 200);
 
-    // Add to read set (addToSet prevents duplicates)
+    // Add to read set (addToSet prevents duplicates); keep the stored list bounded.
     await Patient.updateOne(
       { _id: session.patientId },
       { $addToSet: { readNotificationIds: { $each: sanitizedIds } } }
     );
+    const stored: unknown[] = (patient as any).readNotificationIds ?? [];
+    if (stored.length + sanitizedIds.length > MAX_READ_IDS) {
+      await Patient.updateOne(
+        { _id: session.patientId },
+        { $push: { readNotificationIds: { $each: [], $slice: -MAX_READ_IDS } } }
+      );
+    }
 
     return NextResponse.json({
       success: true,

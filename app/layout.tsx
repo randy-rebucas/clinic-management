@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 
 const baseUrl =
   process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
-  "https://myclinicsoft.com";
+  "https://www.myclinicsoft.solutions";
 
 export const metadata: Metadata = {
   metadataBase: new URL(baseUrl),

@@ -487,12 +487,29 @@ export async function clearPending2fa(): Promise<void> {
 
 export const PATIENT_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 
+/** How the session was started: password, phone OTP, or a login QR. */
+export type PatientAuthMethod = 'password' | 'otp' | 'qr';
+
 export interface PatientSessionPayload {
   patientId: string;
   patientCode: string;
   type: 'patient';
   email: string;
   pv?: number; // Patient.sessionVersion at issue time
+  /**
+   * Clinic scope (Tenant ObjectId string). When present, the session may only see records of
+   * that clinic: set for sign-ins whose credential was issued by one clinic's staff (a staff
+   * login QR, a staff-set password). Absent = every clinic the patient belongs to.
+   */
+  tid?: string;
+  /** How this token's sign-in was proven. Not carried through refresh (refreshed tokens have none). */
+  amr?: PatientAuthMethod;
+  iat?: number;
+}
+
+export interface PatientTokenClaims {
+  tid?: string | null;
+  amr?: PatientAuthMethod;
 }
 
 interface PatientTokenSubject {
@@ -502,9 +519,16 @@ interface PatientTokenSubject {
   sessionVersion?: number | null;
 }
 
+const OBJECT_ID_FORMAT = /^[0-9a-f]{24}$/i;
+
 /** Sign a patient session / bearer token (cookie and mobile app share this format). */
-export async function issuePatientToken(patient: PatientTokenSubject): Promise<string> {
+export async function issuePatientToken(
+  patient: PatientTokenSubject,
+  claims: PatientTokenClaims = {}
+): Promise<string> {
   validateSecret();
+  const tid = claims.tid ? String(claims.tid) : undefined;
+  if (tid && !OBJECT_ID_FORMAT.test(tid)) throw new Error('Invalid tid claim');
   return new SignJWT({
     typ: 'patient',
     type: 'patient',
@@ -512,6 +536,8 @@ export async function issuePatientToken(patient: PatientTokenSubject): Promise<s
     patientCode: patient.patientCode ?? '',
     email: patient.email || `patient-${patient.patientCode ?? patient._id.toString()}@clinic.local`,
     pv: patient.sessionVersion ?? 0,
+    ...(tid ? { tid } : {}),
+    ...(claims.amr ? { amr: claims.amr } : {}),
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
@@ -588,6 +614,9 @@ export async function verifyPatientSession(
     ) {
       return null;
     }
+    // A malformed scope claim must never fall back to "every clinic".
+    if (p.tid !== undefined && (typeof p.tid !== 'string' || !OBJECT_ID_FORMAT.test(p.tid))) return null;
+    if (p.amr !== undefined && p.amr !== 'password' && p.amr !== 'otp' && p.amr !== 'qr') return null;
     // Older tokens were issued for 30 days; cap every token at the current TTL.
     if (typeof payload.iat === 'number' && Date.now() / 1000 - payload.iat > PATIENT_TOKEN_TTL_SECONDS) {
       return null;
@@ -601,4 +630,16 @@ export async function verifyPatientSession(
   } catch {
     return null;
   }
+}
+
+/** Window in which an OTP sign-in counts as fresh proof of the patient's phone. */
+export const PATIENT_OTP_FRESH_SECONDS = 15 * 60;
+
+/** True when this token came straight from a phone-OTP sign-in in the last 15 minutes. */
+export function isFreshOtpSession(session: Pick<PatientSessionPayload, 'amr' | 'iat'>): boolean {
+  return (
+    session.amr === 'otp' &&
+    typeof session.iat === 'number' &&
+    Date.now() / 1000 - session.iat <= PATIENT_OTP_FRESH_SECONDS
+  );
 }

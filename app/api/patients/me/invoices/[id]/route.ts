@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import Invoice from '@/models/Invoice';
 import logger from '@/lib/logger';
 import { ownedRecordContext, isOwnedRecordError, recordNotFound } from '../../_lib/owned-record';
+import { invoiceBalance } from '../../_lib/invoice-balance';
 
 /**
  * GET /api/patients/me/invoices/[id]
- * One of the authenticated patient's invoices, with its outstanding balance.
+ * One of the authenticated patient's invoices, with its outstanding balance
+ * (0 once the invoice is paid or refunded, matching the list's summary).
  */
 export async function GET(
   request: NextRequest,
@@ -19,12 +21,10 @@ export async function GET(
     const invoice = await Invoice.findOne(ctx.filter).lean<any>();
     if (!invoice) return recordNotFound('Invoice');
 
-    const paid = (invoice.payments ?? []).reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
-
     return NextResponse.json({
       success: true,
       data: invoice,
-      summary: { paid, balance: Math.max(0, (invoice.total || 0) - paid) },
+      summary: invoiceBalance(invoice),
     });
   } catch (error) {
     logger.error('Error fetching patient invoice detail', error as Error);

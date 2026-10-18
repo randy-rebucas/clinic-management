@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { recordPatientRefused } from '@/lib/audit';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
 import Visit from '@/models/Visit';
 import logger from '@/lib/logger';
-import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { ownedRecordContext, isOwnedRecordError, recordNotFound } from '../../_lib/owned-record';
 
 /**
  * GET /api/patients/me/visits/[id]
@@ -14,47 +11,18 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await verifyPatientAuth(request);
-
-  if (!session) {
-    return NextResponse.json(
-      { success: false, error: 'Not authenticated. Please login.' },
-      { status: 401 }
-    );
-  }
-
   try {
-    await connectDB();
-
     const { id } = await params;
+    // Own visit, at the patient's clinics (session clinic scope applies); malformed id → 404.
+    const ctx = await ownedRecordContext(request, id, 'Visit');
+    if (isOwnedRecordError(ctx)) return ctx;
 
-    const patient = await Patient.findById(session.patientId).lean();
-    if (!patient) {
-      return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
-    }
-    if ((patient as any).active === false) {
-      await recordPatientRefused(patient as any, request, 'access');
-      return NextResponse.json({ success: false, error: 'Account is inactive.' }, { status: 403 });
-    }
-
-    const patientTenantIds = (patient as any).tenantIds ?? [];
-
-    // Ensure patient owns this visit
-    const visitQuery: any = { _id: id, patient: session.patientId };
-    if (patientTenantIds.length > 0) {
-      visitQuery.tenantId = { $in: patientTenantIds };
-    }
-
-    const visit = await Visit.findOne(visitQuery)
-      .populate({ path: 'provider', select: 'firstName lastName email' })
+    const visit = await Visit.findOne(ctx.filter)
+      // `provider` refs User, which stores `name`.
+      .populate({ path: 'provider', select: 'name' })
       .lean();
 
-    if (!visit) {
-      return NextResponse.json(
-        { success: false, error: 'Visit not found.' },
-        { status: 404 }
-      );
-    }
+    if (!visit) return recordNotFound('Visit');
 
     return NextResponse.json({ success: true, data: visit });
   } catch (error: any) {

@@ -111,6 +111,15 @@ export interface IPatient extends Document {
   sessionVersion?: number;
   loginQrTokenHash?: string;
   loginQrTokenExpiry?: Date;
+  /** Clinic that issued the current login QR; sessions from it are scoped to that clinic. */
+  loginQrTenantId?: Types.ObjectId;
+  /** Set when clinic staff set the password; password sign-ins are scoped to that clinic. */
+  passwordTenantId?: Types.ObjectId;
+  /**
+   * Links this person's records at different clinics into one app login. Every linked record
+   * carries the same id; set on phone-OTP sign-in (app/api/patients/me/_lib/linked-records.ts).
+   */
+  accountId?: Types.ObjectId;
 
   // Notification read-tracking (stores IDs of notifications the patient has dismissed)
   readNotificationIds?: string[];
@@ -357,6 +366,22 @@ const PatientSchema: Schema = new Schema(
     loginQrTokenExpiry: {
       type: Date,
       select: false,
+    },
+    loginQrTenantId: {
+      type: Schema.Types.ObjectId,
+      select: false,
+    },
+    // Staff-set password: sign-ins with it only see that clinic's records, until the patient
+    // proves their phone (OTP) and sets their own.
+    passwordTenantId: {
+      type: Schema.Types.ObjectId,
+      select: false,
+    },
+    // Same value on every record of one person (one per clinic) that shares an app login.
+    accountId: {
+      type: Schema.Types.ObjectId,
+      index: true,
+      sparse: true,
     },
 
     // Notification read-tracking

@@ -6,6 +6,10 @@ import Appointment from '@/models/Appointment';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
 import { PATIENT_DOCTOR_POPULATE, withDoctorSummary } from '../../_lib/doctor-summary';
+import { parsePagination, resolveTenantFilter } from '../_lib/patient-scope';
+import { linkedRecords } from '../_lib/linked-records';
+
+const APPOINTMENT_STATUSES = ['pending', 'scheduled', 'confirmed', 'rescheduled', 'no-show', 'completed', 'cancelled'];
 
 /**
  * GET /api/patients/me/appointments
@@ -26,7 +30,7 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
 
-    const patient = await Patient.findById(session.patientId).lean();
+    const patient = await Patient.findById(session.patientId).select('active email tenantIds accountId').lean();
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
     }
@@ -36,26 +40,26 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
-    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') ?? '10', 10)));
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = parsePagination(searchParams, { defaultLimit: 10, maxLimit: 50 });
     const status = searchParams.get('status');
-
-    const tenantIdParam = searchParams.get('tenantId');
-    const patientTenantIds = (patient as any).tenantIds ?? [];
-
-    const query: any = { patient: session.patientId };
-    if (tenantIdParam) {
-      query.tenantId = tenantIdParam;
-    } else if (patientTenantIds.length > 0) {
-      query.tenantId = { $in: patientTenantIds };
+    if (status && !APPOINTMENT_STATUSES.includes(status)) {
+      return NextResponse.json({ success: false, error: 'Invalid status.' }, { status: 400 });
     }
+
+    // This person's records at every clinic (one per clinic when linked by phone).
+    const linked = await linkedRecords(patient as any);
+    const tenant = resolveTenantFilter(linked.tenantIds, session, searchParams.get('tenantId'));
+    if (!tenant.ok) return tenant.response;
+
+    const query: any = { patient: { $in: linked.patientIds }, ...tenant.filter };
     if (status) {
       query.status = status;
     }
 
     const [appointments, total] = await Promise.all([
       Appointment.find(query)
+        // Staff notes are internal; the patient sees `reason`.
+        .select('-notes -createdBy')
         .populate(PATIENT_DOCTOR_POPULATE)
         .sort({ appointmentDate: -1, scheduledAt: -1, createdAt: -1 })
         .skip(skip)

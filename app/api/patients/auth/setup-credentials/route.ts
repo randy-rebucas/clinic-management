@@ -5,8 +5,15 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { isFreshOtpSession } from '@/app/lib/dal';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
-import { rotatePatientSessionAfterPasswordChange } from '../shared';
+import {
+  checkPhoneProof,
+  emailUsedForLoginByOtherPatient,
+  otpFailureResponse,
+  otpRequiredResponse,
+  rotatePatientSessionAfterPasswordChange,
+} from '../shared';
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -14,30 +21,31 @@ const MIN_PASSWORD_LENGTH = 8;
  * POST /api/patients/auth/setup-credentials
  *
  * Registers or updates the email + password a patient uses to log into
- * third-party applications. Requires the patient to be authenticated via
- * any existing method (cookie, Bearer token, or a freshly issued OTP token).
+ * third-party applications. Requires an authenticated patient session plus proof:
  *
- * Typical flows:
+ *   - No password yet: proof of the patient's phone. Either the access token comes from an OTP
+ *     sign-in (`amr: "otp"`) in the last 15 minutes, or a fresh SMS code is sent as `otp`.
+ *     Otherwise 400 OTP_REQUIRED. A login QR alone can't set credentials: whoever holds a QR
+ *     printout must not be able to take over the account.
+ *   - Password already set: `currentPassword` (400 CURRENT_PASSWORD_REQUIRED /
+ *     400 WRONG_CURRENT_PASSWORD), or the same phone proof (a reset).
  *
- *   A. First-time credential setup (patient was registered by clinic staff)
- *      1. Patient receives a QR card from the clinic.
- *      2. Third-party app calls POST /api/patients/auth/otp/request with the
- *         patient's registered phone number.
- *      3. Patient enters the OTP in the app → POST /api/patients/auth/token
- *         (method: "otp") → receives a Bearer token.
- *      4. App calls this endpoint with the Bearer token to set email + password
- *         for all future logins.
+ * Typical flow (first-time activation in the eMCR app):
+ *   1. POST /api/patients/auth/otp/request with the registered phone number.
+ *   2. POST /api/patients/auth/token (method: "otp") → Bearer token (amr "otp").
+ *   3. Within 15 minutes, call this endpoint to set email + password.
  *
- *   B. Credential update (patient already has a password)
- *      Same flow — must supply currentPassword when one is already set.
+ * Body: { email?, password, currentPassword?, otp?, deviceId? }
  *
- * Body: { email?, password, currentPassword? }
+ *   email           – optional; update/set login email. If omitted, existing
+ *                     email is kept. Rejected (409 EMAIL_IN_USE) when another
+ *                     patient already signs in with it, in any clinic.
+ *   password        – required; new password (min 8 chars).
+ *   currentPassword – see above.
+ *   otp             – optional SMS code, as phone proof.
+ *   deviceId        – optional; keeps this device's push registration.
  *
- *   email          – optional; update/set login email. If omitted, existing
- *                    email is kept. New email must not conflict with another
- *                    patient in the same tenant.
- *   password       – required; new password (min 8 chars).
- *   currentPassword – required when the patient already has a password set.
+ * Bearer callers get a new `token`, `expiresIn`, `refreshToken` and `refreshExpiresIn`.
  */
 export async function POST(request: NextRequest) {
   const session = await verifyPatientAuth(request);
@@ -55,7 +63,7 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
 
-    let body: { email?: string; password?: string; currentPassword?: string };
+    let body: { email?: string; password?: string; currentPassword?: string; otp?: unknown; deviceId?: unknown };
     try {
       body = await request.json();
     } catch {
@@ -100,26 +108,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ── If password already set, require current password ───────────────────
+    // ── Proof: current password, or proof of the patient's phone ────────────
+    let phoneProven = isFreshOtpSession(session);
+    const needsPhoneProof = !patient.password || !currentPassword;
+    if (needsPhoneProof && !phoneProven && body.otp !== undefined) {
+      const proof = await checkPhoneProof(session, body.otp);
+      if (!proof.ok) return otpFailureResponse(proof.reason);
+      phoneProven = proof.proven;
+    }
+
     if (patient.password) {
-      if (!currentPassword) {
+      if (currentPassword) {
+        const match = await bcrypt.compare(currentPassword, patient.password);
+        if (!match) {
+          return NextResponse.json(
+            { success: false, error: 'Current password is incorrect', code: 'WRONG_CURRENT_PASSWORD' },
+            // 400, not 401: the session is fine, so the app must not treat it as an expired token.
+            { status: 400 }
+          );
+        }
+      } else if (!phoneProven) {
         return NextResponse.json(
           {
             success: false,
-            error:
-              'currentPassword is required when updating an existing password',
+            code: 'CURRENT_PASSWORD_REQUIRED',
+            error: 'currentPassword is required when updating an existing password',
           },
           { status: 400 }
         );
       }
-      const match = await bcrypt.compare(currentPassword, patient.password);
-      if (!match) {
-        return NextResponse.json(
-          { success: false, error: 'Current password is incorrect', code: 'WRONG_CURRENT_PASSWORD' },
-          // 400, not 401: the session is fine, so the app must not treat it as an expired token.
-          { status: 400 }
-        );
-      }
+    } else if (!phoneProven) {
+      return otpRequiredResponse();
     }
 
     // ── Validate new email (if provided) ────────────────────────────────────
@@ -133,22 +152,14 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Check uniqueness within the same tenants
-      const emailConflictQuery: any = {
-        email: newEmail,
-        _id: { $ne: patient._id },
-      };
-      if (patient.tenantIds?.length) {
-        emailConflictQuery.tenantIds = { $in: patient.tenantIds };
-      }
-
-      const conflict = await Patient.findOne(emailConflictQuery).lean();
-      if (conflict) {
+      // Sign-in looks patients up by email across every clinic, so a login email must not be
+      // in use by any other patient who signs in with a password.
+      if (await emailUsedForLoginByOtherPatient(newEmail, patient._id)) {
         return NextResponse.json(
           {
             success: false,
-            error:
-              'This email is already registered to another patient in the same clinic.',
+            code: 'EMAIL_IN_USE',
+            error: 'This email is already used to sign in by another patient. Please use a different email.',
           },
           { status: 409 }
         );
@@ -160,10 +171,19 @@ export async function POST(request: NextRequest) {
     // ── Hash and save ────────────────────────────────────────────────────────
     updates.password = await bcrypt.hash(newPassword, 12);
 
-    await Patient.updateOne({ _id: patient._id }, { $set: updates });
+    // Set after proving the phone: the patient's own password, without a staff clinic scope.
+    await Patient.updateOne(
+      { _id: patient._id },
+      phoneProven ? { $set: updates, $unset: { passwordTenantId: 1 } } : { $set: updates }
+    );
 
-    // Any previously issued token (other devices, leaked tokens) stops working
-    const rotated = await rotatePatientSessionAfterPasswordChange(request, session.patientId);
+    // Any previously issued token (other devices, leaked tokens) stops working. The caller's
+    // fresh token keeps its clinic scope unless the phone was proven.
+    const keepDeviceId = typeof body.deviceId === 'string' ? body.deviceId.trim() || undefined : undefined;
+    const rotated = await rotatePatientSessionAfterPasswordChange(request, session.patientId, {
+      tid: phoneProven ? undefined : session.tid,
+      keepDeviceId,
+    });
 
     logger.info('Patient credentials set up for third-party access', {
       patientId: session.patientId,

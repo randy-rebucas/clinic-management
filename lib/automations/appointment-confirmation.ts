@@ -98,7 +98,7 @@ export async function sendConfirmationRequest(options: AppointmentConfirmationOp
           body: `${dateText} at ${timeText}${doctor ? ` with Dr. ${doctor.firstName} ${doctor.lastName}` : ''}. Tap to confirm.`,
           tag: `appointment-confirm-${appointment._id}`,
           url: `/appointments/${appointment._id}`,
-        });
+        }, { tenantId: appointment.tenantId });
         if (pushResult.sent) sent = true;
       } catch (error) {
         console.error('Error sending confirmation push notification:', error);

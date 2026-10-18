@@ -5,10 +5,14 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import { verifyPatientAuth, type PatientSessionPayload } from '@/app/lib/patient-auth';
 import { isValidId } from '@/lib/api/tenant-session';
+import { tenantScopeFilter } from './patient-scope';
+import { linkedRecords, type LinkedRecords } from './linked-records';
 
 export type OwnedRecordContext = {
   session: PatientSessionPayload;
+  /** The signed-in record; `tenantIds` is the union over its linked records. */
   patient: { _id: unknown; email?: string; tenantIds?: unknown[] };
+  linked: LinkedRecords;
   /** Filter for one record of this patient's, at one of their clinics. */
   filter: Record<string, unknown>;
 };
@@ -31,8 +35,8 @@ export async function ownedRecordContext(
   await connectDB();
 
   const patient = await Patient.findById(session.patientId)
-    .select('active email tenantIds')
-    .lean<{ _id: unknown; active?: boolean; email?: string; tenantIds?: unknown[] } | null>();
+    .select('active email tenantIds accountId')
+    .lean<{ _id: unknown; active?: boolean; email?: string; tenantIds?: unknown[]; accountId?: unknown } | null>();
   if (!patient) {
     return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
   }
@@ -45,11 +49,16 @@ export async function ownedRecordContext(
     return NextResponse.json({ success: false, error: `${notFoundLabel} not found.` }, { status: 404 });
   }
 
-  const filter: Record<string, unknown> = { _id: id, patient: session.patientId };
-  const tenantIds = patient.tenantIds ?? [];
-  if (tenantIds.length > 0) filter.tenantId = { $in: tenantIds };
+  // Own record (on any of this person's linked records), at their clinics (narrowed to the
+  // session's clinic when it carries one).
+  const linked = await linkedRecords(patient);
+  const filter: Record<string, unknown> = {
+    _id: id,
+    patient: { $in: linked.patientIds },
+    ...tenantScopeFilter(linked.tenantIds, session),
+  };
 
-  return { session, patient, filter };
+  return { session, patient: { ...patient, tenantIds: linked.tenantIds }, linked, filter };
 }
 
 export function isOwnedRecordError(value: OwnedRecordContext | NextResponse): value is NextResponse {

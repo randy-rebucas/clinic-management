@@ -14,9 +14,12 @@ import MobileDevice from '@/models/MobileDevice';
 import { Types } from 'mongoose';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
-import { revokePatientSessions } from '@/app/lib/dal';
-import { readRefreshTokenFromBody, revokeRefreshToken } from '@/app/lib/refresh-tokens';
-import { revokePatientLoginQr } from '../auth/shared';
+import {
+  findRefreshTokenSubject,
+  readRefreshTokenFromBody,
+  revokeRefreshToken,
+} from '@/app/lib/refresh-tokens';
+import { revokeAllPatientAccess } from '../auth/shared';
 
 // Ensure Doctor model is registered for populate calls
 void Doctor;
@@ -81,8 +84,10 @@ export async function GET(request: NextRequest) {
       },
     };
 
-    // Get tenantId from patient (Patient schema uses tenantIds array)
-    const patientTenantId = patient.tenantIds?.[0];
+    // A clinic-scoped session (tid) only sees that clinic; otherwise the patient's first clinic.
+    const patientTenantId = sessionData.tid
+      ? new Types.ObjectId(sessionData.tid)
+      : patient.tenantIds?.[0];
 
     // Optionally load related data (tenant-scoped)
     if (include.includes('appointments') || include.includes('all')) {
@@ -267,17 +272,37 @@ export async function GET(request: NextRequest) {
 /**
  * DELETE /api/patients/session[?all=true][&deviceId=...]
  * Sign out. Clears the patient_session cookie; a Bearer token stays valid until it expires
- * unless `all=true`, which revokes every token, cookie and login QR issued to this patient
- * ("sign out everywhere"). `deviceId` also unregisters that device from push.
- * Optional JSON body `{ refreshToken }` revokes the app's refresh token.
+ * unless `all=true`, which revokes every token, cookie, login QR and push registration of this
+ * patient ("sign out everywhere"). `deviceId` also unregisters that device from push.
+ * Optional JSON body `{ refreshToken }` revokes the app's refresh token. When the access token
+ * has expired, a still-valid refresh token in the body identifies the patient instead, so
+ * `all` / `deviceId` still work.
  */
 export async function DELETE(request: NextRequest) {
   const all = request.nextUrl.searchParams.get('all') === 'true';
   const deviceId = request.nextUrl.searchParams.get('deviceId')?.trim();
   const refreshToken = await readRefreshTokenFromBody(request);
 
+  let patientId: string | null = null;
+  if (all || deviceId) {
+    const session = await verifyPatientAuth(request);
+    if (session) patientId = session.patientId;
+  }
+
   if (refreshToken) {
     try {
+      // Identify the holder before the token is revoked: it is the proof of identity when the
+      // access token has already expired.
+      if ((all || deviceId) && !patientId) {
+        const owner = await findRefreshTokenSubject(refreshToken, 'patient');
+        if (owner) {
+          await connectDB();
+          const patient = await Patient.findById(owner.subjectId)
+            .select('sessionVersion')
+            .lean<{ sessionVersion?: number } | null>();
+          if (patient && (patient.sessionVersion ?? 0) === owner.sessionVersion) patientId = owner.subjectId;
+        }
+      }
       await revokeRefreshToken(refreshToken, 'patient');
     } catch (error) {
       logger.error('Error revoking patient refresh token', error as Error);
@@ -286,21 +311,19 @@ export async function DELETE(request: NextRequest) {
   }
 
   if (all || deviceId) {
-    const session = await verifyPatientAuth(request);
-    if (!session) {
+    if (!patientId) {
       return NextResponse.json({ success: false, error: 'Not authenticated. Please login.' }, { status: 401 });
     }
     try {
       await connectDB();
       if (deviceId) {
         await MobileDevice.updateOne(
-          { patientId: new Types.ObjectId(session.patientId), deviceId },
+          { patientId: new Types.ObjectId(patientId), deviceId },
           { $set: { revokedAt: new Date(), pushToken: null } }
         );
       }
       if (all) {
-        await revokePatientSessions(session.patientId);
-        await revokePatientLoginQr(session.patientId);
+        await revokeAllPatientAccess(patientId);
       }
     } catch (error) {
       logger.error('Error signing patient out', error as Error);

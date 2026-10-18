@@ -19,6 +19,10 @@ import {
  * 401 `REFRESH_INVALID`: unknown, expired, revoked, or the patient signed out everywhere /
  * changed their password. 401 `REFRESH_REUSED`: the token was already spent, so every token in
  * its chain is revoked. Either way the app must sign in again.
+ * 403 `ACCOUNT_INACTIVE`: the clinic deactivated the patient; show the message, don't retry.
+ *
+ * The new access token keeps the clinic scope (`tid`) of the original sign-in. It carries no
+ * `amr`, so a refreshed token never counts as a fresh OTP sign-in.
  */
 export async function POST(request: NextRequest) {
   // Not the strict sign-in limit: refresh tokens are 256-bit random (nothing to guess), and
@@ -39,17 +43,25 @@ export async function POST(request: NextRequest) {
   try {
     const consumed = await consumeRefreshToken(body.refreshToken, 'patient');
     if (!consumed.ok) return invalid(consumed.code);
-    const { subjectId, sessionVersion, family } = consumed.value;
+    const { subjectId, sessionVersion, family, tid } = consumed.value;
 
     await connectDB();
     const patient = await Patient.findById(subjectId).select('active patientCode email sessionVersion');
-    if (!patient || patient.active === false || (patient.sessionVersion ?? 0) !== sessionVersion) {
+    if (!patient || (patient.sessionVersion ?? 0) !== sessionVersion) {
       await revokeRefreshFamily(family);
       return invalid('REFRESH_INVALID');
     }
+    if (patient.active === false) {
+      // The token is already spent; the patient signs in again once the clinic reactivates them.
+      await revokeRefreshFamily(family);
+      return NextResponse.json(
+        { success: false, error: 'Your account is inactive. Please contact the clinic.', code: 'ACCOUNT_INACTIVE' },
+        { status: 403 }
+      );
+    }
 
-    const token = await issuePatientToken(patient);
-    const refreshToken = await issueRefreshToken('patient', patient._id, sessionVersion, family);
+    const token = await issuePatientToken(patient, { tid });
+    const refreshToken = await issueRefreshToken('patient', patient._id, sessionVersion, family, { tid });
 
     return NextResponse.json({
       success: true,

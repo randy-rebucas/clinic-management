@@ -11,6 +11,11 @@ import { verifyPatientAuth } from '@/app/lib/patient-auth';
  * delivery. Called on app launch / after login and whenever the Expo push
  * token rotates.
  *
+ * A device (deviceId) or push token is registered to one patient at a time: any other patient's
+ * registration of the same deviceId or pushToken is revoked, so a shared or handed-down phone
+ * stops receiving the previous patient's notifications. A clinic-scoped session (`tid`)
+ * records that clinic on the device, and pushes about other clinics skip it.
+ *
  * Body: { deviceId, platform: 'ios' | 'android', pushToken?, appVersion? }
  */
 export async function POST(request: NextRequest) {
@@ -26,10 +31,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Invalid request format' }, { status: 400 });
   }
 
-  const deviceId = typeof body.deviceId === 'string' ? body.deviceId.trim() : '';
+  const deviceId = typeof body.deviceId === 'string' ? body.deviceId.trim().slice(0, 200) : '';
   const platform = body.platform === 'ios' || body.platform === 'android' ? body.platform : null;
-  const pushToken = typeof body.pushToken === 'string' ? body.pushToken.trim() : undefined;
-  const appVersion = typeof body.appVersion === 'string' ? body.appVersion.trim() : undefined;
+  const pushToken = typeof body.pushToken === 'string' ? body.pushToken.trim().slice(0, 500) || undefined : undefined;
+  const appVersion = typeof body.appVersion === 'string' ? body.appVersion.trim().slice(0, 50) : undefined;
 
   if (!deviceId || !platform) {
     return NextResponse.json(
@@ -40,19 +45,37 @@ export async function POST(request: NextRequest) {
 
   try {
     await connectDB();
+    const patientId = new Types.ObjectId(session.patientId);
+    const now = new Date();
+
+    // One account per device / push token: revoke anyone else's registration of either.
+    const sameDevice: Record<string, unknown>[] = [{ deviceId }];
+    if (pushToken) sameDevice.push({ pushToken });
+    await MobileDevice.updateMany(
+      { patientId: { $ne: patientId }, revokedAt: null, $or: sameDevice },
+      { $set: { revokedAt: now, pushToken: null } }
+    );
+    // The same push token under an older deviceId of this patient (reinstall): avoid double pushes.
+    if (pushToken) {
+      await MobileDevice.updateMany(
+        { patientId, deviceId: { $ne: deviceId }, pushToken, revokedAt: null },
+        { $set: { revokedAt: now, pushToken: null } }
+      );
+    }
 
     const device = await MobileDevice.findOneAndUpdate(
-      { patientId: new Types.ObjectId(session.patientId), deviceId },
+      { patientId, deviceId },
       {
         $set: {
           platform,
           pushToken,
           appVersion,
-          lastSeenAt: new Date(),
+          lastSeenAt: now,
           revokedAt: null,
+          tenantId: session.tid ? new Types.ObjectId(session.tid) : null,
         },
         $setOnInsert: {
-          patientId: new Types.ObjectId(session.patientId),
+          patientId,
           deviceId,
         },
       },

@@ -158,7 +158,7 @@ export default function PrivacyPage() {
                 </p>
                 <div className="bg-gray-50 rounded-xl p-4">
                   <p className="text-gray-700">
-                    <strong>Email:</strong> <a href="mailto:privacy@myclinicsoft.com" className="text-blue-600 hover:text-blue-700">privacy@myclinicsoft.com</a><br />
+                    <strong>Email:</strong> <a href="mailto:privacy@myclinicsoft.solutions" className="text-blue-600 hover:text-blue-700">privacy@myclinicsoft.solutions</a><br />
                     <strong>Address:</strong> 123 Healthcare Street, Medical District, MD 12345, United States
                   </p>
                 </div>

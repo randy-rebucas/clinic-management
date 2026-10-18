@@ -98,7 +98,7 @@ export async function sendLabResultNotification(options: LabNotificationOptions)
           body: `Your results for ${testType} are ready to view.`,
           tag: `lab-result-${labResult._id}`,
           url: `/lab-results/${labResult._id}`,
-        });
+        }, { tenantId });
         if (pushResult.sent) sent = true;
       } catch (error) {
         console.error('Error sending lab result push notification:', error);

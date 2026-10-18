@@ -381,7 +381,7 @@ export default function PatientDetailClient({ patientId, permissions }: { patien
           <h2 id="patient-qr-title" className="text-lg font-bold tracking-tight text-gray-900">
             {fullName}
           </h2>
-          <p className="mt-0.5 text-sm text-gray-500">Scan to look up this patient.</p>
+          <p className="mt-0.5 text-sm text-gray-500">Scan to look up this patient. It can’t be used to sign in to the patient app.</p>
           <div className="mx-auto mt-5 w-fit rounded-lg border border-gray-200 bg-white p-4">
             <QRCode value={p.patientCode || p._id} size={208} />
           </div>
@@ -1096,8 +1096,45 @@ function AppAccessPanel({ patientId, fallbackEmail, firstName }: { patientId: st
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
+  const [qr, setQr] = useState<{ data: string; expiresAt: string } | null>(null);
+  const [qrBusy, setQrBusy] = useState(false);
+  const [qrError, setQrError] = useState<string | null>(null);
+
   const s = status.value;
   const loginEmail = s?.email ?? fallbackEmail ?? null;
+
+  // A sign-in QR is a credential: issued on demand (replacing the last one), never cached.
+  const issueQr = async () => {
+    setQrError(null);
+    setDone(null);
+    setQrBusy(true);
+    try {
+      const res = await fetch(`/api/patients/${patientId}/login-qr`, { method: 'POST' });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) throw new Error(formatApiError(json, 'The sign-in QR code wasn’t created'));
+      setQr({ data: json.data.qrData, expiresAt: json.data.expiresAt });
+    } catch (err) {
+      setQrError(err instanceof Error ? err.message : 'The sign-in QR code wasn’t created');
+    } finally {
+      setQrBusy(false);
+    }
+  };
+
+  const revokeQr = async () => {
+    setQrError(null);
+    setQrBusy(true);
+    try {
+      const res = await fetch(`/api/patients/${patientId}/login-qr`, { method: 'DELETE' });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) throw new Error(formatApiError(json, 'The sign-in QR code wasn’t cancelled'));
+      setQr(null);
+      setDone(`The sign-in QR code was cancelled, and ${firstName} was signed out of the eMCR app on every device.`);
+    } catch (err) {
+      setQrError(err instanceof Error ? err.message : 'The sign-in QR code wasn’t cancelled');
+    } finally {
+      setQrBusy(false);
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1157,20 +1194,71 @@ function AppAccessPanel({ patientId, fallbackEmail, firstName }: { patientId: st
             {done}
           </p>
         )}
+        {qrError && (
+          <p role="alert" className="mt-3 flex items-start gap-1.5 text-sm font-medium text-red-700">
+            <Svg d={ICONS.alert} className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            {qrError}
+          </p>
+        )}
         {s && !open && (
-          <button
-            type="button"
-            onClick={() => {
-              setDone(null);
-              setOpen(true);
-            }}
-            className={`mt-3 inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}
-          >
-            <Svg d={ICONS.key} />
-            {s.hasPassword ? 'Reset the password' : 'Set a password'}
-          </button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setDone(null);
+                setOpen(true);
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}
+            >
+              <Svg d={ICONS.key} />
+              {s.hasPassword ? 'Reset the password' : 'Set a password'}
+            </button>
+            <button
+              type="button"
+              onClick={issueQr}
+              disabled={qrBusy}
+              aria-busy={qrBusy}
+              className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 font-semibold text-gray-900 hover:border-gray-900 disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`}
+            >
+              <Svg d={ICONS.qr} />
+              {qrBusy && !qr ? 'Creating…' : 'Show sign-in QR'}
+            </button>
+          </div>
         )}
       </div>
+      <Modal open={!!qr} onOpenChange={(o) => !o && setQr(null)} className="max-w-sm" labelledBy={`${ids}-qr-title`}>
+        {qr && (
+          <div className="p-6 text-center">
+            <h2 id={`${ids}-qr-title`} className="text-lg font-bold tracking-tight text-gray-900">
+              Sign in to eMCR
+            </h2>
+            <p className="mt-0.5 text-sm text-gray-500">
+              Have {firstName} open the eMCR app, choose <span className="font-medium text-gray-700">QR code</span>, and scan this.
+            </p>
+            <div className="mx-auto mt-5 w-fit rounded-lg border border-gray-200 bg-white p-4">
+              <QRCode value={qr.data} size={208} />
+            </div>
+            <p className="mt-3 text-sm text-gray-700">
+              Works until{' '}
+              <span className="font-medium text-gray-900">
+                {new Date(qr.expiresAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+              </span>
+              , and only for one sign-in. Any earlier sign-in QR no longer works.
+            </p>
+            <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-left text-xs text-amber-900">
+              Anyone who scans this can sign in as {firstName}. Show it only to the patient, and don’t send a photo of it.
+            </p>
+            <div className="mt-5 flex justify-center gap-2">
+              <button type="button" onClick={revokeQr} disabled={qrBusy} className={`rounded-md px-3.5 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60 ${FOCUS_RING}`}>
+                Cancel this code
+              </button>
+              <button type="button" onClick={() => setQr(null)} className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+                Done
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
       {open && (
         <form onSubmit={submit} className="motion-panel-in flex flex-col gap-3 border-t border-gray-200 bg-gray-50/60 px-5 py-4" noValidate>
           {error && (

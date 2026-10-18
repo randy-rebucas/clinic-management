@@ -17,7 +17,7 @@ const envConfig: EnvConfig = {
     'UPSTASH_REDIS_REST_TOKEN',
     'LAB_WEBHOOK_SECRET', // HMAC secret for third-party lab webhook verification
     'DOCUMENT_SEAL_SECRET', // HMAC key for printed-document seals (falls back to a key derived from SESSION_SECRET)
-    'DOCUMENT_VERIFY_BASE_URL', // Canonical origin printed in document QR codes, e.g. https://myclinicsoft.com
+    'DOCUMENT_VERIFY_BASE_URL', // Canonical origin printed in document QR codes, e.g. https://www.myclinicsoft.solutions
     'DOCUMENT_ANTI_INSPECT', // Set to "off" to disable the DevTools trap on protected documents
     'TWILIO_ACCOUNT_SID',
     'TWILIO_AUTH_TOKEN',

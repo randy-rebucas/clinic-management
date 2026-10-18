@@ -5,6 +5,11 @@ import Patient from '@/models/Patient';
 import Invoice from '@/models/Invoice';
 import logger from '@/lib/logger';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { parsePagination, resolveTenantFilter } from '../_lib/patient-scope';
+import { linkedRecords } from '../_lib/linked-records';
+import { invoiceBalance } from '../_lib/invoice-balance';
+
+const INVOICE_STATUSES = ['unpaid', 'partial', 'paid', 'refunded'];
 
 /**
  * GET /api/patients/me/invoices
@@ -25,7 +30,7 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
 
-    const patient = await Patient.findById(session.patientId).lean();
+    const patient = await Patient.findById(session.patientId).select('active email tenantIds accountId').lean();
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
     }
@@ -35,19 +40,18 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10));
-    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') ?? '10', 10)));
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = parsePagination(searchParams, { defaultLimit: 10, maxLimit: 50 });
     const statusFilter = searchParams.get('status');
-    const tenantIdParam = searchParams.get('tenantId');
-    const patientTenantIds = (patient as any).tenantIds ?? [];
-
-    const baseQuery: any = { patient: session.patientId };
-    if (tenantIdParam) {
-      baseQuery.tenantId = tenantIdParam;
-    } else if (patientTenantIds.length > 0) {
-      baseQuery.tenantId = { $in: patientTenantIds };
+    if (statusFilter && !INVOICE_STATUSES.includes(statusFilter)) {
+      return NextResponse.json({ success: false, error: 'Invalid status.' }, { status: 400 });
     }
+
+    // This person's records at every clinic (one per clinic when linked by phone).
+    const linked = await linkedRecords(patient as any);
+    const tenant = resolveTenantFilter(linked.tenantIds, session, searchParams.get('tenantId'));
+    if (!tenant.ok) return tenant.response;
+
+    const baseQuery: any = { patient: { $in: linked.patientIds }, ...tenant.filter };
 
     const invoiceQuery = { ...baseQuery };
     if (statusFilter) {
@@ -63,17 +67,11 @@ export async function GET(request: NextRequest) {
       Invoice.countDocuments(invoiceQuery),
       // Always compute outstanding balance across all unpaid/partial invoices
       Invoice.find({ ...baseQuery, status: { $in: ['unpaid', 'partial'] } })
-        .select('total payments')
+        .select('total payments status')
         .lean(),
     ]);
 
-    const outstandingBalance = unpaidInvoices.reduce((sum: number, inv: any) => {
-      const paid = (inv.payments ?? []).reduce(
-        (pSum: number, p: any) => pSum + (p.amount || 0),
-        0
-      );
-      return sum + Math.max(0, (inv.total || 0) - paid);
-    }, 0);
+    const outstandingBalance = unpaidInvoices.reduce((sum: number, inv: any) => sum + invoiceBalance(inv).balance, 0);
 
     return NextResponse.json({
       success: true,

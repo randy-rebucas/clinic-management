@@ -5,6 +5,7 @@ import Patient from '@/models/Patient';
 import { requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, patientTenantFilter } from '@/lib/api/tenant-session';
 import logger from '@/lib/logger';
+import { emailUsedForLoginByOtherPatient, revokeAllPatientAccess } from '../../auth/shared';
 
 /**
  * GET /api/patients/[id]/app-credentials
@@ -62,6 +63,12 @@ export async function GET(
  *
  * Unlike the patient-self-service endpoint (/api/patients/auth/setup-credentials),
  * this endpoint does NOT require the existing password — it is an admin override.
+ *
+ * Clinic scope: a patient record can be shared by several clinics, and staff here know the
+ * password they set. So the password is tagged with this clinic (Patient.passwordTenantId) and
+ * every sign-in with it gets a session scoped to this clinic (`tid`): it can't read another
+ * clinic's records. The scope is lifted only when the patient proves their phone (OTP) and sets
+ * their own password. Every existing session, the login QR and push registrations are revoked.
  *
  * Body: { email?, password }
  *   email    – optional; updates the login email if provided.
@@ -125,17 +132,13 @@ export async function POST(
         );
       }
 
-      const conflict = await Patient.findOne({
-        email,
-        _id: { $ne: patient._id },
-        ...(patient.tenantIds?.length ? { tenantIds: { $in: patient.tenantIds } } : {}),
-      }).lean();
-
-      if (conflict) {
+      // Sign-in looks patients up by email across every clinic.
+      if (await emailUsedForLoginByOtherPatient(email, patient._id)) {
         return NextResponse.json(
           {
             success: false,
-            error: 'This email is already registered to another patient in the same clinic.',
+            code: 'EMAIL_IN_USE',
+            error: 'This email is already used to sign in by another patient. Please use a different email.',
           },
           { status: 409 }
         );
@@ -146,8 +149,11 @@ export async function POST(
 
     updates.password = await bcrypt.hash(password, 12);
 
-    // Bump sessionVersion so sessions issued under the old password stop working.
-    await Patient.updateOne({ _id: patient._id }, { $set: updates, $inc: { sessionVersion: 1 } });
+    // Scoped to this clinic: staff here know this password.
+    updates.passwordTenantId = ctx.tenantObjectId;
+    await Patient.updateOne({ _id: patient._id }, { $set: updates });
+    // Sessions issued under the old password (and any login QR / push registration) stop working.
+    await revokeAllPatientAccess(String(patient._id));
 
     const { createAuditLog } = await import('@/lib/audit');
     void createAuditLog({

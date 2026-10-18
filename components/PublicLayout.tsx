@@ -164,7 +164,7 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
               </div>
               <div className="flex items-center gap-6">
                 <a
-                  href="mailto:support@myclinicsoft.com"
+                  href="mailto:support@myclinicsoft.solutions"
                   className="text-sm text-gray-600 hover:text-brand-teal transition-colors"
                 >
                   Support

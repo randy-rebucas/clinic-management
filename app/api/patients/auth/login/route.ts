@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { recordPatientRefused } from '@/lib/audit';
-import bcrypt from 'bcryptjs';
-import connectDB from '@/lib/mongodb';
-import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { applyAuthRateLimits } from '@/lib/middleware/rate-limit';
-import { dummyPasswordHash, invalidTenantResponse, parseOptionalTenantId, patientLoginResponse } from '../shared';
+import {
+  authenticatePatientPassword,
+  invalidTenantResponse,
+  parseOptionalTenantId,
+  patientLoginResponse,
+} from '../shared';
 
 /**
  * Patient email + password login
@@ -40,39 +42,29 @@ export async function POST(request: NextRequest) {
     const rateLimitResponse = await applyAuthRateLimits(request, `patient-login:${email}`);
     if (rateLimitResponse) return rateLimitResponse;
 
-    await connectDB();
-
-    // Build tenant-scoped query
-    const query: Record<string, unknown> = { email };
-    if (tenant.tenantId) {
-      query.tenantIds = tenant.tenantId;
-    }
-
-    // Explicitly select password (it has select: false in schema)
-    const patient = await Patient.findOne(query).select('+password');
+    const result = await authenticatePatientPassword(email, password, tenant.tenantId);
 
     // Use a generic error to avoid user enumeration
-    const invalidCredentialsError = NextResponse.json(
-      { success: false, error: 'Invalid email or password' },
-      { status: 401 }
-    );
-
-    const passwordMatch = await bcrypt.compare(password, patient?.password || dummyPasswordHash());
-    if (!patient || !patient.password || !passwordMatch) return invalidCredentialsError;
-
-    if (patient.active === false) {
-      await recordPatientRefused(patient as any, request, 'sign-in');
+    if (!result.ok && result.reason === 'invalid') {
       return NextResponse.json(
-        { success: false, error: 'Patient account is inactive. Please contact the clinic.' },
+        { success: false, error: 'Invalid email or password' },
+        { status: 401 }
+      );
+    }
+
+    if (!result.ok) {
+      await recordPatientRefused(result.patient as any, request, 'sign-in');
+      return NextResponse.json(
+        { success: false, error: 'Patient account is inactive. Please contact the clinic.', code: 'ACCOUNT_INACTIVE' },
         { status: 403 }
       );
     }
 
     logger.info('Patient email login successful', {
-      patientId: patient._id.toString(),
+      patientId: result.patient._id.toString(),
     });
 
-    return await patientLoginResponse(patient);
+    return await patientLoginResponse(result.patient, { tid: result.tid, amr: 'password' });
   } catch (error: any) {
     logger.error('Error in patient email login', error as Error);
     return NextResponse.json(
