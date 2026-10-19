@@ -75,7 +75,7 @@ const nextConfig: NextConfig = {
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(self), microphone=(), geolocation=()'
+            value: 'camera=(self), microphone=(self), geolocation=()'
           },
           // Content-Security-Policy is set per request in proxy.ts (single source of truth)
         ],

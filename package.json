@@ -35,6 +35,7 @@
     "storage:migrate-private": "tsx scripts/migrate-cloudinary-private.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
     "@date-fns/tz": "1.2.0",
     "@sentry/nextjs": "11.8.0",
     "@sparticuz/chromium": "^153.0.0",
