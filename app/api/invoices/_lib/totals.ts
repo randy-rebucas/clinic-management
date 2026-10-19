@@ -32,6 +32,10 @@ export const invoiceInsuranceSchema = z.object({
   claimNumber: zShortText.optional(),
   status: z.enum(['pending', 'approved', 'rejected', 'paid']).optional(),
   notes: z.string().max(2000).optional(),
+  /** From the clinic's HMO directory; the provider name is then taken from it. */
+  hmo: zObjectId.optional(),
+  loaNumber: zShortText.optional(),
+  loaDate: z.coerce.date().optional(),
 });
 
 /** Fields a client may set when creating or editing an invoice. Totals, payments and status are server-owned. */

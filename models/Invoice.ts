@@ -77,6 +77,17 @@ export interface IInvoice extends Document {
     claimNumber?: string;
     status?: 'pending' | 'approved' | 'rejected' | 'paid';
     notes?: string;
+    /** The payer in the clinic's HMO directory, when picked from it. */
+    hmo?: Types.ObjectId;
+    /** Letter of authorization (approval code) from the HMO, and when it was given. */
+    loaNumber?: string;
+    loaDate?: Date;
+    /** The transmittal this claim was sent in. */
+    batch?: Types.ObjectId;
+    submittedAt?: Date;
+    paidAmount?: number;
+    withheldAmount?: number;
+    denialReason?: string;
   };
   // Outstanding balance tracking
   outstandingBalance?: number; // Calculated: total - totalPaid
@@ -205,6 +216,14 @@ const InvoiceSchema: Schema = new Schema(
         enum: ['pending', 'approved', 'rejected', 'paid'],
       },
       notes: String,
+      hmo: { type: Schema.Types.ObjectId, ref: 'Hmo' },
+      loaNumber: String,
+      loaDate: Date,
+      batch: { type: Schema.Types.ObjectId, ref: 'HmoClaimBatch' },
+      submittedAt: Date,
+      paidAmount: Number,
+      withheldAmount: Number,
+      denialReason: String,
     },
     outstandingBalance: Number,
     totalPaid: Number,
@@ -236,6 +255,7 @@ InvoiceSchema.index({ tenantId: 1, createdBy: 1, createdAt: -1 }); // For creato
 InvoiceSchema.index({ tenantId: 1, status: 1, createdAt: -1 }); // For status-based date queries
 InvoiceSchema.index({ tenantId: 1, patient: 1, status: 1 }); // For patient's unpaid invoices
 InvoiceSchema.index({ tenantId: 1, 'insurance.status': 1 }); // For insurance claim queries
+InvoiceSchema.index({ tenantId: 1, 'insurance.hmo': 1, 'insurance.batch': 1 }); // Claims still to send, per HMO
 InvoiceSchema.index({ tenantId: 1, createdAt: 1, status: 1 }); // For period + status queries (dashboard, reports)
 InvoiceSchema.index({ tenantId: 1, visit: 1, status: 1 }); // For visit's invoices by status
 InvoiceSchema.index(

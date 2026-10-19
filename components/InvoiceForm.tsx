@@ -30,6 +30,12 @@ interface Service {
   vatClass?: VatClass;
 }
 
+interface HmoOption {
+  _id: string;
+  name: string;
+  requiresLoa: boolean;
+}
+
 interface FormContext {
   services: Service[];
   doctors: { _id: string; firstName: string; lastName: string }[];
@@ -52,6 +58,7 @@ interface PatientContext {
   membership: { _id: string; membershipNumber: string; tier: string; state: string; discountPercentage: number | null; points: number } | null;
   openInvoices: { _id: string; invoiceNumber: string; createdAt: string; outstandingBalance?: number }[];
   openBalance: number;
+  lastInsurance: { hmo: string | null; provider: string; memberId: string; policyNumber: string } | null;
   visits: { _id: string; visitCode: string; date: string; visitType?: string; status?: string; doctor: string | null; invoice: { _id: string; invoiceNumber: string } | null }[];
 }
 
@@ -126,7 +133,11 @@ export default function InvoiceForm({
   const [pfNotes, setPfNotes] = useState('');
   const [tax, setTax] = useState('');
   const [insuranceOn, setInsuranceOn] = useState(false);
-  const [insurance, setInsurance] = useState({ provider: '', memberId: '', policyNumber: '', coverageType: '' as '' | 'full' | 'partial' | 'co-pay', coverageAmount: '' });
+  const blankInsurance = { hmoId: '', provider: '', memberId: '', policyNumber: '', coverageType: '' as '' | 'full' | 'partial' | 'co-pay', coverageAmount: '', loaNumber: '', loaDate: '' };
+  const [insurance, setInsurance] = useState(blankInsurance);
+  const hmoList = useKeyedFetch<HmoOption[]>('/api/hmos?active=true');
+  const hmos = hmoList.value ?? [];
+  const chosenHmo = hmos.find((h) => h._id === insurance.hmoId) ?? null;
   const [attempted, setAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -138,7 +149,7 @@ export default function InvoiceForm({
   const services = ctx.value?.services ?? [];
   const doctors = ctx.value?.doctors ?? [];
 
-  const dirty = Boolean(patient && patient._id !== initialPatient?._id) || items.length > 0 || discounts.length > 0 || pfAmount !== '' || insurance.provider !== '';
+  const dirty = Boolean(patient && patient._id !== initialPatient?._id) || items.length > 0 || discounts.length > 0 || pfAmount !== '' || insuranceOn;
   useUnsavedChanges(dirty && !busy, 'This invoice is not saved yet. Leave anyway?');
 
   // --- Problems --------------------------------------------------------------
@@ -174,7 +185,7 @@ export default function InvoiceForm({
   const taxValue = taxRate > 0 || taxProfile || tax.trim() === '' ? 0 : num(tax);
   const taxProblem = !Number.isFinite(taxValue) || taxValue < 0 ? 'Enter an amount of 0 or more.' : null;
   const coverValue = insurance.coverageAmount.trim() === '' ? 0 : num(insurance.coverageAmount);
-  const insuranceProblem = insuranceOn && !insurance.provider.trim() ? 'Name the insurer or HMO, or remove it.' : insuranceOn && (!Number.isFinite(coverValue) || coverValue < 0) ? 'Enter a covered amount of 0 or more.' : null;
+  const insuranceProblem = insuranceOn && !insurance.hmoId && !insurance.provider.trim() ? 'Name the insurer or HMO, or remove it.' : insuranceOn && (!Number.isFinite(coverValue) || coverValue < 0) ? 'Enter a covered amount of 0 or more.' : null;
   const patientProblem = patient ? null : 'Choose the patient to bill.';
   const noCharges = items.length === 0 && !(pfValue > 0);
 
@@ -290,7 +301,10 @@ export default function InvoiceForm({
           ...(insuranceOn
             ? {
                 insurance: {
-                  provider: insurance.provider.trim(),
+                  provider: chosenHmo ? chosenHmo.name : insurance.provider.trim(),
+                  ...(chosenHmo ? { hmo: chosenHmo._id } : {}),
+                  ...(insurance.loaNumber.trim() ? { loaNumber: insurance.loaNumber.trim() } : {}),
+                  ...(insurance.loaDate ? { loaDate: insurance.loaDate } : {}),
                   ...(insurance.memberId.trim() ? { memberId: insurance.memberId.trim() } : {}),
                   ...(insurance.policyNumber.trim() ? { policyNumber: insurance.policyNumber.trim() } : {}),
                   ...(insurance.coverageType ? { coverageType: insurance.coverageType } : {}),
@@ -771,7 +785,19 @@ export default function InvoiceForm({
 
             {!insuranceOn ? (
               <div>
-                <button type="button" onClick={() => setInsuranceOn(true)} className={ADD_BUTTON}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInsuranceOn(true);
+                    // Start from the card the patient used last time.
+                    const last = pc?.lastInsurance;
+                    if (last) {
+                      const known = last.hmo && hmos.some((h) => h._id === last.hmo) ? last.hmo : '';
+                      setInsurance({ ...blankInsurance, hmoId: known, provider: known ? '' : last.provider, memberId: last.memberId, policyNumber: last.policyNumber });
+                    } else if (hmos.length) setInsurance({ ...blankInsurance, hmoId: hmos[0]._id });
+                  }}
+                  className={ADD_BUTTON}
+                >
                   <Svg d="M12 4v16m8-8H4" />
                   An insurer or HMO covers part of this
                 </button>
@@ -784,7 +810,7 @@ export default function InvoiceForm({
                     type="button"
                     onClick={() => {
                       setInsuranceOn(false);
-                      setInsurance({ provider: '', memberId: '', policyNumber: '', coverageType: '', coverageAmount: '' });
+                      setInsurance(blankInsurance);
                     }}
                     className={`rounded text-sm font-semibold text-gray-600 hover:text-red-700 ${FOCUS_RING}`}
                   >
@@ -792,16 +818,43 @@ export default function InvoiceForm({
                   </button>
                 </div>
                 <div>
-                  <Label htmlFor={`${ids}-ins-p`}>Name</Label>
-                  <input
-                    id={`${ids}-ins-p`}
-                    value={insurance.provider}
-                    onChange={(e) => setInsurance((s) => ({ ...s, provider: e.target.value }))}
-                    maxLength={200}
-                    placeholder="e.g. PhilHealth, Maxicare"
-                    aria-invalid={Boolean(attempted && insuranceProblem && !insurance.provider.trim())}
-                    className={`${FIELD} ${attempted && insuranceProblem && !insurance.provider.trim() ? 'border-red-400' : ''}`}
-                  />
+                  <Label htmlFor={`${ids}-ins-h`}>Name</Label>
+                  {hmos.length > 0 && (
+                    <select
+                      id={`${ids}-ins-h`}
+                      value={insurance.hmoId}
+                      onChange={(e) => setInsurance((s) => ({ ...s, hmoId: e.target.value }))}
+                      className={`${FIELD} ${insurance.hmoId ? '' : 'mb-2'}`}
+                    >
+                      {hmos.map((h) => (
+                        <option key={h._id} value={h._id}>
+                          {h.name}
+                        </option>
+                      ))}
+                      <option value="">Not on the list…</option>
+                    </select>
+                  )}
+                  {!insurance.hmoId && (
+                    <input
+                      id={hmos.length ? `${ids}-ins-p` : `${ids}-ins-h`}
+                      value={insurance.provider}
+                      onChange={(e) => setInsurance((s) => ({ ...s, provider: e.target.value }))}
+                      maxLength={200}
+                      placeholder="e.g. Maxicare, Intellicare"
+                      aria-label={hmos.length ? 'Insurer or HMO name' : undefined}
+                      aria-invalid={Boolean(attempted && insuranceProblem && !insurance.provider.trim())}
+                      className={`${FIELD} ${attempted && insuranceProblem && !insurance.provider.trim() ? 'border-red-400' : ''}`}
+                    />
+                  )}
+                  {!insurance.hmoId && (
+                    <p className="mt-1.5 text-xs text-gray-500">
+                      Only HMOs on the{' '}
+                      <Link href="/hmo-claims?tab=hmos" target="_blank" className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+                        HMO list
+                      </Link>{' '}
+                      can be sent in a transmittal.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor={`${ids}-ins-m`} optional>
@@ -836,6 +889,28 @@ export default function InvoiceForm({
                     className={`${FIELD} text-right font-mono tabular-nums`}
                   />
                 </div>
+                <div>
+                  <Label htmlFor={`${ids}-ins-loa`} optional={!chosenHmo?.requiresLoa}>
+                    LOA number
+                  </Label>
+                  <input
+                    id={`${ids}-ins-loa`}
+                    value={insurance.loaNumber}
+                    onChange={(e) => setInsurance((s) => ({ ...s, loaNumber: e.target.value }))}
+                    maxLength={200}
+                    placeholder="Approval code"
+                    className={`${FIELD} font-mono`}
+                  />
+                  {chosenHmo?.requiresLoa && !insurance.loaNumber.trim() && (
+                    <p className="mt-1.5 text-xs text-amber-800">{chosenHmo.name} needs it before the claim can be sent. You can add it later.</p>
+                  )}
+                </div>
+                <div>
+                  <Label htmlFor={`${ids}-ins-load`} optional>
+                    LOA date
+                  </Label>
+                  <input id={`${ids}-ins-load`} type="date" value={insurance.loaDate} onChange={(e) => setInsurance((s) => ({ ...s, loaDate: e.target.value }))} className={`${FIELD} font-mono`} />
+                </div>
                 <div className="sm:col-span-2">
                   <Label htmlFor={`${ids}-ins-n`} optional>
                     Policy number
@@ -843,7 +918,7 @@ export default function InvoiceForm({
                   <input id={`${ids}-ins-n`} value={insurance.policyNumber} onChange={(e) => setInsurance((s) => ({ ...s, policyNumber: e.target.value }))} maxLength={200} className={`${FIELD} font-mono sm:max-w-sm`} />
                 </div>
                 <p className="text-xs text-gray-500 sm:col-span-2">
-                  The claim starts as pending. When the insurer pays, record it as a payment by HMO or Insurance on the invoice.
+                  The claim starts as pending and waits under HMO claims to be sent in a transmittal; the HMO’s payment is recorded there.
                 </p>
                 {attempted && insuranceProblem && (
                   <div className="sm:col-span-2">
@@ -950,7 +1025,7 @@ export default function InvoiceForm({
             )}
             {insuranceOn && coverValue > 0 && Number.isFinite(coverValue) && (
               <p className="mt-2 text-xs text-gray-500">
-                <span className="font-mono">{money(Math.min(coverValue, totals.total))}</span> expected from {insurance.provider.trim() || 'the insurer'}; the patient pays the rest.
+                <span className="font-mono">{money(Math.min(coverValue, totals.total))}</span> expected from {chosenHmo?.name || insurance.provider.trim() || 'the insurer'}; the patient pays the rest.
               </p>
             )}
           </dl>

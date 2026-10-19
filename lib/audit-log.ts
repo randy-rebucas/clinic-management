@@ -13,6 +13,7 @@ export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export const AUDIT_RESOURCES = [
   'patient', 'visit', 'appointment', 'prescription', 'lab_result', 'invoice', 'document', 'user', 'doctor',
   'room', 'service', 'notification', 'referral', 'membership', 'staff', 'medicine', 'settings', 'system',
+  'hmo', 'hmo_claim',
 ] as const;
 export type AuditResource = (typeof AUDIT_RESOURCES)[number];
 
@@ -78,6 +79,8 @@ const NOUN: Record<AuditResource, string> = {
   medicine: 'a medicine on the list',
   settings: 'the clinic settings',
   system: 'the system',
+  hmo: 'an HMO on the list',
+  hmo_claim: 'an HMO transmittal',
 };
 
 /** "Patient records", for menus and CSV. */
@@ -100,6 +103,8 @@ export const RESOURCE_LABEL: Record<AuditResource, string> = {
   medicine: 'Medicines',
   settings: 'Clinic settings',
   system: 'System',
+  hmo: 'HMOs',
+  hmo_claim: 'HMO transmittals',
 };
 
 const noun = (resource: string) => NOUN[resource as AuditResource] ?? `a ${resource.replace(/_/g, ' ')}`;

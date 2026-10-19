@@ -71,6 +71,12 @@ interface Invoice {
     claimNumber?: string;
     status?: string;
     notes?: string;
+    loaNumber?: string;
+    loaDate?: string;
+    batch?: string;
+    submittedAt?: string;
+    withheldAmount?: number;
+    denialReason?: string;
   };
   outstandingBalance?: number;
   totalPaid?: number;
@@ -625,6 +631,36 @@ export default function InvoiceDetailClient({
                     <span className="font-mono">{p.insurance.claimNumber}</span>
                   </Field>
                 )}
+                {p.insurance.loaNumber && (
+                  <Field label="LOA">
+                    <span className="font-mono">{p.insurance.loaNumber}</span>
+                    {p.insurance.loaDate && <span className="text-gray-500"> · {shortDate(p.insurance.loaDate)}</span>}
+                  </Field>
+                )}
+                {p.insurance.batch ? (
+                  <Field label="Sent in">
+                    <Link href={`/hmo-claims/${p.insurance.batch}`} className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                      {p.insurance.submittedAt ? `Transmittal, ${shortDate(p.insurance.submittedAt)}` : 'A draft transmittal'}
+                    </Link>
+                  </Field>
+                ) : (
+                  permissions.canPay &&
+                  !refunded &&
+                  p.insurance.status !== 'paid' &&
+                  p.insurance.status !== 'rejected' && (
+                    <Field label="Sent in">
+                      <Link href="/hmo-claims" className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                        Not sent yet
+                      </Link>
+                    </Field>
+                  )
+                )}
+                {(p.insurance.withheldAmount ?? 0) > 0 && (
+                  <Field label="Tax withheld">
+                    <span className="font-mono">{money(p.insurance.withheldAmount ?? 0)}</span>
+                  </Field>
+                )}
+                {p.insurance.denialReason && <Field label="Refused">{p.insurance.denialReason}</Field>}
                 {p.insurance.notes && <Field label="Notes">{p.insurance.notes}</Field>}
               </dl>
             </Panel>
