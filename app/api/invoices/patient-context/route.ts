@@ -67,6 +67,12 @@ export async function GET(request: NextRequest) {
       : [];
     const invoiceFor = new Map(billed.map((b: any) => [String(b.visit), { _id: String(b._id), invoiceNumber: b.invoiceNumber }]));
 
+    // The HMO card used last, so the cashier doesn't retype the member ID every visit.
+    const lastClaim = await Invoice.findOne(tenantFilter(tenantId, { patient: pid, 'insurance.provider': { $nin: [null, ''] } }))
+      .select('insurance.hmo insurance.provider insurance.memberId insurance.policyNumber')
+      .sort({ createdAt: -1 })
+      .lean<{ insurance?: { hmo?: Types.ObjectId; provider?: string; memberId?: string; policyNumber?: string } } | null>();
+
     return NextResponse.json({
       success: true,
       data: {
@@ -83,6 +89,14 @@ export async function GET(request: NextRequest) {
           : null,
         openInvoices,
         openBalance: Math.round(openInvoices.reduce((s: number, i: any) => s + (i.outstandingBalance || 0), 0) * 100) / 100,
+        lastInsurance: lastClaim?.insurance
+          ? {
+              hmo: lastClaim.insurance.hmo ? String(lastClaim.insurance.hmo) : null,
+              provider: lastClaim.insurance.provider ?? '',
+              memberId: lastClaim.insurance.memberId ?? '',
+              policyNumber: lastClaim.insurance.policyNumber ?? '',
+            }
+          : null,
         visits: visits.map((v: any) => ({
           _id: String(v._id),
           visitCode: v.visitCode,

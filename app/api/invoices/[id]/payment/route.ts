@@ -7,6 +7,7 @@ import { requirePermission } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
 import { requireTenantSession, isTenantSessionError, tenantFilter, patientTenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zShortText, roundMoney } from '@/lib/api/validate';
+import { recordInvoicePayments, PAYMENT_EPSILON } from '@/lib/invoice-payments';
 
 const paymentSchema = z.object({
   // 'online' is only recorded by the payment-gateway webhook, never typed by staff.
@@ -18,8 +19,6 @@ const paymentSchema = z.object({
   referenceNo: zShortText.optional(),
   notes: z.string().max(2000).optional(),
 });
-
-const EPSILON = 0.005;
 
 export async function POST(
   request: NextRequest,
@@ -42,81 +41,25 @@ export async function POST(
     const body = parsed.data;
     const amount = roundMoney(body.amount);
 
-    const query = tenantFilter(tenantId, { _id: new Types.ObjectId(id) });
-    const current: any = await Invoice.findOne(query).select('total payments status').lean();
+    const current: any = await Invoice.findOne(tenantFilter(tenantId, { _id: new Types.ObjectId(id) })).select('total payments').lean();
     if (!current) return notFound('Invoice');
-    if (current.status === 'refunded') {
-      return NextResponse.json({ success: false, error: 'Cannot record a payment on a refunded invoice' }, { status: 409 });
-    }
-
-    const total = roundMoney(Number(current.total) || 0);
-    const paid = roundMoney((current.payments || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0));
-    const outstanding = roundMoney(total - paid);
-    if (amount > outstanding + EPSILON) {
-      return NextResponse.json(
-        { success: false, error: `Payment exceeds the outstanding balance (${outstanding.toFixed(2)})` },
-        { status: 400 }
-      );
-    }
+    const outstanding = roundMoney((Number(current.total) || 0) - (current.payments || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0));
 
     const settings = await getSettings(tenantId);
-    if (settings.billingSettings?.allowPartialPayments === false && Math.abs(amount - outstanding) > EPSILON) {
+    if (settings.billingSettings?.allowPartialPayments === false && Math.abs(amount - outstanding) > PAYMENT_EPSILON) {
       return NextResponse.json(
         { success: false, error: 'Partial payments are not allowed; pay the full outstanding balance' },
         { status: 400 }
       );
     }
 
-    const payment = {
-      _id: new Types.ObjectId(),
-      method: body.method,
-      amount,
-      date: body.date ?? new Date(),
-      receiptNo: body.receiptNo,
-      referenceNo: body.referenceNo,
-      processedBy: new Types.ObjectId(session.userId),
-      notes: body.notes,
-    };
-
-    const paymentsSum = { $round: [{ $sum: { $ifNull: ['$payments.amount', []] } }, 2] };
-    const totalExpr = { $ifNull: ['$total', 0] };
-
-    // Single atomic update: the outstanding-balance guard, the $push, and the recomputed
-    // totals/status all happen in one document write, so concurrent payments can't overpay.
-    const invoice = await Invoice.findOneAndUpdate(
-      {
-        ...query,
-        status: { $ne: 'refunded' },
-        $expr: { $gte: [{ $subtract: [totalExpr, paymentsSum] }, amount - EPSILON] },
-      },
-      [
-        { $set: { payments: { $concatArrays: [{ $ifNull: ['$payments', []] }, [{ $literal: payment }]] } } },
-        { $set: { totalPaid: paymentsSum } },
-        { $set: { outstandingBalance: { $round: [{ $subtract: [totalExpr, '$totalPaid'] }, 2] } } },
-        {
-          $set: {
-            status: {
-              $switch: {
-                branches: [
-                  { case: { $lte: ['$outstandingBalance', 0] }, then: 'paid' },
-                  { case: { $gt: ['$totalPaid', 0] }, then: 'partial' },
-                ],
-                default: 'unpaid',
-              },
-            },
-            updatedAt: '$$NOW',
-          },
-        },
-      ],
-      { new: true }
-    );
-
-    if (!invoice) {
-      return NextResponse.json(
-        { success: false, error: 'Invoice changed while recording the payment. Please reload and try again.' },
-        { status: 409 }
-      );
-    }
+    const result = await recordInvoicePayments({
+      tenantId,
+      invoiceId: id,
+      payments: [{ ...body, amount, processedBy: session.userId }],
+    });
+    if (!result.ok) return NextResponse.json({ success: false, error: result.error }, { status: result.status });
+    const invoice = result.invoice;
 
     await invoice.populate({
       path: 'patient',

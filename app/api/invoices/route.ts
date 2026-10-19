@@ -12,6 +12,7 @@ import { parseBody, isValidationError, zObjectId, asString, escapeRegex } from '
 import { nextSequence, formatCode, maxCodeSeed } from '@/lib/counters';
 import { INVOICE_STATUSES, OPEN_STATUSES, agingRange, isAgingKey } from '@/lib/invoices';
 import { invoiceEditableSchema, computeInvoiceTotals, statutoryDiscountProblem, taxProfileOf } from './_lib/totals';
+import { resolveInsurance } from './_lib/insurance';
 
 const MAX_RESULTS = 1000;
 
@@ -164,6 +165,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid doctor selected' }, { status: 400 });
     }
 
+    const insurance = await resolveInsurance(tenantId, body.insurance);
+    if (!insurance.ok) return NextResponse.json({ success: false, error: insurance.error }, { status: 400 });
+
     const settings = await getSettings(tenantId);
     const invoicePrefix = String(settings.billingSettings?.invoicePrefix || 'INV').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 10) || 'INV';
 
@@ -202,7 +206,7 @@ export async function POST(request: NextRequest) {
       tax: totals.tax,
       total: totals.total,
       ...(totals.breakdown ? { taxBreakdown: totals.breakdown } : {}),
-      insurance: body.insurance,
+      insurance: insurance.value,
       payments: [],
       totalPaid: 0,
       outstandingBalance: totals.total,

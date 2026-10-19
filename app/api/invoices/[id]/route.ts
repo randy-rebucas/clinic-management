@@ -14,6 +14,7 @@ import { getSettings } from '@/lib/settings';
 import { requireTenantSession, isTenantSessionError, tenantFilter, patientTenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, roundMoney } from '@/lib/api/validate';
 import { invoiceEditableSchema, computeInvoiceTotals, deriveStatus, statutoryDiscountProblem, taxProfileOf } from '../_lib/totals';
+import { resolveInsurance } from '../_lib/insurance';
 
 export async function GET(
   request: NextRequest,
@@ -157,8 +158,17 @@ export async function PUT(
 
     const $set: Record<string, unknown> = {};
     const $unset: Record<string, 1> = {};
-    for (const key of ['professionalFeeType', 'professionalFeeNotes', 'insurance'] as const) {
+    for (const key of ['professionalFeeType', 'professionalFeeNotes'] as const) {
       if (body[key] !== undefined) $set[key] = body[key];
+    }
+    if (body.insurance !== undefined) {
+      // Once sent in a transmittal the claim is the payer's record; it changes through the transmittal.
+      if (current.insurance?.batch) {
+        return NextResponse.json({ success: false, error: 'This claim has been sent to the HMO in a transmittal. Change it there.' }, { status: 409 });
+      }
+      const insurance = await resolveInsurance(tenantId, body.insurance);
+      if (!insurance.ok) return NextResponse.json({ success: false, error: insurance.error }, { status: 400 });
+      $set.insurance = insurance.value;
     }
     for (const key of ['visit', 'professionalFeeDoctor'] as const) {
       if (body[key] === null) $unset[key] = 1;
