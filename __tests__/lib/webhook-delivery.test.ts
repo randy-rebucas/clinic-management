@@ -43,7 +43,7 @@ function endpoint(consecutiveFailures = 0) {
   vi.mocked(WebhookEndpoint.findById).mockReturnValue(select({ _id: 'e1', url: 'https://hooks.example.com/x', enabled: true, secretEnc: 'enc:whsec_abc', consecutiveFailures }) as any);
   vi.mocked(WebhookEndpoint.findOneAndUpdate).mockReturnValue(lean({ consecutiveFailures: consecutiveFailures + 1 }) as any);
 }
-const lastSet = () => (vi.mocked(WebhookDelivery.updateOne).mock.calls.at(-1)![1] as { $set: Record<string, any> }).$set;
+const lastSet = () => ((vi.mocked(WebhookDelivery.updateOne).mock.calls.at(-1) as unknown[])[1] as { $set: Record<string, any> }).$set;
 
 describe('attemptDelivery', () => {
   beforeEach(() => {
