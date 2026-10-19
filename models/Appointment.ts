@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
+import { newRoomName } from '@/lib/teleconsult';
 
 export interface IAppointment extends Document {
   // Tenant reference for multi-tenant support
@@ -31,7 +32,14 @@ export interface IAppointment extends Document {
   
   // Room/Location support
   room?: string; // Room number or name (e.g., "Room 101", "Consultation Room A")
-  
+
+  /** In the clinic, or a video visit (see lib/teleconsult.ts). */
+  modality?: 'in-person' | 'teleconsult';
+  teleconsult?: {
+    /** Random Jitsi room name; set automatically for video visits. */
+    roomName?: string;
+  };
+
   // Details
   reason?: string; // optional (was required in original, optional in Extended)
   notes?: string;
@@ -140,7 +148,16 @@ const AppointmentSchema: Schema = new Schema(
       trim: true,
       index: true,
     },
-    
+
+    modality: {
+      type: String,
+      enum: ['in-person', 'teleconsult'],
+      default: 'in-person',
+    },
+    teleconsult: {
+      roomName: { type: String, trim: true },
+    },
+
     // Details
     reason: {
       type: String,
@@ -176,6 +193,13 @@ const AppointmentSchema: Schema = new Schema(
 );
 
 AppointmentSchema.index({ tenantId: 1, recurringParentId: 1 }, { sparse: true });
+
+// Every video visit gets its own unguessable room when it is created or switched to video.
+AppointmentSchema.pre('validate', function (this: IAppointment) {
+  if (this.modality === 'teleconsult' && !this.teleconsult?.roomName) {
+    this.set('teleconsult.roomName', newRoomName());
+  }
+});
 
 // Indexes for efficient queries (tenant-scoped)
 // Codes are allocated per tenant (APT-000001 in every clinic), so uniqueness must be per tenant too.

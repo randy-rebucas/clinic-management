@@ -101,6 +101,7 @@ const nextConfig: NextConfig = {
       '/api/visits/[id]/print/lab-request',
       '/api/referrals/[id]/letter',
       '/api/invoices/[id]/receipt',
+      '/api/rx/[token]',
     ].map((route) => [route.replace(/[[\]]/g, '\\$&'), ['./node_modules/@sparticuz/chromium/bin/**/*']])
   ),
 

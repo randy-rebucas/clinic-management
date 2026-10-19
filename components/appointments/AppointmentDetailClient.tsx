@@ -136,7 +136,11 @@ export default function AppointmentDetailClient({ id, permissions }: { id: strin
   const end = endLabel(a);
   const spec = specialty(a);
   const inQueue = Boolean(queueEntry);
-  const visitReady = a.patient && relation === 'today' && (a.status === 'confirmed' || a.status === 'completed');
+  const isVideo = a.modality === 'teleconsult';
+  // A video patient never checks in at the desk, so a scheduled video visit is ready too.
+  const visitReady =
+    a.patient && relation === 'today' && (a.status === 'confirmed' || a.status === 'completed' || (isVideo && a.status === 'scheduled'));
+  const videoOpen = isVideo && relation === 'today' && !['cancelled', 'no-show', 'completed'].includes(a.status);
 
   return (
     <Shell>
@@ -196,7 +200,25 @@ export default function AppointmentDetailClient({ id, permissions }: { id: strin
               {doctorName(a)}
               {spec && <span className="text-gray-500"> · {spec}</span>}
             </Field>
-            <Field label="Room">{a.room || <span className="text-gray-400">Not set</span>}</Field>
+            {isVideo ? (
+              <Field label="Where">
+                <span className="font-semibold text-brand-teal-deep">Video visit</span>
+                <span className="text-gray-500"> · the patient joins from the eMCR app</span>
+                {videoOpen && (
+                  <a
+                    href={`/api/appointments/${a._id}/video`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`mt-2 flex w-fit items-center gap-1.5 rounded-md bg-brand-teal-dark px-3.5 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}
+                  >
+                    <Svg d="M15 10l4.55-2.28A1 1 0 0121 8.62v6.76a1 1 0 01-1.45.9L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    Join video
+                  </a>
+                )}
+              </Field>
+            ) : (
+              <Field label="Room">{a.room || <span className="text-gray-400">Not set</span>}</Field>
+            )}
             <Field label="Booked as">{a.isWalkIn ? <>Walk-in{a.queueNumber ? <span className="font-mono"> #{a.queueNumber}</span> : null}</> : 'Scheduled appointment'}</Field>
             {permissions.canSeeQueue && (
               <Field label="Queue">
@@ -235,7 +257,12 @@ export default function AppointmentDetailClient({ id, permissions }: { id: strin
               </dl>
               <ul className="border-t border-gray-200 divide-y divide-gray-100">
                 <LinkRow href={`/patients/${a.patient._id}`} label="Open patient record" />
-                {visitReady && <LinkRow href={`/visits/new?patientId=${a.patient._id}`} label="Start a visit" />}
+                {visitReady && (
+                  <LinkRow
+                    href={`/visits/new?patientId=${a.patient._id}${isVideo ? '&visitType=teleconsult' : ''}`}
+                    label={isVideo ? 'Start the teleconsult note' : 'Start a visit'}
+                  />
+                )}
                 {permissions.canBook && <LinkRow href={`/appointments/new?patientId=${a.patient._id}`} label="Book another appointment" />}
               </ul>
             </>

@@ -17,6 +17,8 @@ import { checkSubscriptionLimit } from '@/lib/subscription-limits';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { formatInTz } from '@/lib/tz';
 import { weekSummary } from '@/lib/doctors';
+import { getSettings } from '@/lib/settings';
+import { withPatientTeleconsult } from '@/lib/teleconsult';
 import {
   ACTIVE_APPOINTMENT_STATUSES,
   appointmentDayRange,
@@ -62,11 +64,18 @@ async function resolvePatientClinic(
   return ids[0] ? new Types.ObjectId(ids[0]) : null;
 }
 
-/** The booked appointment as the patient sees it: no internal staff notes. */
-function toPatientBooking(appointment: { toObject?: () => Record<string, any> } & Record<string, any>) {
+/** The booked appointment as the patient sees it: no internal staff notes, no raw video room. */
+function toPatientBooking(appointment: { toObject?: () => Record<string, any> } & Record<string, any>, tz: string) {
   const { notes: _notes, createdBy: _createdBy, ...rest } =
     typeof appointment.toObject === 'function' ? appointment.toObject() : appointment;
-  return rest;
+  return withPatientTeleconsult(rest, { tz, displayName: rest.patient?.firstName });
+}
+
+/** Video visits are offered when the clinic turned them on and its plan includes them. */
+async function teleconsultOffered(tenantId: Types.ObjectId): Promise<boolean> {
+  const settings = await getSettings(String(tenantId));
+  if (settings.appointmentSettings?.teleconsultBooking !== true) return false;
+  return (await checkSubscriptionLimit(tenantId, 'useFeature', 'teleconsult')).allowed;
 }
 
 /**
@@ -164,7 +173,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: { doctors },
+      data: { doctors, teleconsultAvailable: await teleconsultOffered(tenantId) },
     });
   } catch (error: any) {
     logger.error('Error fetching appointment data for patient', error as Error);
@@ -180,6 +189,7 @@ const portalBookingSchema = z.object({
   appointmentDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}/, 'Invalid appointment date.'),
   appointmentTime: z.string().trim().regex(/^\d{2}:\d{2}$/, 'Appointment time must be in HH:mm format.'),
   reason: z.string().trim().max(500).optional(),
+  modality: z.enum(['in-person', 'teleconsult']).optional(),
 });
 
 /**
@@ -200,6 +210,7 @@ export async function POST(request: NextRequest) {
     const parsed = await parseBody(request, portalBookingSchema);
     if (isValidationError(parsed)) return parsed;
     const { doctorId, reason } = parsed.data;
+    const video = parsed.data.modality === 'teleconsult';
     const appointmentDate = parsed.data.appointmentDate.slice(0, 10);
     const appointmentTime = normalizeTime(parsed.data.appointmentTime);
 
@@ -296,6 +307,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (video && !(await teleconsultOffered(tenantId))) {
+      return NextResponse.json(
+        { success: false, error: 'This clinic isn’t offering video visits. Please book a visit at the clinic.' },
+        { status: 403 }
+      );
+    }
+
     const appointmentCode = await nextAppointmentCode(tenantId);
 
     let appointment;
@@ -311,6 +329,7 @@ export async function POST(request: NextRequest) {
         status: 'pending', // Requires confirmation from clinic
         reason: reason || 'General Consultation',
         isWalkIn: false,
+        modality: video ? 'teleconsult' : 'in-person',
       });
     } catch (err: any) {
       if (isSlotDuplicateError(err)) {
@@ -347,7 +366,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        data: toPatientBooking(appointment as any),
+        data: toPatientBooking(appointment as any, tz),
         message: 'Appointment request submitted successfully. You will receive a confirmation shortly.',
       },
       { status: 201 }
@@ -372,7 +391,8 @@ async function sendBookingConfirmation(appointment: any, tz: string) {
     ? `${hours % 12 || 12}:${minutes.toString().padStart(2, '0')} PM`
     : `${hours}:${minutes.toString().padStart(2, '0')} AM`;
 
-  const message = `Hi ${patient.firstName}! Your appointment request (${appointment.appointmentCode}) has been submitted. Date: ${appointmentDate} at ${displayTime}${doctor ? ` with Dr. ${doctor.firstName} ${doctor.lastName}` : ''}. Status: Pending confirmation. We'll notify you once confirmed.`;
+  const video = appointment.modality === 'teleconsult';
+  const message = `Hi ${patient.firstName}! Your ${video ? 'video visit' : 'appointment'} request (${appointment.appointmentCode}) has been submitted. Date: ${appointmentDate} at ${displayTime}${doctor ? ` with Dr. ${doctor.firstName} ${doctor.lastName}` : ''}. Status: Pending confirmation. We'll notify you once confirmed.${video ? ' Join from the eMCR app, from 15 minutes before the start.' : ''}`;
 
   const phoneNumber = patient.phone ? normalizePhone(patient.phone) : null;
   if (phoneNumber) {

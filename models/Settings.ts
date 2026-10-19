@@ -29,6 +29,8 @@ export interface ISettings extends Document {
     defaultDuration: number; // minutes
     reminderHoursBefore: number[]; // e.g., [24, 2] for 24 hours and 2 hours before
     allowOnlineBooking: boolean;
+    /** Patients may book video visits from the app (also needs the teleconsult plan feature). */
+    teleconsultBooking: boolean;
     requireConfirmation: boolean;
     maxAdvanceBookingDays: number;
     minAdvanceBookingHours: number;
@@ -194,6 +196,7 @@ const SettingsSchema = new Schema<ISettings>(
       defaultDuration: { type: Number, default: 30 },
       reminderHoursBefore: { type: [Number], default: [24, 2] },
       allowOnlineBooking: { type: Boolean, default: true },
+      teleconsultBooking: { type: Boolean, default: false },
       requireConfirmation: { type: Boolean, default: false },
       maxAdvanceBookingDays: { type: Number, default: 90 },
       minAdvanceBookingHours: { type: Number, default: 2 },

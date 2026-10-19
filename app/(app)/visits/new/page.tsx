@@ -4,7 +4,7 @@ import VisitFormClient from '@/components/VisitFormClient';
 export default async function NewVisitPage({
   searchParams,
 }: {
-  searchParams: Promise<{ patientId?: string; queueId?: string }>;
+  searchParams: Promise<{ patientId?: string; queueId?: string; visitType?: string }>;
 }) {
   // Require permission to write visits
   await requirePagePermission('visits', 'write');
@@ -12,6 +12,6 @@ export default async function NewVisitPage({
   // Await searchParams (Next.js 15+ async request APIs)
   const params = await searchParams;
 
-  return <VisitFormClient patientId={params.patientId} queueId={params.queueId} />;
+  return <VisitFormClient patientId={params.patientId} queueId={params.queueId} visitType={params.visitType} />;
 }
 
