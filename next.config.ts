@@ -92,6 +92,18 @@ const nextConfig: NextConfig = {
     ];
   },
   
+  // PDF rendering (lib/pdf.ts) loads the Chromium binary from disk at runtime, which the
+  // tracer can't see; ship it only with the routes that can return ?format=pdf.
+  outputFileTracingIncludes: Object.fromEntries(
+    [
+      '/api/prescriptions/[id]/print',
+      '/api/visits/[id]/print/medical-certificate',
+      '/api/visits/[id]/print/lab-request',
+      '/api/referrals/[id]/letter',
+      '/api/invoices/[id]/receipt',
+    ].map((route) => [route.replace(/[[\]]/g, '\\$&'), ['./node_modules/@sparticuz/chromium/bin/**/*']])
+  ),
+
   // Turbopack configuration (Next.js 16 uses Turbopack by default)
   // Empty config to silence the warning about webpack vs turbopack
   turbopack: {},

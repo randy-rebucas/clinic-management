@@ -7,16 +7,15 @@ import { requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, patientTenantFilter } from '@/lib/api/tenant-session';
 import { getSettings } from '@/lib/settings';
 import { issueSeal, tenantScopedQuery, IssuedSeal } from '@/lib/document-seal';
-import {
-  escapeHtml as e,
-  sealedDocumentParts,
-  PROTECTED_DOCUMENT_HEADERS,
-  withScriptNonce,
-} from '@/lib/document-protection';
+import { escapeHtml as e, sealedDocumentParts } from '@/lib/document-protection';
+import { documentResponse, pdfFilename } from '@/lib/pdf';
 import { birSettingsOf } from '@/lib/bir';
 import { issueBirSerial } from '@/lib/bir-issue';
 import { birInvoiceHTML } from '@/lib/bir-invoice-html';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
+
+// Headroom for a cold Chromium start when ?format=pdf.
+export const maxDuration = 30;
 
 export async function GET(
   request: NextRequest,
@@ -158,7 +157,11 @@ export async function GET(
       })
     );
 
-    return new NextResponse(withScriptNonce(html, request), { headers: PROTECTED_DOCUMENT_HEADERS });
+    return documentResponse(
+      request,
+      html,
+      pdfFilename(asBir ? 'Sales-Invoice' : 'Receipt', asBir ? invoiceData.bir?.serialNo : invoiceData.invoiceNumber)
+    );
   } catch (error: any) {
     console.error('Error generating receipt:', error);
     return NextResponse.json(

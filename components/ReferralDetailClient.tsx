@@ -10,6 +10,7 @@ import { DIRECTION_LABEL, LATE_AFTER_DAYS, OPEN_STATUSES } from '@/lib/referrals
 import type { ReferralDetailPermissions } from '@/lib/referrals-page';
 import { REF_STATE, URGENCY_BADGE, daysSince, direction, doctorName, fromLabel, personName, shortDate, specialtyOf, toLabel, waitedLabel, type Referral } from './referrals/shared';
 import { CancelReferralDialog, DeclineDialog, SeenDialog, useReferralStatus } from './referrals/StatusDialogs';
+import PdfLink from './documents/PdfLink';
 
 type Scheduled = { _id: string; appointmentCode?: string; appointmentDate: string; appointmentTime?: string; status?: string } | null;
 
@@ -186,6 +187,7 @@ export default function ReferralDetailClient({
               Referral letter
             </a>
           )}
+          {canPrint && <PdfLink href={`/api/referrals/${r._id}/letter`} label="referral letter" />}
           {canBook && (
             <Link
               href={`/appointments/new?patientId=${r.patient!._id}&doctorId=${r.receivingDoctor!._id}`}

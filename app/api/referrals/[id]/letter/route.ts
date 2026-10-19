@@ -9,7 +9,12 @@ import { getSettings } from '@/lib/settings';
 import { createAuditLog } from '@/lib/audit';
 import { issueSeal, tenantScopedQuery, IssuedSeal } from '@/lib/document-seal';
 import { directionOf } from '@/lib/referrals';
-import { escapeHtml as e, sealedDocumentParts, PROTECTED_DOCUMENT_HEADERS, withScriptNonce } from '@/lib/document-protection';
+import { loadSigner } from '@/lib/doctor-signature';
+import { escapeHtml as e, sealedDocumentParts } from '@/lib/document-protection';
+import { documentResponse, pdfFilename } from '@/lib/pdf';
+
+// Headroom for a cold Chromium start when ?format=pdf.
+export const maxDuration = 30;
 
 type Allergy = string | { substance?: string; reaction?: string; severity?: string };
 
@@ -50,10 +55,11 @@ export async function GET(
       return NextResponse.json({ success: false, error: `A ${referral.status} referral can’t be printed.` }, { status: 409 });
     }
 
-    const [settings, tz, seal] = await Promise.all([
+    const [settings, tz, seal, signer] = await Promise.all([
       getSettings(tenantId),
       getTenantTimezone(tenantId),
       issueSeal({ request, documentType: 'referral_letter', document: referral, tenantId, userId: session.userId }),
+      loadSigner({ tenantId, doctorId: referral.referringDoctor?._id }),
     ]);
 
     await createAuditLog({
@@ -68,7 +74,8 @@ export async function GET(
       description: `Printed referral letter ${referral.referralCode} (copy #${seal.printNumber})`,
     });
 
-    return new NextResponse(withScriptNonce(letterHtml(referral, settings, seal, tz), request), { headers: PROTECTED_DOCUMENT_HEADERS });
+    const html = letterHtml(referral, settings, seal, tz, signer?.signatureSrc ?? null);
+    return documentResponse(request, html, pdfFilename('Referral-Letter', referral.referralCode));
   } catch (error) {
     console.error('Error generating referral letter:', error);
     return NextResponse.json({ success: false, error: 'Failed to generate the referral letter' }, { status: 500 });
@@ -89,7 +96,7 @@ function age(dob?: Date) {
   return years >= 0 ? `${years} yrs` : '';
 }
 
-function letterHtml(r: any, settings: any, seal: IssuedSeal, tz: string): string {
+function letterHtml(r: any, settings: any, seal: IssuedSeal, tz: string, signatureSrc: string | null): string {
   const patient = r.patient || {};
   const from = r.referringDoctor;
   const to = r.receivingDoctor;
@@ -180,12 +187,15 @@ function letterHtml(r: any, settings: any, seal: IssuedSeal, tz: string): string
 
   <p style="margin-top:18px">Kindly send your findings and recommendations back to us. Thank you for seeing this patient.</p>
 
-  <div class="signature">
+  <div class="signature"${signatureSrc ? ' style="margin-top: 12px;"' : ''}>
+    <figure style="margin: 0;">
+    ${signatureSrc ? `<img src="${signatureSrc}" alt="Signature" style="display: block; max-height: 72px; max-width: 240px; margin: 0 auto;" />` : ''}
     <div>
       <strong>${e(from ? doctorLine(from) : 'Attending physician')}</strong>
       ${from?.specializationId?.name ? `<small>${e(from.specializationId.name)}</small>` : ''}
       <small>${from?.licenseNumber ? `License No. ${e(from.licenseNumber)}` : 'License No. ____________'}${from?.ptrNumber || from?.ptr ? ` · PTR ${e(from.ptrNumber || from.ptr)}` : ''}</small>
     </div>
+    </figure>
   </div>
 
   ${protection.seal}

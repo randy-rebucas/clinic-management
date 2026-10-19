@@ -7,13 +7,12 @@ import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-ses
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { getSettings } from '@/lib/settings';
 import { issueSeal, tenantScopedQuery, IssuedSeal } from '@/lib/document-seal';
-import {
-  escapeHtml as e,
-  safeImageSrc,
-  sealedDocumentParts,
-  PROTECTED_DOCUMENT_HEADERS,
-  withScriptNonce,
-} from '@/lib/document-protection';
+import { loadSigner, pickSignature, type Signer } from '@/lib/doctor-signature';
+import { escapeHtml as e, sealedDocumentParts } from '@/lib/document-protection';
+import { documentResponse, pdfFilename } from '@/lib/pdf';
+
+// Headroom for a cold Chromium start when ?format=pdf.
+export const maxDuration = 30;
 
 export async function GET(
   request: NextRequest,
@@ -54,7 +53,7 @@ export async function GET(
       );
     }
 
-    const [settings, tz, seal] = await Promise.all([
+    const [settings, tz, seal, signer] = await Promise.all([
       getSettings(tenantId),
       getTenantTimezone(tenantId),
       issueSeal({
@@ -64,15 +63,16 @@ export async function GET(
         tenantId,
         userId: session.userId,
       }),
+      loadSigner({ tenantId, userId: visit.provider?._id }),
     ]);
 
     // Generate HTML for printable lab request
-    const html = generateLabRequestHTML(visit, settings, seal, tz);
+    const html = generateLabRequestHTML(visit, settings, seal, tz, signer);
     after(() =>
       logPrinted({ session, tenantId, resource: 'visit', resourceId: id, patientId: visit.patient?._id, what: 'a lab request from the visit', seal, request })
     );
 
-    return new NextResponse(withScriptNonce(html, request), { headers: PROTECTED_DOCUMENT_HEADERS });
+    return documentResponse(request, html, pdfFilename('Lab-Request', visit.visitCode));
   } catch (error: any) {
     console.error('Error generating lab request:', error);
     return NextResponse.json(
@@ -82,11 +82,13 @@ export async function GET(
   }
 }
 
-function generateLabRequestHTML(visit: any, settings: any, seal: IssuedSeal, tz: string): string {
+function generateLabRequestHTML(visit: any, settings: any, seal: IssuedSeal, tz: string, signer: Signer | null): string {
   const patient = visit.patient || {};
   const provider = visit.provider;
   const clinicName = settings?.clinicName || 'Clinic';
-  const signatureSrc = safeImageSrc(visit.digitalSignature?.signatureData);
+  // A draft visit is not signed off yet, so it never carries the doctor's stored signature.
+  const signatureSrc = pickSignature(visit.digitalSignature?.signatureData, signer, visit.status !== 'draft');
+  const licenseNumber = signer?.licenseNumber || settings?.licenseNumber;
   const visitDate = new Date(visit.date).toLocaleDateString('en-US', {
     timeZone: tz,
     year: 'numeric',
@@ -317,13 +319,13 @@ function generateLabRequestHTML(visit: any, settings: any, seal: IssuedSeal, tz:
 
   <div class="signature-section">
     ${signatureSrc ? `
-      <div style="margin-bottom: 20px;">
-        <img src="${signatureSrc}" alt="Signature" style="max-height: 80px;" />
+      <div>
+        <img src="${signatureSrc}" alt="Signature" style="max-height: 80px; max-width: 260px;" />
       </div>
     ` : ''}
-    <div class="signature-box">
-      <div>${provider ? e(provider.name) : 'Licensed Physician'}</div>
-      <div style="font-size: 12px; margin-top: 5px;">${settings?.licenseNumber ? `License No: ${e(settings.licenseNumber)}` : 'Medical License Number'}</div>
+    <div class="signature-box"${signatureSrc ? ' style="margin-top: 0;"' : ''}>
+      <div>${e(signer?.name || provider?.name || 'Licensed Physician')}</div>
+      <div style="font-size: 12px; margin-top: 5px;">${licenseNumber ? `License No: ${e(licenseNumber)}` : 'Medical License Number'}${signer?.ptr ? ` · PTR No: ${e(signer.ptr)}` : ''}</div>
       <div style="font-size: 11px; margin-top: 10px;">Date: ${today}</div>
     </div>
   </div>

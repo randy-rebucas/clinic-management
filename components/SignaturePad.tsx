@@ -32,6 +32,18 @@ export default function SignaturePad({ onSave, onCancel, providerName }: Signatu
     ctx.lineJoin = 'round';
   }, []);
 
+  // The canvas is 600x200 internally but stretched to the container width, so map
+  // client coordinates into canvas pixels or strokes land away from the pointer.
+  const pointOf = (canvas: HTMLCanvasElement, e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    return {
+      x: ((clientX - rect.left) * canvas.width) / rect.width,
+      y: ((clientY - rect.top) * canvas.height) / rect.height,
+    };
+  };
+
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -40,9 +52,7 @@ export default function SignaturePad({ onSave, onCancel, providerName }: Signatu
     if (!ctx) return;
 
     setIsDrawing(true);
-    const rect = canvas.getBoundingClientRect();
-    const x = 'touches' in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
-    const y = 'touches' in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+    const { x, y } = pointOf(canvas, e);
 
     ctx.beginPath();
     ctx.moveTo(x, y);
@@ -57,9 +67,7 @@ export default function SignaturePad({ onSave, onCancel, providerName }: Signatu
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const x = 'touches' in e ? e.touches[0].clientX - rect.left : e.clientX - rect.left;
-    const y = 'touches' in e ? e.touches[0].clientY - rect.top : e.clientY - rect.top;
+    const { x, y } = pointOf(canvas, e);
 
     ctx.lineTo(x, y);
     ctx.stroke();

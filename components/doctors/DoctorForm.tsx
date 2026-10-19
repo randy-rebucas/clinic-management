@@ -39,6 +39,7 @@ export default function DoctorForm({ doctor, self = false }: { doctor?: Omit<Doc
     licenseNumber: doctor?.licenseNumber ?? '',
     ptr: doctor?.ptr ?? '',
     philhealthPan: doctor?.philhealthPan ?? '',
+    s2Number: doctor?.s2Number ?? '',
     status: (doctor?.status ?? 'active') as DoctorStatus,
     bio: doctor?.bio ?? '',
   };
@@ -115,6 +116,7 @@ export default function DoctorForm({ doctor, self = false }: { doctor?: Omit<Doc
       licenseNumber: f.licenseNumber.trim(),
       ptr: f.ptr.trim(),
       philhealthPan: f.philhealthPan.trim(),
+      s2Number: f.s2Number.trim(),
       department: f.department.trim(),
       status: f.status,
       bio: f.bio.trim(),
@@ -246,7 +248,7 @@ export default function DoctorForm({ doctor, self = false }: { doctor?: Omit<Doc
         </div>
       </Section>
 
-      <Section id={`${ids}-lic`} title="Licences and qualifications" hint="The licence and PTR numbers print on prescriptions and medical certificates.">
+      <Section id={`${ids}-lic`} title="Licences and qualifications" hint="The licence, PTR and S2 numbers print on prescriptions and medical certificates.">
         <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
           <TextField id={`${ids}-prc`} label="PRC licence number" value={f.licenseNumber} onChange={(v) => set('licenseNumber', v)} error={err('licenseNumber')} mono />
           <div>
@@ -260,6 +262,12 @@ export default function DoctorForm({ doctor, self = false }: { doctor?: Omit<Doc
               PhilHealth accreditation (PAN)
             </Label>
             <input id={`${ids}-pan`} value={f.philhealthPan} onChange={(e) => set('philhealthPan', e.target.value)} maxLength={50} className={`${FIELD} font-mono`} />
+          </div>
+          <div>
+            <Label htmlFor={`${ids}-s2`} optional>
+              S2 licence number
+            </Label>
+            <input id={`${ids}-s2`} value={f.s2Number} onChange={(e) => set('s2Number', e.target.value)} maxLength={50} className={`${FIELD} font-mono`} />
           </div>
         </div>
         <div className="border-t border-gray-100">
