@@ -1,5 +1,6 @@
 import connectDB from './mongodb';
 import Settings from '@/models/Settings';
+import { BIR_DEFAULTS } from './bir';
 
 // Per-tenant cache. Kept short because other serverless instances can't be invalidated.
 const settingsCache = new Map<string, { value: any; at: number }>();
@@ -141,6 +142,7 @@ export function getDefaultSettings() {
       showNotifications: true,
     },
     prescriptionPaperSize: 'A4' as 'A4' | 'A5',
+    birSettings: { ...BIR_DEFAULTS },
   };
 }
 

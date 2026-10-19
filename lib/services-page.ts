@@ -23,6 +23,7 @@ interface LeanService {
   unitPrice: number;
   unit?: string;
   duration?: number;
+  vatClass?: 'vatable' | 'exempt' | 'zero_rated';
   active: boolean;
   notes?: string;
   createdAt: Date;
@@ -53,7 +54,7 @@ export async function loadServicesPage(session: Session): Promise<ServicesPageDa
 
   const [services, settings, usage] = await Promise.all([
     Service.find({ tenantId })
-      .select('code name description category type unitPrice unit duration active notes createdAt updatedAt')
+      .select('code name description category type unitPrice unit duration vatClass active notes createdAt updatedAt')
       .sort({ category: 1, name: 1 })
       .limit(MAX_SERVICES + 1)
       .lean<LeanService[]>(),
@@ -119,6 +120,7 @@ export async function loadServicesPage(session: Session): Promise<ServicesPageDa
       unitPrice: s.unitPrice ?? 0,
       unit: s.unit || 'per service',
       duration: typeof s.duration === 'number' && s.duration > 0 ? s.duration : null,
+      vatClass: s.vatClass === 'exempt' || s.vatClass === 'zero_rated' ? s.vatClass : 'vatable',
       active: s.active !== false,
       notes: s.notes || null,
       createdAt: new Date(s.createdAt).toISOString(),

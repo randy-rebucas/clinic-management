@@ -8,7 +8,11 @@ export interface IBillingItem {
   quantity: number;
   unitPrice: number;
   total: number;
+  vatClass?: 'vatable' | 'exempt' | 'zero_rated';
 }
+
+export const PAYMENT_METHOD_VALUES = ['cash', 'gcash', 'bank_transfer', 'card', 'check', 'insurance', 'hmo', 'cwt', 'online', 'other'] as const;
+export type InvoicePaymentMethod = (typeof PAYMENT_METHOD_VALUES)[number];
 
 export interface IInvoice extends Document {
   // Tenant reference for multi-tenant support
@@ -27,14 +31,35 @@ export interface IInvoice extends Document {
   discounts: Array<{
     type: 'pwd' | 'senior' | 'membership' | 'promotional' | 'other';
     reason?: string;
+    /** OSCA / PWD ID number, required in the BIR senior citizen and PWD sales books. */
+    idNumber?: string;
     percentage?: number; // Percentage discount (0-100)
     amount: number; // Fixed amount discount
     appliedBy?: Types.ObjectId; // User who applied the discount
   }>;
   tax?: number;
   total?: number;
+  /** BIR figures, when the clinic invoiced under a BIR registration (lib/invoice-totals.ts). */
+  taxBreakdown?: {
+    regime: 'vat' | 'non_vat';
+    grossSales: number;
+    vatableSales: number;
+    vatAmount: number;
+    vatExemptSales: number;
+    zeroRatedSales: number;
+    lessVat: number;
+    statutoryDiscount: number;
+  };
+  /** The BIR sales invoice issued for this bill: serial from the registered range, set once. */
+  bir?: {
+    serialNo?: string;
+    issuedAt?: Date;
+    issuedBy?: Types.ObjectId;
+    /** While a serial is being allocated, so two prints at once can't burn two numbers. */
+    lockAt?: Date;
+  };
   payments: Array<{
-    method: 'cash' | 'gcash' | 'bank_transfer' | 'card' | 'check' | 'insurance' | 'hmo' | 'other';
+    method: InvoicePaymentMethod;
     amount: number;
     date: Date;
     receiptNo?: string;
@@ -74,6 +99,7 @@ const BillingItemSchema: Schema = new Schema(
     quantity: { type: Number, default: 1 },
     unitPrice: { type: Number, default: 0 },
     total: { type: Number, default: 0 },
+    vatClass: { type: String, enum: ['vatable', 'exempt', 'zero_rated'] },
   },
   { _id: false }
 );
@@ -114,17 +140,46 @@ const InvoiceSchema: Schema = new Schema(
         required: true,
       },
       reason: String,
+      idNumber: String,
       percentage: Number,
       amount: Number,
       appliedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     }],
     tax: Number,
     total: Number,
+    taxBreakdown: {
+      type: new Schema(
+        {
+          regime: { type: String, enum: ['vat', 'non_vat'] },
+          grossSales: Number,
+          vatableSales: Number,
+          vatAmount: Number,
+          vatExemptSales: Number,
+          zeroRatedSales: Number,
+          lessVat: Number,
+          statutoryDiscount: Number,
+        },
+        { _id: false }
+      ),
+      default: undefined,
+    },
+    bir: {
+      type: new Schema(
+        {
+          serialNo: String,
+          issuedAt: Date,
+          issuedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+          lockAt: Date,
+        },
+        { _id: false }
+      ),
+      default: undefined,
+    },
     payments: [
       {
         method: {
           type: String,
-          enum: ['cash', 'gcash', 'bank_transfer', 'card', 'check', 'insurance', 'hmo', 'other'],
+          enum: PAYMENT_METHOD_VALUES,
           required: true,
         },
         amount: { type: Number, required: true },
@@ -183,6 +238,11 @@ InvoiceSchema.index({ tenantId: 1, patient: 1, status: 1 }); // For patient's un
 InvoiceSchema.index({ tenantId: 1, 'insurance.status': 1 }); // For insurance claim queries
 InvoiceSchema.index({ tenantId: 1, createdAt: 1, status: 1 }); // For period + status queries (dashboard, reports)
 InvoiceSchema.index({ tenantId: 1, visit: 1, status: 1 }); // For visit's invoices by status
+InvoiceSchema.index(
+  { tenantId: 1, 'bir.serialNo': 1 },
+  { unique: true, name: 'uniq_tenant_birSerial', partialFilterExpression: { 'bir.serialNo': { $type: 'string' } } }
+); // A BIR serial is issued once per clinic
+InvoiceSchema.index({ tenantId: 1, 'bir.issuedAt': 1 }); // BIR sales books by issue date
 
 export default mongoose.models.Invoice || mongoose.model<IInvoice>('Invoice', InvoiceSchema);
 

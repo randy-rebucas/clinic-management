@@ -9,7 +9,8 @@ import { requireTenantSession, isTenantSessionError, tenantFilter, patientTenant
 import { parseBody, isValidationError, zShortText, roundMoney } from '@/lib/api/validate';
 
 const paymentSchema = z.object({
-  method: z.enum(['cash', 'gcash', 'bank_transfer', 'card', 'check', 'insurance', 'hmo', 'other']).default('cash'),
+  // 'online' is only recorded by the payment-gateway webhook, never typed by staff.
+  method: z.enum(['cash', 'gcash', 'bank_transfer', 'card', 'check', 'insurance', 'hmo', 'cwt', 'other']).default('cash'),
   amount: z.number().finite().positive().max(100_000_000),
   // A day of slack for clock and timezone differences; never a payment weeks ahead.
   date: z.coerce.date().refine((d) => d.getTime() <= Date.now() + 86_400_000, 'A payment can’t be dated in the future').optional(),

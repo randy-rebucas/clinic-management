@@ -12,7 +12,8 @@ import { useUnsavedChanges } from './hooks/useUnsavedChanges';
 import { useSetting } from './SettingsContext';
 import { formatApiError } from './utils/apiError';
 import { DISCOUNT_LABEL, PF_TYPES, shortDate, useMoney } from './invoices/shared';
-import { computeInvoiceTotals, roundMoney, type DiscountType } from '@/lib/invoice-totals';
+import { computeInvoiceTotals, isStatutoryDiscount, roundMoney, statutoryDiscountProblem, type DiscountType, type VatClass } from '@/lib/invoice-totals';
+import { VAT_CLASS_LABEL, taxProfileOf } from '@/lib/bir';
 import { TIER, type MembershipTier } from '@/lib/memberships';
 
 // ---------------------------------------------------------------------------
@@ -26,6 +27,7 @@ interface Service {
   category?: string;
   unitPrice: number;
   unit?: string;
+  vatClass?: VatClass;
 }
 
 interface FormContext {
@@ -61,6 +63,7 @@ interface ItemRow {
   description: string;
   quantity: string;
   unitPrice: string;
+  vatClass: VatClass;
 }
 
 interface DiscountRow {
@@ -69,6 +72,8 @@ interface DiscountRow {
   mode: 'percent' | 'amount';
   value: string;
   reason: string;
+  /** OSCA or PWD ID, for senior citizen and PWD discounts. */
+  idNumber: string;
 }
 
 type PfType = '' | 'consultation' | 'procedure' | 'reading' | 'other';
@@ -105,7 +110,11 @@ export default function InvoiceForm({
   const ids = useId();
   const router = useRouter();
   const { money } = useMoney();
-  const taxRate = Number(useSetting('billingSettings.taxRate', 0)) || 0;
+  const birSettings = useSetting<unknown>('birSettings', null);
+  const taxProfile = useMemo(() => taxProfileOf(birSettings), [birSettings]);
+  // Under BIR invoicing VAT replaces the flat tax rate, and no tax is typed by hand.
+  const flatRate = Number(useSetting('billingSettings.taxRate', 0)) || 0;
+  const taxRate = taxProfile ? 0 : flatRate;
 
   const [patient, setPatient] = useState<PatientOption | null>(initialPatient);
   const [visitId, setVisitId] = useState(initialVisitId ?? '');
@@ -152,13 +161,17 @@ export default function InvoiceForm({
       const v = num(d.value);
       if (!Number.isFinite(v) || v <= 0) out[d._key] = d.mode === 'percent' ? 'Enter the percentage.' : 'Enter the amount.';
       else if (d.mode === 'percent' && v > 100) out[d._key] = 'A percentage can’t be over 100.';
+      else if (taxProfile && isStatutoryDiscount(d.type) && !d.idNumber.trim()) out[d._key] = `Enter the ${d.type === 'senior' ? 'OSCA' : 'PWD'} ID number; BIR invoices need it.`;
     }
+    const combined = taxProfile ? statutoryDiscountProblem(discounts) : null;
+    const first = discounts.find((d) => isStatutoryDiscount(d.type));
+    if (combined && first && !out[first._key]) out[first._key] = combined;
     return out;
-  }, [discounts]);
+  }, [discounts, taxProfile]);
 
   const pfValue = pfAmount.trim() === '' ? 0 : num(pfAmount);
   const pfProblem = !Number.isFinite(pfValue) || pfValue < 0 ? 'Enter an amount of 0 or more.' : null;
-  const taxValue = taxRate > 0 || tax.trim() === '' ? 0 : num(tax);
+  const taxValue = taxRate > 0 || taxProfile || tax.trim() === '' ? 0 : num(tax);
   const taxProblem = !Number.isFinite(taxValue) || taxValue < 0 ? 'Enter an amount of 0 or more.' : null;
   const coverValue = insurance.coverageAmount.trim() === '' ? 0 : num(insurance.coverageAmount);
   const insuranceProblem = insuranceOn && !insurance.provider.trim() ? 'Name the insurer or HMO, or remove it.' : insuranceOn && (!Number.isFinite(coverValue) || coverValue < 0) ? 'Enter a covered amount of 0 or more.' : null;
@@ -177,7 +190,7 @@ export default function InvoiceForm({
   // --- Totals (same function as the API) -----------------------------------------
 
   const totals = computeInvoiceTotals({
-    items: items.map((r) => ({ quantity: Math.max(0, num(r.quantity) || 0), unitPrice: Math.max(0, num(r.unitPrice) || 0) })),
+    items: items.map((r) => ({ quantity: Math.max(0, num(r.quantity) || 0), unitPrice: Math.max(0, num(r.unitPrice) || 0), vatClass: r.vatClass })),
     discounts: discounts.map((d) => {
       const v = Math.max(0, num(d.value) || 0);
       return d.mode === 'percent' ? { type: d.type, percentage: Math.min(100, v) } : { type: d.type, amount: v };
@@ -185,7 +198,10 @@ export default function InvoiceForm({
     professionalFee: pfProblem ? 0 : pfValue,
     tax: taxProblem ? 0 : taxValue,
     taxRate,
+    taxProfile,
   });
+  const breakdown = totals.breakdown;
+  const statutoryOn = discounts.some((d) => isStatutoryDiscount(d.type));
 
   // --- Rows ---------------------------------------------------------------------
 
@@ -197,19 +213,19 @@ export default function InvoiceForm({
       updateItem(existing._key, { quantity: String((num(existing.quantity) || 0) + 1) });
       return;
     }
-    setItems((rs) => [...rs, { _key: key(), serviceId: s._id, code: s.code ?? '', category: s.category ?? '', description: s.name, quantity: '1', unitPrice: String(s.unitPrice ?? 0) }]);
+    setItems((rs) => [...rs, { _key: key(), serviceId: s._id, code: s.code ?? '', category: s.category ?? '', description: s.name, quantity: '1', unitPrice: String(s.unitPrice ?? 0), vatClass: s.vatClass ?? 'vatable' }]);
   };
   const addCustom = () => {
-    const row: ItemRow = { _key: key(), code: '', category: '', description: '', quantity: '1', unitPrice: '' };
+    const row: ItemRow = { _key: key(), code: '', category: '', description: '', quantity: '1', unitPrice: '', vatClass: 'vatable' };
     focusRow.current = row._key;
     setItems((rs) => [...rs, row]);
   };
 
   const elig = pc?.patient.discountEligibility;
   const seniorAge = isSixty(pc?.patient.dateOfBirth);
-  const quick: { type: DiscountType; label: string; percent: number; reason: string }[] = [];
-  if (elig?.senior?.eligible || seniorAge) quick.push({ type: 'senior', label: 'Senior citizen 20%', percent: 20, reason: elig?.senior?.idNumber ? `Senior citizen ID ${elig.senior.idNumber}` : 'Senior citizen' });
-  if (elig?.pwd?.eligible) quick.push({ type: 'pwd', label: 'PWD 20%', percent: 20, reason: elig.pwd.idNumber ? `PWD ID ${elig.pwd.idNumber}` : 'PWD' });
+  const quick: { type: DiscountType; label: string; percent: number; reason: string; idNumber?: string }[] = [];
+  if (elig?.senior?.eligible || seniorAge) quick.push({ type: 'senior', label: 'Senior citizen 20%', percent: 20, reason: elig?.senior?.idNumber ? `Senior citizen ID ${elig.senior.idNumber}` : 'Senior citizen', idNumber: elig?.senior?.idNumber });
+  if (elig?.pwd?.eligible) quick.push({ type: 'pwd', label: 'PWD 20%', percent: 20, reason: elig.pwd.idNumber ? `PWD ID ${elig.pwd.idNumber}` : 'PWD', idNumber: elig.pwd.idNumber });
   const member = pc?.membership;
   if (member?.discountPercentage) {
     const tier = TIER[member.tier as MembershipTier]?.label ?? 'Member';
@@ -251,6 +267,7 @@ export default function InvoiceForm({
             ...(r.serviceId ? { serviceId: r.serviceId } : {}),
             ...(r.code.trim() ? { code: r.code.trim() } : {}),
             ...(r.category.trim() ? { category: r.category.trim() } : {}),
+            ...(taxProfile ? { vatClass: r.vatClass } : {}),
             description: r.description.trim(),
             quantity: num(r.quantity),
             unitPrice: roundMoney(num(r.unitPrice)),
@@ -266,9 +283,10 @@ export default function InvoiceForm({
           discounts: discounts.map((d) => ({
             type: d.type,
             ...(d.reason.trim() ? { reason: d.reason.trim() } : {}),
+            ...(isStatutoryDiscount(d.type) && d.idNumber.trim() ? { idNumber: d.idNumber.trim() } : {}),
             ...(d.mode === 'percent' ? { percentage: num(d.value) } : { amount: roundMoney(num(d.value)) }),
           })),
-          ...(taxRate > 0 ? {} : { tax: roundMoney(taxValue) }),
+          ...(taxRate > 0 || taxProfile ? {} : { tax: roundMoney(taxValue) }),
           ...(insuranceOn
             ? {
                 insurance: {
@@ -421,11 +439,31 @@ export default function InvoiceForm({
                       aria-describedby={bad('d') ? `${rid}-err` : undefined}
                       className={`${FIELD} ${bad('d') ? 'border-red-400' : ''}`}
                     />
-                    {(r.code || r.category) && (
-                      <p className="mt-1 text-xs text-gray-500">
+                    {(r.code || r.category || taxProfile?.regime === 'vat') && (
+                      <p className="mt-1 flex flex-wrap items-center gap-x-1 text-xs text-gray-500">
                         {r.code && <span className="font-mono">{r.code}</span>}
                         {r.code && r.category && ' · '}
                         {r.category}
+                        {taxProfile?.regime === 'vat' && (
+                          <>
+                            {(r.code || r.category) && ' · '}
+                            <label htmlFor={`${rid}-vat`} className="sr-only">
+                              VAT treatment
+                            </label>
+                            <select
+                              id={`${rid}-vat`}
+                              value={r.vatClass}
+                              onChange={(e) => updateItem(r._key, { vatClass: e.target.value as VatClass })}
+                              className={`rounded border-0 bg-transparent py-0 pl-0 pr-5 text-xs text-gray-600 ${FOCUS_RING}`}
+                            >
+                              {(Object.keys(VAT_CLASS_LABEL) as VatClass[]).map((c) => (
+                                <option key={c} value={c}>
+                                  {VAT_CLASS_LABEL[c]}
+                                </option>
+                              ))}
+                            </select>
+                          </>
+                        )}
                       </p>
                     )}
                   </div>
@@ -486,7 +524,15 @@ export default function InvoiceForm({
         </Section>
 
         {/* Professional fee */}
-        <Section id={`${ids}-pf`} title="Professional fee" hint="The doctor’s own fee, billed apart from the clinic’s services. Discounts don’t reduce it.">
+        <Section
+          id={`${ids}-pf`}
+          title="Professional fee"
+          hint={
+            taxProfile
+              ? 'The doctor’s own fee, billed apart from the clinic’s services. Only a senior citizen or PWD discount reduces it, as the law requires.'
+              : 'The doctor’s own fee, billed apart from the clinic’s services. Discounts don’t reduce it.'
+          }
+        >
           <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
             <div>
               <Label htmlFor={`${ids}-pf-amount`} optional>
@@ -575,7 +621,7 @@ export default function InvoiceForm({
                         key={q.type}
                         type="button"
                         disabled={on}
-                        onClick={() => setDiscounts((ds) => [...ds, { _key: key(), type: q.type, mode: 'percent', value: String(q.percent), reason: q.reason }])}
+                        onClick={() => setDiscounts((ds) => [...ds, { _key: key(), type: q.type, mode: 'percent', value: String(q.percent), reason: q.reason, idNumber: q.idNumber ?? '' }])}
                         aria-label={on ? `${q.label} is applied` : `Apply ${q.label}`}
                         className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-sm font-medium transition-colors ${on ? 'cursor-default border-brand-teal/30 bg-brand-teal-light text-brand-teal-deep' : `border-gray-300 bg-white text-gray-700 hover:border-brand-teal-dark hover:bg-brand-teal-light/50 hover:text-brand-teal-deep ${FOCUS_RING}`}`}
                       >
@@ -649,8 +695,25 @@ export default function InvoiceForm({
                     />
                   </div>
                   <div>
-                    <RowLabel htmlFor={`${rid}-r`}>Reason or ID</RowLabel>
-                    <input id={`${rid}-r`} value={d.reason} onChange={(e) => update({ reason: e.target.value })} maxLength={200} placeholder={d.type === 'promotional' ? 'e.g. October check-up promo' : 'Optional'} className={FIELD} />
+                    {isStatutoryDiscount(d.type) && taxProfile ? (
+                      <>
+                        <RowLabel htmlFor={`${rid}-id`}>{d.type === 'senior' ? 'OSCA ID' : 'PWD ID'}</RowLabel>
+                        <input
+                          id={`${rid}-id`}
+                          value={d.idNumber}
+                          onChange={(e) => update({ idNumber: e.target.value })}
+                          maxLength={200}
+                          placeholder={d.type === 'senior' ? 'OSCA ID number' : 'PWD ID number'}
+                          aria-label={d.type === 'senior' ? 'OSCA ID number' : 'PWD ID number'}
+                          className={`${FIELD} font-mono`}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <RowLabel htmlFor={`${rid}-r`}>Reason or ID</RowLabel>
+                        <input id={`${rid}-r`} value={d.reason} onChange={(e) => update({ reason: e.target.value })} maxLength={200} placeholder={d.type === 'promotional' ? 'e.g. October check-up promo' : 'Optional'} className={FIELD} />
+                      </>
+                    )}
                   </div>
                   <button type="button" onClick={() => setDiscounts((ds) => ds.filter((x) => x._key !== d._key))} aria-label={`Remove ${DISCOUNT_LABEL[d.type]} discount`} title="Remove discount" className={`${REMOVE_BUTTON} justify-self-end sm:mt-0.5 sm:justify-self-auto`}>
                     <Svg d={ICON.x} />
@@ -661,7 +724,12 @@ export default function InvoiceForm({
                     ) : (
                       <p id={`${rid}-hint`} className="text-xs text-gray-500">
                         Takes <span className="font-mono text-gray-900">{money(applied)}</span> off
-                        {d.mode === 'amount' && num(d.value) > applied + 0.005 && ' (all that is left of the services)'}.
+                        {taxProfile && isStatutoryDiscount(d.type)
+                          ? taxProfile.regime === 'vat'
+                            ? ' the services and professional fee net of VAT; the sale is VAT-exempt'
+                            : ' the services and professional fee'
+                          : d.mode === 'amount' && num(d.value) > applied + 0.005 && ' (all that is left of the services)'}
+                        .
                       </p>
                     )}
                   </div>
@@ -670,7 +738,7 @@ export default function InvoiceForm({
             })}
           </ul>
           <div className="px-5 py-4">
-            <button type="button" onClick={() => setDiscounts((ds) => [...ds, { _key: key(), type: 'promotional', mode: 'percent', value: '', reason: '' }])} className={ADD_BUTTON}>
+            <button type="button" onClick={() => setDiscounts((ds) => [...ds, { _key: key(), type: 'promotional', mode: 'percent', value: '', reason: '', idNumber: '' }])} className={ADD_BUTTON}>
               <Svg d="M12 4v16m8-8H4" />
               Add a discount
             </button>
@@ -678,9 +746,9 @@ export default function InvoiceForm({
         </Section>
 
         {/* Tax and insurer */}
-        <Section id={`${ids}-more`} title={taxRate > 0 ? 'Insurance or HMO' : 'Tax, insurance or HMO'}>
+        <Section id={`${ids}-more`} title={taxRate > 0 || taxProfile ? 'Insurance or HMO' : 'Tax, insurance or HMO'}>
           <div className="grid gap-4 px-5 py-4">
-            {taxRate === 0 && (
+            {taxRate === 0 && !taxProfile && (
               <div className="sm:max-w-[12rem]">
                 <Label htmlFor={`${ids}-tax`} optional>
                   Tax
@@ -826,11 +894,33 @@ export default function InvoiceForm({
           </div>
           <dl className="px-5 py-4 text-sm">
             <BillLine label="Services" value={money(totals.subtotal)} muted={items.length === 0} />
-            {totals.discounts.map((d, i) =>
-              d.amount > 0 ? <BillLine key={i} label={`${DISCOUNT_LABEL[d.type]} discount`} value={`−${money(d.amount)}`} /> : null
+            {breakdown && statutoryOn ? (
+              <>
+                {totals.professionalFee > 0 && <BillLine label="Professional fee" value={money(totals.professionalFee)} />}
+                {breakdown.lessVat > 0 && <BillLine label="Less VAT (VAT-exempt sale)" value={`−${money(breakdown.lessVat)}`} />}
+                {totals.discounts.map((d, i) =>
+                  d.amount > 0 ? <BillLine key={i} label={`${DISCOUNT_LABEL[d.type]} discount`} value={`−${money(d.amount)}`} /> : null
+                )}
+              </>
+            ) : (
+              <>
+                {totals.discounts.map((d, i) =>
+                  d.amount > 0 ? <BillLine key={i} label={`${DISCOUNT_LABEL[d.type]} discount`} value={`−${money(d.amount)}`} /> : null
+                )}
+                {totals.professionalFee > 0 && <BillLine label="Professional fee" value={money(totals.professionalFee)} />}
+              </>
             )}
-            {totals.professionalFee > 0 && <BillLine label="Professional fee" value={money(totals.professionalFee)} />}
-            {(taxRate > 0 || totals.tax > 0) && (
+            {breakdown?.regime === 'vat' && !taxProfile?.pricesIncludeVat && totals.tax > 0 && (
+              <BillLine
+                label={
+                  <>
+                    VAT<span className="font-mono text-gray-500"> {taxProfile?.vatRate}%</span>
+                  </>
+                }
+                value={money(totals.tax)}
+              />
+            )}
+            {!breakdown && (taxRate > 0 || totals.tax > 0) && (
               <BillLine
                 label={
                   <>
@@ -846,6 +936,18 @@ export default function InvoiceForm({
                 {money(totals.total)}
               </dd>
             </div>
+            {breakdown?.regime === 'vat' && totals.total > 0 && (
+              <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-0.5 border-t border-dashed border-gray-200 pt-2 text-xs text-gray-500">
+                <span>VATable sales</span>
+                <span className="text-right font-mono tabular-nums">{money(breakdown.vatableSales)}</span>
+                <span>VAT{taxProfile?.pricesIncludeVat ? ' (included)' : ''}</span>
+                <span className="text-right font-mono tabular-nums">{money(breakdown.vatAmount)}</span>
+                <span>VAT-exempt sales</span>
+                <span className="text-right font-mono tabular-nums">{money(breakdown.vatExemptSales)}</span>
+                <span>Zero-rated sales</span>
+                <span className="text-right font-mono tabular-nums">{money(breakdown.zeroRatedSales)}</span>
+              </div>
+            )}
             {insuranceOn && coverValue > 0 && Number.isFinite(coverValue) && (
               <p className="mt-2 text-xs text-gray-500">
                 <span className="font-mono">{money(Math.min(coverValue, totals.total))}</span> expected from {insurance.provider.trim() || 'the insurer'}; the patient pays the rest.

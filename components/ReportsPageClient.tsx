@@ -48,6 +48,23 @@ interface Claims {
   byInsurer: { insurer: string; claims: number; amount: number; open: number; paid: number; rejected: number }[];
   oldest: { _id: string; invoiceNumber: string; createdAt: string; ageDays: number; claimStatus: string; claimAmount: number; provider: string; claimNumber?: string; patient?: { firstName: string; lastName: string } }[];
 }
+interface BirMoney {
+  gross: number;
+  vatable: number;
+  vat: number;
+  exempt: number;
+  zero: number;
+  discount: number;
+  net: number;
+}
+interface BirBooks {
+  range: { start: string; end: string };
+  truncated: boolean;
+  totals: BirMoney & { invoices: number; cancelled: number };
+  days: (BirMoney & { date: string; invoices: number; first: string; last: string; cancelled: number })[];
+  statutory: { date: string; serialNo: string; invoiceId: string; name: string; kind: 'senior' | 'pwd'; idNumber: string; gross: number; exemptSales: number; discount: number; net: number }[];
+  cancelled: { serialNo: string; date: string; invoiceId: string; name: string }[];
+}
 interface Patients extends Ranged {
   total: number;
   registered: number;
@@ -125,6 +142,9 @@ export default function ReportsPageClient({ allowed, initial }: { allowed: Repor
         break;
       case 'hmo-claims':
         body = claimsReport(current as Claims, money);
+        break;
+      case 'bir':
+        body = birReport(current as BirBooks, money);
         break;
       case 'patients':
         body = patientsReport(current as Patients);
@@ -439,6 +459,150 @@ function claimsReport(d: Claims, money: (v: number) => string) {
     ...d.oldest.map((c) => [c.invoiceNumber, c.patient ? `${c.patient.firstName} ${c.patient.lastName}` : '', c.provider, c.claimNumber ?? '', c.claimStatus, c.claimAmount, c.ageDays]),
   ];
   return { node, csv };
+}
+
+function birReport(d: BirBooks, money: (v: number) => string) {
+  const t = d.totals;
+  const th = 'px-3 py-2.5 text-right font-medium';
+  const td = 'px-3 py-2 text-right font-mono tabular-nums text-gray-900';
+  const node = (
+    <>
+      <Figures
+        items={[
+          { label: 'Sales invoices issued', value: count(t.invoices), sub: t.cancelled ? `${count(t.cancelled)} cancelled (refunded), not counted` : 'none cancelled' },
+          { label: 'Net sales', value: money(t.net), sub: `from ${money(t.gross)} gross` },
+          { label: 'Output VAT', value: money(t.vat), sub: `on ${money(t.vatable)} VATable sales` },
+          { label: 'Senior citizen and PWD', value: count(d.statutory.length), sub: `${money(d.statutory.reduce((s, x) => s + x.discount, 0))} discounts given` },
+        ]}
+      />
+      {d.truncated && <p className="text-sm font-medium text-amber-800">Only the first 5,000 invoices are shown. Choose a shorter period.</p>}
+      <Panel title="Sales book" subtitle="Invoices by the day they were issued, with the first and last serial of each day.">
+        {d.days.length === 0 ? (
+          <p className="px-5 py-10 text-center text-sm text-gray-500">No sales invoices were issued in this period.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50/60 text-left text-gray-500">
+                  <th scope="col" className="px-5 py-2.5 font-medium">Day</th>
+                  <th scope="col" className="px-3 py-2.5 font-medium">Serials</th>
+                  <th scope="col" className={th}>Gross</th>
+                  <th scope="col" className={th}>VATable</th>
+                  <th scope="col" className={th}>VAT</th>
+                  <th scope="col" className={th}>VAT-exempt</th>
+                  <th scope="col" className={th}>Zero-rated</th>
+                  <th scope="col" className={th}>Discounts</th>
+                  <th scope="col" className="px-5 py-2.5 text-right font-medium">Net</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {d.days.map((r) => (
+                  <tr key={r.date}>
+                    <th scope="row" className="whitespace-nowrap px-5 py-2 text-left font-semibold text-gray-900">{fmtDay(`${r.date}T12:00:00`)}</th>
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-gray-600">
+                      {r.first === r.last ? r.first : `${r.first} – ${r.last}`}
+                      {r.cancelled > 0 && <span className="ml-1 font-sans text-amber-800">({r.cancelled} cancelled)</span>}
+                    </td>
+                    <td className={td}>{money(r.gross)}</td>
+                    <td className={td}>{money(r.vatable)}</td>
+                    <td className={td}>{money(r.vat)}</td>
+                    <td className={td}>{money(r.exempt)}</td>
+                    <td className={td}>{money(r.zero)}</td>
+                    <td className={td}>{money(r.discount)}</td>
+                    <td className="px-5 py-2 text-right font-mono font-semibold tabular-nums text-gray-900">{money(r.net)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-gray-200 font-semibold">
+                  <th scope="row" colSpan={2} className="px-5 py-2.5 text-left text-gray-900">Total</th>
+                  <td className={td}>{money(t.gross)}</td>
+                  <td className={td}>{money(t.vatable)}</td>
+                  <td className={td}>{money(t.vat)}</td>
+                  <td className={td}>{money(t.exempt)}</td>
+                  <td className={td}>{money(t.zero)}</td>
+                  <td className={td}>{money(t.discount)}</td>
+                  <td className="px-5 py-2.5 text-right font-mono tabular-nums text-gray-900">{money(t.net)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </Panel>
+      <Panel title="Senior citizen and PWD sales book" subtitle="Each sale with the statutory discount, as BIR asks clinics to keep.">
+        {d.statutory.length === 0 ? (
+          <p className="px-5 py-10 text-center text-sm text-gray-500">No senior citizen or PWD discounts on invoices issued in this period.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50/60 text-left text-gray-500">
+                  <th scope="col" className="px-5 py-2.5 font-medium">Day</th>
+                  <th scope="col" className="px-3 py-2.5 font-medium">Name</th>
+                  <th scope="col" className="px-3 py-2.5 font-medium">ID</th>
+                  <th scope="col" className="px-3 py-2.5 font-medium">Serial</th>
+                  <th scope="col" className={th}>Gross</th>
+                  <th scope="col" className={th}>VAT-exempt sale</th>
+                  <th scope="col" className={th}>Discount</th>
+                  <th scope="col" className="px-5 py-2.5 text-right font-medium">Net</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {d.statutory.map((r) => (
+                  <tr key={r.serialNo}>
+                    <td className="whitespace-nowrap px-5 py-2 text-gray-600">{fmtDay(`${r.date}T12:00:00`)}</td>
+                    <th scope="row" className="px-3 py-2 text-left font-semibold text-gray-900">
+                      <Link href={`/invoices/${r.invoiceId}`} className={`rounded hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                        {r.name || 'Patient record unavailable'}
+                      </Link>
+                    </th>
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-gray-600">
+                      {r.kind === 'senior' ? 'OSCA' : 'PWD'} {r.idNumber || <span className="font-sans font-semibold text-red-700">missing</span>}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-gray-600">{r.serialNo}</td>
+                    <td className={td}>{money(r.gross)}</td>
+                    <td className={td}>{money(r.exemptSales)}</td>
+                    <td className={td}>{money(r.discount)}</td>
+                    <td className="px-5 py-2 text-right font-mono font-semibold tabular-nums text-gray-900">{money(r.net)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
+      {d.cancelled.length > 0 && (
+        <Panel title="Cancelled" subtitle="Issued, then refunded. Kept in the books so no serial goes missing.">
+          <ul className="divide-y divide-gray-100 text-sm">
+            {d.cancelled.map((c) => (
+              <li key={c.serialNo} className="flex items-baseline justify-between gap-4 px-5 py-2">
+                <Link href={`/invoices/${c.invoiceId}`} className={`rounded font-mono text-xs font-semibold text-gray-900 hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                  {c.serialNo}
+                </Link>
+                <span className="min-w-0 flex-1 truncate text-gray-600">{c.name}</span>
+                <span className="text-gray-500">{fmtDay(`${c.date}T12:00:00`)}</span>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
+    </>
+  );
+  const csv: CsvRows = [
+    ['Sales book'],
+    ['Day', 'First serial', 'Last serial', 'Invoices', 'Cancelled', 'Gross sales', 'VATable sales', 'VAT', 'VAT-exempt sales', 'Zero-rated sales', 'Discounts', 'Net sales'],
+    ...d.days.map((r) => [r.date, r.first, r.last, r.invoices, r.cancelled, r.gross, r.vatable, r.vat, r.exempt, r.zero, r.discount, r.net]),
+    ['Total', '', '', t.invoices, t.cancelled, t.gross, t.vatable, t.vat, t.exempt, t.zero, t.discount, t.net],
+    [],
+    ['Senior citizen and PWD sales book'],
+    ['Day', 'Name', 'Kind', 'OSCA / PWD ID', 'Sales invoice', 'Gross sales', 'VAT-exempt sale', 'Discount', 'Net sales'],
+    ...d.statutory.map((r) => [r.date, r.name, r.kind === 'senior' ? 'Senior citizen' : 'PWD', r.idNumber, r.serialNo, r.gross, r.exemptSales, r.discount, r.net]),
+    [],
+    ['Cancelled sales invoices'],
+    ['Serial', 'Day', 'Name'],
+    ...d.cancelled.map((c) => [c.serialNo, c.date, c.name]),
+  ];
+  return { node, csv, range: d.range };
 }
 
 function patientsReport(d: Patients) {

@@ -13,6 +13,7 @@ import { isEmailConfigured } from '@/lib/email';
 import { isCloudinaryConfigured } from '@/lib/cloudinary';
 import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
+import { BRANCH_CODE, SERIAL_PREFIX, birSettingsOf, birSetupProblems } from '@/lib/bir';
 
 const zStr = (max = 200) => z.string().trim().max(max);
 const zNum = (min: number, max: number) => z.coerce.number().finite().min(min).max(max);
@@ -121,6 +122,23 @@ const settingsUpdateSchema = z.object({
     .optional(),
   prescriptionDigitalSignatureEnabled: z.boolean().optional(),
   prescriptionPaperSize: z.enum(['A5', 'A4']).optional(),
+  birSettings: z
+    .object({
+      enabled: z.boolean(),
+      regime: z.enum(['vat', 'non_vat']),
+      vatRate: zNum(0, 100),
+      pricesIncludeVat: z.boolean(),
+      professionalFeeVatClass: z.enum(['vatable', 'exempt', 'zero_rated']),
+      registeredName: zStr(200),
+      branchCode: z.string().trim().regex(BRANCH_CODE, 'The branch code is 3 to 5 digits.'),
+      permitNumber: zStr(100),
+      permitIssuedOn: z.union([z.literal(''), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected yyyy-mm-dd')]),
+      serialPrefix: z.string().trim().regex(SERIAL_PREFIX, 'Up to 6 letters, numbers or -.'),
+      serialStart: z.coerce.number().int().min(1).max(1_000_000_000),
+      serialEnd: z.coerce.number().int().min(0).max(1_000_000_000),
+    })
+    .partial()
+    .optional(),
 });
 
 /** Flatten nested plain objects to dot paths so a partial sub-object doesn't wipe its siblings. */
@@ -204,6 +222,15 @@ export async function PUT(request: NextRequest) {
         { success: false, error: 'Someone else saved the settings while you were editing. Reload to see their changes, then make yours again.' },
         { status: 409 }
       );
+    }
+
+    // BIR invoicing can't be on while the registration needed on every invoice is incomplete.
+    if (fields.birSettings || fields.taxId !== undefined) {
+      const bir = birSettingsOf({ ...birSettingsOf(before.birSettings), ...(fields.birSettings ?? {}) });
+      const missing = birSetupProblems(bir, fields.taxId ?? before.taxId ?? '');
+      if (missing.length) {
+        return NextResponse.json({ success: false, error: `BIR invoicing can’t be turned on yet. ${missing.join(' ')}` }, { status: 400 });
+      }
     }
 
     const $set = toSetPaths(fields as Record<string, unknown>);

@@ -47,9 +47,20 @@ interface Invoice {
   professionalFeeType?: string;
   professionalFeeDoctor?: { _id: string; firstName: string; lastName: string } | null;
   professionalFeeNotes?: string;
-  discounts: { type: string; reason?: string; percentage?: number; amount: number }[];
+  discounts: { type: string; reason?: string; idNumber?: string; percentage?: number; amount: number }[];
   tax?: number;
   total?: number;
+  taxBreakdown?: {
+    regime: 'vat' | 'non_vat';
+    grossSales: number;
+    vatableSales: number;
+    vatAmount: number;
+    vatExemptSales: number;
+    zeroRatedSales: number;
+    lessVat: number;
+    statutoryDiscount: number;
+  };
+  bir?: { serialNo?: string; issuedAt?: string };
   payments: Payment[];
   insurance?: {
     provider?: string;
@@ -214,7 +225,9 @@ export default function InvoiceDetailClient({
   const payments = [...p.payments].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const other = p.patientOtherOpen;
 
-  const receiptLink = (className: string, label = 'Print receipt') => (
+  const tb = p.taxBreakdown;
+  const serial = p.bir?.serialNo;
+  const receiptLink = (className: string, label = tb ? (serial ? 'Reprint sales invoice' : 'Issue sales invoice') : 'Print receipt') => (
     <a href={`/api/invoices/${p._id}/receipt`} target="_blank" rel="noopener noreferrer" className={className}>
       <Svg d={ICONS.print} />
       {label}
@@ -231,6 +244,11 @@ export default function InvoiceDetailClient({
             <h1 className={`text-2xl sm:text-3xl font-extrabold tracking-tight ${refunded ? 'text-gray-500 line-through decoration-gray-400 decoration-2' : 'text-gray-900'}`}>{who}</h1>
             <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${st.badge}`}>{st.label}</span>
             <span className="font-mono text-sm text-gray-500">{p.invoiceNumber}</span>
+            {serial && (
+              <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs font-semibold text-gray-700" title="BIR sales invoice serial">
+                SI {serial}
+              </span>
+            )}
           </div>
           <p className="mt-1 text-sm sm:text-base text-gray-600">
             Billed {longDate(p.createdAt)} at <span className="font-mono">{clock(p.createdAt)}</span>
@@ -382,7 +400,11 @@ export default function InvoiceDetailClient({
                     <>
                       {DISCOUNT_LABEL[d.type] ?? 'Discount'} discount
                       {d.percentage ? <span className="font-mono"> {d.percentage}%</span> : null}
-                      {d.reason && d.reason !== `${DISCOUNT_LABEL[d.type]} Discount` && <span className="text-gray-500"> · {d.reason}</span>}
+                      {d.idNumber ? (
+                        <span className="text-gray-500"> · ID <span className="font-mono">{d.idNumber}</span></span>
+                      ) : (
+                        d.reason && d.reason !== `${DISCOUNT_LABEL[d.type]} Discount` && <span className="text-gray-500"> · {d.reason}</span>
+                      )}
                     </>
                   }
                   value={`−${money(d.amount)}`}
@@ -400,14 +422,36 @@ export default function InvoiceDetailClient({
                   value={money(p.professionalFee ?? 0)}
                 />
               )}
-              {(p.tax ?? 0) > 0 && <Line label="Tax" value={money(p.tax ?? 0)} />}
+              {tb && tb.lessVat > 0 && <Line label="Less VAT (VAT-exempt sale)" value={`−${money(tb.lessVat)}`} />}
+              {tb
+                ? // VAT added on top of the prices (VAT-exclusive pricing); included VAT shows in the breakdown below.
+                  total > tb.grossSales - discountTotal - tb.lessVat + 0.005 && <Line label="VAT" value={money(tb.vatAmount)} />
+                : (p.tax ?? 0) > 0 && <Line label="Tax" value={money(p.tax ?? 0)} />}
               <div className="mt-2 flex items-baseline justify-between gap-4 border-t border-gray-200 pt-3">
                 <dt className="font-semibold text-gray-900">Total</dt>
                 <dd className="font-mono text-base font-semibold tabular-nums text-gray-900">{money(total)}</dd>
               </div>
+              {tb?.regime === 'vat' && (
+                <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-0.5 border-t border-dashed border-gray-200 pt-2 text-xs text-gray-500 sm:grid-cols-4">
+                  <span>
+                    VATable <span className="block font-mono tabular-nums text-gray-900">{money(tb.vatableSales)}</span>
+                  </span>
+                  <span>
+                    VAT <span className="block font-mono tabular-nums text-gray-900">{money(tb.vatAmount)}</span>
+                  </span>
+                  <span>
+                    VAT-exempt <span className="block font-mono tabular-nums text-gray-900">{money(tb.vatExemptSales)}</span>
+                  </span>
+                  <span>
+                    Zero-rated <span className="block font-mono tabular-nums text-gray-900">{money(tb.zeroRatedSales)}</span>
+                  </span>
+                </div>
+              )}
               {discountTotal > 0 && (
                 <p className="mt-1 text-right text-xs text-gray-500">
-                  Discounts apply to services only, not the professional fee.
+                  {tb?.statutoryDiscount
+                    ? 'The senior citizen or PWD discount covers the professional fee too.'
+                    : 'Discounts apply to services only, not the professional fee.'}
                 </p>
               )}
             </dl>
