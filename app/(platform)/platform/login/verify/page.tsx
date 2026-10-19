@@ -4,6 +4,8 @@ import BrandLogo from '@/components/BrandLogo';
 import { ConfirmLinkForm } from '@/components/platform/PlatformLoginForms';
 import { getTenantContext } from '@/lib/tenant';
 
+export const dynamic = 'force-dynamic';
+
 export default async function PlatformVerifyPage({ searchParams }: { searchParams: Promise<{ token?: string }> }) {
   if ((await getTenantContext()).subdomain) notFound();
   const { token } = await searchParams;
