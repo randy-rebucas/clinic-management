@@ -70,6 +70,7 @@ export async function loadClinicSettingsPage(tenantIdInput: string): Promise<Cli
       timezone: zone,
       defaultDuration: Number(s.appointmentSettings?.defaultDuration) || 30,
       appointmentReminders: s.communicationSettings?.appointmentReminders !== false,
+      teleconsultBooking: s.appointmentSettings?.teleconsultBooking === true,
       currency: CURRENCIES.some((c) => c.code === currency) ? currency : 'PHP',
       taxRate: Number(s.billingSettings?.taxRate) || 0,
       invoicePrefix: String(s.billingSettings?.invoicePrefix || 'INV').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 10) || 'INV',

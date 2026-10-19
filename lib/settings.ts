@@ -99,6 +99,7 @@ export function getDefaultSettings() {
       defaultDuration: 30,
       reminderHoursBefore: [24, 2],
       allowOnlineBooking: true,
+      teleconsultBooking: false,
       requireConfirmation: false,
       maxAdvanceBookingDays: 90,
       minAdvanceBookingHours: 2,

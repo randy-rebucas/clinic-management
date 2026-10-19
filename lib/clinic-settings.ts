@@ -58,6 +58,8 @@ export interface ClinicSettingsForm {
   timezone: string;
   defaultDuration: number;
   appointmentReminders: boolean;
+  /** Patients may book video visits from the app. */
+  teleconsultBooking: boolean;
   currency: string;
   taxRate: number;
   invoicePrefix: string;

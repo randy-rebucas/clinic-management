@@ -33,7 +33,7 @@ const ROW = 'flex items-start justify-between gap-4 px-5 py-4';
 const SECTIONS = [
   { id: 'clinic', title: 'Clinic details', keys: ['clinicName', 'clinicAddress', 'clinicPhone', 'clinicEmail', 'clinicWebsite', 'taxId', 'licenseNumber', 'ptr'] },
   { id: 'hours', title: 'Opening hours', keys: ['businessHours', 'timezone'] },
-  { id: 'appointments', title: 'Appointments', keys: ['defaultDuration', 'appointmentReminders'] },
+  { id: 'appointments', title: 'Appointments', keys: ['defaultDuration', 'appointmentReminders', 'teleconsultBooking'] },
   { id: 'billing', title: 'Billing', keys: ['currency', 'taxRate', 'invoicePrefix', 'allowPartialPayments'] },
   { id: 'bir', title: 'BIR invoicing', keys: ['bir'] },
   { id: 'philhealth', title: 'PhilHealth', keys: ['philhealth'] },
@@ -75,7 +75,10 @@ function changesBody(f: ClinicSettingsForm, base: ClinicSettingsForm) {
   }
   if (changed('businessHours')) body.businessHours = f.businessHours;
   if (changed('timezone')) body.timezone = f.timezone;
-  if (changed('defaultDuration')) body.appointmentSettings = { defaultDuration: f.defaultDuration };
+  const appointments: Record<string, unknown> = {};
+  if (changed('defaultDuration')) appointments.defaultDuration = f.defaultDuration;
+  if (changed('teleconsultBooking')) appointments.teleconsultBooking = f.teleconsultBooking;
+  if (Object.keys(appointments).length) body.appointmentSettings = appointments;
   if (changed('appointmentReminders')) body.communicationSettings = { appointmentReminders: f.appointmentReminders };
   const billing: Record<string, unknown> = {};
   if (changed('currency')) billing.currency = f.currency;
@@ -483,6 +486,15 @@ function AppointmentsSection({ form, set, errors, services }: { form: ClinicSett
             <Warn>Text messages aren’t set up on this server, so no reminder goes out. See Outside services below.</Warn>
           )}
         </SwitchRow>
+      </div>
+      <div className="border-t border-gray-100">
+        <SwitchRow
+          id="set-teleconsultBooking"
+          label="Let patients book video visits"
+          hint="Patients can choose a video visit when booking in the eMCR app. Staff can always book one from the schedule. Part of the Professional and Enterprise plans."
+          on={form.teleconsultBooking}
+          onChange={(v) => set('teleconsultBooking', v)}
+        />
       </div>
     </Section>
   );

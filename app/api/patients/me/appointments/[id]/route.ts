@@ -3,6 +3,8 @@ import Appointment from '@/models/Appointment';
 import logger from '@/lib/logger';
 import { ownedRecordContext, isOwnedRecordError, recordNotFound } from '../../_lib/owned-record';
 import { PATIENT_DOCTOR_POPULATE, withDoctorSummary } from '../../../_lib/doctor-summary';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { withPatientTeleconsult } from '@/lib/teleconsult';
 
 /**
  * GET /api/patients/me/appointments/[id]
@@ -25,7 +27,8 @@ export async function GET(
       .lean<Record<string, any>>();
     if (!appointment) return recordNotFound('Appointment');
 
-    return NextResponse.json({ success: true, data: withDoctorSummary(appointment) });
+    const tz = appointment.modality === 'teleconsult' && appointment.tenantId ? await getTenantTimezone(String(appointment.tenantId)) : undefined;
+    return NextResponse.json({ success: true, data: withPatientTeleconsult(withDoctorSummary(appointment), { tz }) });
   } catch (error) {
     logger.error('Error fetching patient appointment detail', error as Error);
     return NextResponse.json({ success: false, error: 'Failed to fetch appointment' }, { status: 500 });

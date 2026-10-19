@@ -56,6 +56,7 @@ const settingsUpdateSchema = z.object({
       defaultDuration: zNum(1, 1440),
       reminderHoursBefore: z.array(zNum(0, 720)).max(10),
       allowOnlineBooking: z.boolean(),
+      teleconsultBooking: z.boolean(),
       requireConfirmation: z.boolean(),
       maxAdvanceBookingDays: zNum(0, 3650),
       minAdvanceBookingHours: zNum(0, 8760),
