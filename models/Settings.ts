@@ -122,6 +122,22 @@ export interface ISettings extends Document {
   prescriptionDigitalSignatureEnabled?: boolean;
   prescriptionPaperSize?: 'A5' | 'A4';
 
+  // BIR invoicing (lib/bir.ts)
+  birSettings?: {
+    enabled: boolean;
+    regime: 'vat' | 'non_vat';
+    vatRate: number;
+    pricesIncludeVat: boolean;
+    professionalFeeVatClass: 'vatable' | 'exempt' | 'zero_rated';
+    registeredName?: string;
+    branchCode: string;
+    permitNumber?: string;
+    permitIssuedOn?: string;
+    serialPrefix?: string;
+    serialStart: number;
+    serialEnd: number;
+  };
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -260,6 +276,21 @@ const SettingsSchema = new Schema<ISettings>(
     // Prescription Settings
     prescriptionDigitalSignatureEnabled: { type: Boolean, default: true },
     prescriptionPaperSize: { type: String, enum: ['A5', 'A4'], default: 'A4' },
+
+    birSettings: {
+      enabled: { type: Boolean, default: false },
+      regime: { type: String, enum: ['vat', 'non_vat'], default: 'non_vat' },
+      vatRate: { type: Number, default: 12, min: 0, max: 100 },
+      pricesIncludeVat: { type: Boolean, default: true },
+      professionalFeeVatClass: { type: String, enum: ['vatable', 'exempt', 'zero_rated'], default: 'vatable' },
+      registeredName: { type: String, default: '' },
+      branchCode: { type: String, default: '00000' },
+      permitNumber: { type: String, default: '' },
+      permitIssuedOn: { type: String, default: '' },
+      serialPrefix: { type: String, default: '' },
+      serialStart: { type: Number, default: 1, min: 1 },
+      serialEnd: { type: Number, default: 0, min: 0 },
+    },
   },
   {
     timestamps: true,

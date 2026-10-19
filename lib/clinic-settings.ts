@@ -4,7 +4,9 @@
  * here is a switch that does nothing. Client-safe: no model imports.
  */
 
-export const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
+import type { BirSettings } from './bir';
+
+export const WEEKDAYS =['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 export type Weekday = (typeof WEEKDAYS)[number];
 export const WEEKDAY_LABEL: Record<Weekday, string> = {
   monday: 'Monday',
@@ -65,6 +67,7 @@ export interface ClinicSettingsForm {
   prescriptionDigitalSignatureEnabled: boolean;
   sidebarCollapsed: boolean;
   automations: Record<string, boolean>;
+  bir: BirSettings;
 }
 
 export interface ClinicSettingsPageData {

@@ -13,6 +13,8 @@ export interface IService extends Document {
   unit: string; // e.g., "per visit", "per procedure", "per test"
   duration?: number; // Duration in minutes (for procedures)
   requiresDoctor?: boolean; // Whether service requires a doctor
+  /** VAT treatment on BIR invoices; VATable unless set. */
+  vatClass?: 'vatable' | 'exempt' | 'zero_rated';
   active: boolean;
   notes?: string;
   createdAt: Date;
@@ -71,6 +73,11 @@ const ServiceSchema: Schema = new Schema(
     requiresDoctor: {
       type: Boolean,
       default: false,
+    },
+    vatClass: {
+      type: String,
+      enum: ['vatable', 'exempt', 'zero_rated'],
+      default: 'vatable',
     },
     active: {
       type: Boolean,

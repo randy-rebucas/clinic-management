@@ -6,7 +6,10 @@ import Invoice from '@/models/Invoice';
 import Visit from '@/models/Visit';
 import Service from '@/models/Service';
 import { getSettings } from '@/lib/settings';
-import { calculateDiscounts, DiscountEligibility } from '@/lib/discount-calculator';
+import { calculateDiscounts, getBestDiscount, DiscountEligibility } from '@/lib/discount-calculator';
+import Procedure from '@/models/Procedure';
+import { computeInvoiceTotals } from '@/lib/invoice-totals';
+import { taxProfileOf } from '@/lib/bir';
 import { createNotification } from '@/lib/notifications';
 import { sendEmail, escapeHtml } from '@/lib/email';
 import { FALLBACK_VISIT_FEE, pickVisitFee } from '@/lib/services';
@@ -93,11 +96,13 @@ export async function generateInvoiceForVisit(options: AutoInvoiceOptions): Prom
 
     // Build invoice items from visit
     const items: any[] = [];
+    const vatOf = (v?: string) => (v === 'exempt' || v === 'zero_rated' ? v : 'vatable');
 
     // Add consultation fee based on visit type: the same rule /admin/services shows
-    const consultations = await Service.find({ tenantId, category: 'consultation', active: true })
-      .select('name code category type unitPrice active')
-      .lean<{ _id: Types.ObjectId; name: string; code: string; category: string; type?: string; unitPrice: number; active: boolean }[]>();
+    const catalog = await Service.find({ tenantId, category: { $in: ['consultation', 'procedure'] }, active: true })
+      .select('name code category type unitPrice vatClass active')
+      .lean<{ _id: Types.ObjectId; name: string; code: string; category: string; type?: string; unitPrice: number; vatClass?: string; active: boolean }[]>();
+    const consultations = catalog.filter((s) => s.category === 'consultation');
     const consultationService = pickVisitFee(consultations, String(visit.visitType || ''))?.service ?? null;
 
     if (consultationService) {
@@ -108,7 +113,7 @@ export async function generateInvoiceForVisit(options: AutoInvoiceOptions): Prom
         category: 'consultation',
         quantity: 1,
         unitPrice: consultationService.unitPrice,
-        total: consultationService.unitPrice,
+        vatClass: vatOf(consultationService.vatClass),
       });
     } else {
       // Fallback: use default consultation fee from settings
@@ -118,30 +123,46 @@ export async function generateInvoiceForVisit(options: AutoInvoiceOptions): Prom
         category: 'consultation',
         quantity: 1,
         unitPrice: defaultConsultationFee,
-        total: defaultConsultationFee,
+        vatClass: 'vatable',
       });
     }
 
-    // Add procedures if any
+    // Procedures done in the visit, priced from the price list: a procedure service whose kind
+    // (or name) matches the procedure's type. Unpriced procedures are left for staff to add.
     if (visit.proceduresPerformed && visit.proceduresPerformed.length > 0) {
-      // Note: This would require Procedure model to have service references
-      // For now, we'll add a placeholder
-      // TODO: Populate procedures and get their service codes/prices
+      const procedures = await Procedure.find({ tenantId, _id: { $in: visit.proceduresPerformed } }).select('type').lean<{ type?: string }[]>();
+      const norm = (v?: string) => String(v ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      const priced = catalog.filter((s) => s.category === 'procedure');
+      for (const proc of procedures) {
+        const key = norm(proc.type);
+        if (!key) continue;
+        const service = priced.find((s) => norm(s.type) === key) ?? priced.find((s) => norm(s.name) === key || norm(s.code) === key);
+        if (!service) continue;
+        const existing = items.find((i) => i.serviceId && String(i.serviceId) === String(service._id));
+        if (existing) existing.quantity += 1;
+        else
+          items.push({
+            serviceId: service._id,
+            code: service.code,
+            description: service.name,
+            category: 'procedure',
+            quantity: 1,
+            unitPrice: service.unitPrice,
+            vatClass: vatOf(service.vatClass),
+          });
+      }
     }
-
-    // Calculate subtotal
-    const subtotal = items.reduce((sum, item) => sum + (item.total || 0), 0);
 
     // Calculate discounts
     const discountEligibility = patient.discountEligibility || {};
     const eligibility: DiscountEligibility = {
-      pwd: discountEligibility.pwd ? { 
-        eligible: discountEligibility.pwd.eligible || false, 
-        idNumber: discountEligibility.pwd.idNumber 
+      pwd: discountEligibility.pwd ? {
+        eligible: discountEligibility.pwd.eligible || false,
+        idNumber: discountEligibility.pwd.idNumber
       } : undefined,
-      senior: discountEligibility.senior ? { 
-        eligible: discountEligibility.senior.eligible || false, 
-        idNumber: discountEligibility.senior.idNumber 
+      senior: discountEligibility.senior ? {
+        eligible: discountEligibility.senior.eligible || false,
+        idNumber: discountEligibility.senior.idNumber
       } : undefined,
       membership: discountEligibility.membership ? {
         eligible: discountEligibility.membership.eligible || false,
@@ -151,16 +172,28 @@ export async function generateInvoiceForVisit(options: AutoInvoiceOptions): Prom
       } : undefined,
     };
 
-    const discounts = calculateDiscounts(subtotal, eligibility, patient.dateOfBirth);
-    
-    // Apply discounts (typically only the highest one, but we'll apply all)
-    const discountTotal = discounts.reduce((sum, disc) => sum + disc.amount, 0);
-    const afterDiscount = subtotal - discountTotal;
-    
-    // Get tax rate from settings
-    const taxRate = settings.billingSettings?.taxRate || 0;
-    const tax = afterDiscount * (taxRate / 100);
-    const total = afterDiscount + tax;
+    // One discount: the highest the patient qualifies for. A senior citizen or PWD takes the
+    // statutory 20% or another discount, never both (RA 9994 §4), so they never stack.
+    const subtotalBefore = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+    const best = getBestDiscount(calculateDiscounts(subtotalBefore, eligibility, patient.dateOfBirth));
+    const chosen = best
+      ? [{
+          type: best.type,
+          reason: best.reason,
+          percentage: best.percentage,
+          ...(best.type === 'senior' && discountEligibility.senior?.idNumber ? { idNumber: discountEligibility.senior.idNumber } : {}),
+          ...(best.type === 'pwd' && discountEligibility.pwd?.idNumber ? { idNumber: discountEligibility.pwd.idNumber } : {}),
+        }]
+      : [];
+
+    const taxProfile = taxProfileOf(settings.birSettings);
+    const totals = computeInvoiceTotals({
+      items,
+      discounts: chosen,
+      taxRate: settings.billingSettings?.taxRate || 0,
+      appliedBy: String(options.createdBy || visit.provider?._id || ''),
+      taxProfile,
+    });
 
     // Same counter key as app/api/invoices so both paths share one sequence.
     const seq = await nextSequence(
@@ -176,20 +209,15 @@ export async function generateInvoiceForVisit(options: AutoInvoiceOptions): Prom
       patient: patient._id,
       visit: visit._id,
       invoiceNumber,
-      items,
-      subtotal,
-      discounts: discounts.map(disc => ({
-        type: disc.type,
-        reason: disc.reason,
-        percentage: disc.percentage,
-        amount: disc.amount,
-        appliedBy: options.createdBy || visit.provider?._id,
-      })),
-      tax,
-      total,
-      outstandingBalance: total,
+      items: totals.items,
+      subtotal: totals.subtotal,
+      discounts: totals.discounts.map((d) => ({ ...d, appliedBy: options.createdBy || visit.provider?._id })),
+      tax: totals.tax,
+      total: totals.total,
+      ...(totals.breakdown ? { taxBreakdown: totals.breakdown } : {}),
+      outstandingBalance: totals.total,
       totalPaid: 0,
-      status: 'unpaid',
+      status: totals.total > 0 ? 'unpaid' : 'paid',
       createdBy: options.createdBy || visit.provider?._id,
     };
 

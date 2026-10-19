@@ -23,7 +23,7 @@ export async function GET() {
     await connectDB();
     const [services, doctors] = await Promise.all([
       Service.find(tenantFilter(tenantId, { active: true }))
-        .select('name code category unitPrice unit')
+        .select('name code category unitPrice unit vatClass')
         .sort({ category: 1, name: 1 })
         .limit(2000)
         .lean(),

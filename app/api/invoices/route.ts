@@ -11,7 +11,7 @@ import { requireTenantSession, isTenantSessionError, tenantFilter, patientTenant
 import { parseBody, isValidationError, zObjectId, asString, escapeRegex } from '@/lib/api/validate';
 import { nextSequence, formatCode, maxCodeSeed } from '@/lib/counters';
 import { INVOICE_STATUSES, OPEN_STATUSES, agingRange, isAgingKey } from '@/lib/invoices';
-import { invoiceEditableSchema, computeInvoiceTotals } from './_lib/totals';
+import { invoiceEditableSchema, computeInvoiceTotals, statutoryDiscountProblem, taxProfileOf } from './_lib/totals';
 
 const MAX_RESULTS = 1000;
 
@@ -167,6 +167,10 @@ export async function POST(request: NextRequest) {
     const settings = await getSettings(tenantId);
     const invoicePrefix = String(settings.billingSettings?.invoicePrefix || 'INV').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 10) || 'INV';
 
+    const taxProfile = taxProfileOf(settings.birSettings);
+    const discountProblem = taxProfile ? statutoryDiscountProblem(body.discounts) : null;
+    if (discountProblem) return NextResponse.json({ success: false, error: discountProblem }, { status: 400 });
+
     const totals = computeInvoiceTotals({
       items: body.items,
       discounts: body.discounts,
@@ -174,6 +178,7 @@ export async function POST(request: NextRequest) {
       tax: body.tax,
       taxRate: settings.billingSettings?.taxRate,
       appliedBy: session.userId,
+      taxProfile,
     });
 
     const seq = await nextSequence(
@@ -196,6 +201,7 @@ export async function POST(request: NextRequest) {
       discounts: totals.discounts,
       tax: totals.tax,
       total: totals.total,
+      ...(totals.breakdown ? { taxBreakdown: totals.breakdown } : {}),
       insurance: body.insurance,
       payments: [],
       totalPaid: 0,

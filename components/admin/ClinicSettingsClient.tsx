@@ -20,6 +20,8 @@ import {
   type DayHours,
   type Weekday,
 } from '@/lib/clinic-settings';
+import { SERIAL_PREFIX, VAT_CLASS_LABEL, birSetupProblems, formatSerial, formatTin, type BirSettings } from '@/lib/bir';
+import { VAT_CLASSES } from '@/lib/invoice-totals';
 
 const PRIMARY = `inline-flex items-center justify-center gap-1.5 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`;
 const GHOST = `rounded-md px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-60 ${FOCUS_RING}`;
@@ -33,6 +35,7 @@ const SECTIONS = [
   { id: 'hours', title: 'Opening hours', keys: ['businessHours', 'timezone'] },
   { id: 'appointments', title: 'Appointments', keys: ['defaultDuration', 'appointmentReminders'] },
   { id: 'billing', title: 'Billing', keys: ['currency', 'taxRate', 'invoicePrefix', 'allowPartialPayments'] },
+  { id: 'bir', title: 'BIR invoicing', keys: ['bir'] },
   { id: 'queue', title: 'Queue', keys: ['autoAssignRooms', 'displayQueuePublicly'] },
   { id: 'prescriptions', title: 'Prescriptions', keys: ['prescriptionPaperSize', 'prescriptionDigitalSignatureEnabled'] },
   { id: 'screens', title: 'Staff screens', keys: ['sidebarCollapsed'] },
@@ -54,6 +57,9 @@ function problems(f: ClinicSettingsForm): Errors {
   if (!Number.isInteger(f.defaultDuration) || f.defaultDuration < 5 || f.defaultDuration > 480) out.defaultDuration = ['Whole minutes, from 5 to 480.'];
   if (!Number.isFinite(f.taxRate) || f.taxRate < 0 || f.taxRate > 100) out.taxRate = ['A percentage from 0 to 100.'];
   if (!INVOICE_PREFIX.test(f.invoicePrefix.trim())) out.invoicePrefix = ['Up to 10 letters, numbers, - or _.'];
+  if (!SERIAL_PREFIX.test(f.bir.serialPrefix.trim())) out.birSerialPrefix = ['Up to 6 letters, numbers or -.'];
+  const bir = birSetupProblems(f.bir, f.taxId);
+  if (bir.length) out.bir = bir;
   return out;
 }
 
@@ -81,6 +87,7 @@ function changesBody(f: ClinicSettingsForm, base: ClinicSettingsForm) {
   if (changed('prescriptionPaperSize')) body.prescriptionPaperSize = f.prescriptionPaperSize;
   if (changed('prescriptionDigitalSignatureEnabled')) body.prescriptionDigitalSignatureEnabled = f.prescriptionDigitalSignatureEnabled;
   if (changed('sidebarCollapsed')) body.displaySettings = { sidebarCollapsed: f.sidebarCollapsed };
+  if (changed('bir')) body.birSettings = { ...f.bir, registeredName: f.bir.registeredName.trim(), permitNumber: f.bir.permitNumber.trim(), serialPrefix: f.bir.serialPrefix.trim().toUpperCase() };
   const autos = Object.fromEntries(Object.entries(f.automations).filter(([k, v]) => base.automations[k] !== v));
   if (Object.keys(autos).length) body.automationSettings = autos;
   return body;
@@ -130,7 +137,7 @@ export default function ClinicSettingsClient({ data }: { data: ClinicSettingsPag
     const found = problems(form);
     const first = Object.keys(found)[0];
     if (first) {
-      const id = first.startsWith('hours-') ? `set-${first}-close` : `set-${first}`;
+      const id = first.startsWith('hours-') ? `set-${first}-close` : first === 'bir' ? 'set-bir-enabled' : `set-${first}`;
       document.getElementById(id)?.focus();
       return;
     }
@@ -203,6 +210,7 @@ export default function ClinicSettingsClient({ data }: { data: ClinicSettingsPag
           <HoursSection form={form} set={set} errors={errors} timezones={data.timezones} base={base} now={data.now} />
           <AppointmentsSection form={form} set={set} errors={errors} services={data.services} />
           <BillingSection form={form} set={set} errors={errors} />
+          <BirSection form={form} set={set} errors={errors} />
           <QueueSection form={form} set={set} displayPath={data.displayPath} />
           <PrescriptionsSection form={form} set={set} />
           <Section id="screens" title="Staff screens" description="What staff see the first time they sign in on a device.">
@@ -538,6 +546,170 @@ function BillingSection({ form, set, errors }: { form: ClinicSettingsForm; set: 
         />
       </div>
     </Section>
+  );
+}
+
+function BirSection({ form, set, errors }: { form: ClinicSettingsForm; set: SetFn; errors: Errors }) {
+  const ids = useId();
+  const b = form.bir;
+  const put = (patch: Partial<BirSettings>) => set('bir', { ...b, ...patch });
+  const num = (v: string) => (v === '' ? 0 : Math.max(0, Math.floor(Number(v)) || 0));
+  const vat = b.regime === 'vat';
+  return (
+    <Section
+      id="bir"
+      title="BIR invoicing"
+      description="Issue BIR sales invoices: the clinic’s registration and VAT status printed on each, serials from the range BIR approved, and the VAT and senior citizen / PWD rules worked out. Check these details against your Certificate of Registration (Form 2303) and your permit, or with your accountant."
+    >
+      <SwitchRow
+        id="set-bir-enabled"
+        label="Issue BIR sales invoices"
+        hint={
+          b.enabled
+            ? 'New invoices follow BIR rules and print as sales invoices. A serial is given the first time each one is printed, and its amounts can’t change after that.'
+            : 'Off, invoices print as plain receipts using the tax rate under Billing.'
+        }
+        on={b.enabled}
+        onChange={(v) => put({ enabled: v })}
+      >
+        {errors.bir && (
+          <ul className="mt-2 space-y-0.5 text-sm font-medium text-red-700" role="alert">
+            {errors.bir.map((m) => (
+              <li key={m}>{m}</li>
+            ))}
+          </ul>
+        )}
+      </SwitchRow>
+
+      <div className={`grid gap-4 border-t border-gray-100 p-5 sm:grid-cols-2 ${b.enabled ? '' : 'opacity-70'}`}>
+        <fieldset className="sm:col-span-2">
+          <legend className="mb-1.5 text-sm font-semibold text-gray-800">Registered as</legend>
+          <div className="grid max-w-md grid-cols-2 gap-1 rounded-md border border-gray-300 bg-white p-1">
+            {(
+              [
+                { v: 'vat', label: 'VAT-registered', hint: 'Charges 12% VAT' },
+                { v: 'non_vat', label: 'Non-VAT', hint: 'Percentage tax; no VAT' },
+              ] as const
+            ).map((o) => {
+              const on = b.regime === o.v;
+              return (
+                <label key={o.v} className={`${SEGMENT} ${on ? 'bg-brand-teal-dark text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                  <input type="radio" name={`${ids}-regime`} checked={on} onChange={() => put({ regime: o.v })} className="sr-only" />
+                  <span className="block font-semibold">{o.label}</span>
+                  <span className={`block text-xs ${on ? 'text-white' : 'text-gray-500'}`}>{o.hint}</span>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+
+        {vat && (
+          <>
+            <Field id="set-bir-vatRate" label="VAT rate">
+              <span className="flex items-center gap-2">
+                <input
+                  id="set-bir-vatRate"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.01}
+                  value={b.vatRate}
+                  onChange={(e) => put({ vatRate: e.target.value === '' ? 0 : Number(e.target.value) })}
+                  className={`${FIELD} w-28 font-mono tabular-nums`}
+                />
+                <span className="text-sm text-gray-600">%</span>
+              </span>
+            </Field>
+            <Field id="set-bir-pfVat" label="Professional fees are">
+              <select id="set-bir-pfVat" value={b.professionalFeeVatClass} onChange={(e) => put({ professionalFeeVatClass: e.target.value as BirSettings['professionalFeeVatClass'] })} className={FIELD}>
+                {VAT_CLASSES.map((c) => (
+                  <option key={c} value={c}>
+                    {VAT_CLASS_LABEL[c]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <div className="sm:col-span-2">
+              <SwitchRowPlain
+                label="Price-list prices include VAT"
+                hint={b.pricesIncludeVat ? 'A ₱112 service is ₱100 plus ₱12 VAT; the patient pays ₱112.' : 'VAT is added on top: a ₱100 service bills ₱112.'}
+                on={b.pricesIncludeVat}
+                onChange={(v) => put({ pricesIncludeVat: v })}
+              />
+            </div>
+          </>
+        )}
+
+        <Field id="set-bir-registeredName" label="Registered name" hint="As on Form 2303, if it isn’t the clinic name above.">
+          <input id="set-bir-registeredName" value={b.registeredName} onChange={(e) => put({ registeredName: e.target.value })} maxLength={200} placeholder={form.clinicName} className={FIELD} />
+        </Field>
+        <Field id="set-bir-branchCode" label="Branch code" hint={<>TIN prints as <span className="font-mono">{formatTin(form.taxId, b.branchCode) || '000-000-000-00000'}</span>.</>}>
+          <input
+            id="set-bir-branchCode"
+            value={b.branchCode}
+            onChange={(e) => put({ branchCode: e.target.value.replace(/\D/g, '').slice(0, 5) })}
+            inputMode="numeric"
+            className={`${FIELD} w-32 font-mono tabular-nums`}
+          />
+        </Field>
+        <Field id="set-bir-permitNumber" label="Permit or acknowledgment certificate no.">
+          <input id="set-bir-permitNumber" value={b.permitNumber} onChange={(e) => put({ permitNumber: e.target.value })} maxLength={100} className={`${FIELD} font-mono`} />
+        </Field>
+        <Field id="set-bir-permitIssuedOn" label="Issued on">
+          <input id="set-bir-permitIssuedOn" type="date" value={b.permitIssuedOn} onChange={(e) => put({ permitIssuedOn: e.target.value })} className={`${FIELD} w-auto font-mono`} />
+        </Field>
+      </div>
+
+      <div className="border-t border-gray-100 p-5">
+        <p className="text-sm font-semibold text-gray-900">Approved serial range</p>
+        <p className="mt-0.5 text-sm text-gray-500">
+          Serials are given in order with none skipped. When a range runs out, invoices stop printing until a new range is entered.
+        </p>
+        <div className="mt-3 grid gap-4 sm:grid-cols-3">
+          <Field id="set-birSerialPrefix" label="Prefix" errors={errors.birSerialPrefix}>
+            <input
+              id="set-birSerialPrefix"
+              value={b.serialPrefix}
+              onChange={(e) => put({ serialPrefix: e.target.value.toUpperCase() })}
+              maxLength={6}
+              placeholder="None"
+              className={`${FIELD} font-mono uppercase ${errors.birSerialPrefix ? 'border-red-400' : ''}`}
+            />
+          </Field>
+          <Field id="set-bir-serialStart" label="First number">
+            <input id="set-bir-serialStart" inputMode="numeric" value={b.serialStart || ''} onChange={(e) => put({ serialStart: num(e.target.value) })} className={`${FIELD} font-mono tabular-nums`} />
+          </Field>
+          <Field id="set-bir-serialEnd" label="Last number" hint="Blank if the permit sets no end.">
+            <input id="set-bir-serialEnd" inputMode="numeric" value={b.serialEnd || ''} onChange={(e) => put({ serialEnd: num(e.target.value) })} className={`${FIELD} font-mono tabular-nums`} />
+          </Field>
+        </div>
+        {b.serialStart > 0 && (
+          <p className="mt-2 text-sm text-gray-600">
+            Serials read <span className="font-mono">{formatSerial(SERIAL_PREFIX.test(b.serialPrefix) ? b.serialPrefix : '', b.serialStart)}</span>
+            {b.serialEnd > 0 && (
+              <>
+                {' '}
+                to <span className="font-mono">{formatSerial(SERIAL_PREFIX.test(b.serialPrefix) ? b.serialPrefix : '', b.serialEnd)}</span>
+              </>
+            )}
+            .
+          </p>
+        )}
+      </div>
+    </Section>
+  );
+}
+
+/** A switch row without its own outer padding, for inside a grid. */
+function SwitchRowPlain({ label, hint, on, onChange }: { label: string; hint: ReactNode; on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-gray-900">{label}</p>
+        <p className="mt-0.5 text-sm text-gray-500">{hint}</p>
+      </div>
+      <Switch on={on} onChange={onChange} label={label} />
+    </div>
   );
 }
 

@@ -17,6 +17,8 @@ import {
   type ServiceCategory,
   type ServiceRow,
 } from '@/lib/services';
+import { VAT_CLASS_LABEL } from '@/lib/bir';
+import { VAT_CLASSES, type VatClass } from '@/lib/invoice-totals';
 
 const PRIMARY = `inline-flex items-center justify-center gap-1.5 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`;
 const GHOST = `rounded-md px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 hover:text-gray-900 ${FOCUS_RING}`;
@@ -38,6 +40,7 @@ interface Form {
   type: string;
   code: string;
   duration: string;
+  vatClass: VatClass;
   description: string;
   notes: string;
 }
@@ -54,6 +57,7 @@ function initialForm(row: ServiceRow | null, preset?: ServicePreset): Form {
     type: visitTypeOf(row?.type ?? preset?.type) ?? row?.type ?? preset?.type ?? '',
     code: row?.code ?? '',
     duration: row?.duration ? String(row.duration) : '',
+    vatClass: row?.vatClass ?? 'vatable',
     description: row?.description ?? '',
     notes: row?.notes ?? '',
   };
@@ -156,6 +160,7 @@ export default function ServiceDialog({
       category: form.category,
       unitPrice: Math.round(price * 100) / 100,
       unit: form.unit.trim(),
+      vatClass: form.vatClass,
       description: form.description.trim(),
       notes: form.notes.trim(),
     };
@@ -299,6 +304,24 @@ export default function ServiceDialog({
                 </datalist>
               </div>
             </div>
+            <fieldset className="mt-4">
+              <legend className="mb-1.5 block text-sm font-medium text-gray-700">On BIR invoices</legend>
+              <div className="inline-flex flex-wrap gap-1 rounded-md border border-gray-300 bg-white p-1">
+                {VAT_CLASSES.map((c) => {
+                  const on = form.vatClass === c;
+                  return (
+                    <label
+                      key={c}
+                      className={`cursor-pointer rounded px-3 py-1.5 text-center text-sm font-medium transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-teal ${on ? 'bg-brand-teal-dark text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                    >
+                      <input type="radio" name={`${ids}-vat`} value={c} checked={on} onChange={() => set('vatClass', c)} className="sr-only" />
+                      {VAT_CLASS_LABEL[c]}
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-xs text-gray-500">Matters only when the clinic is VAT-registered. Ask your accountant which of your services are VAT-exempt.</p>
+            </fieldset>
             {priceChanged && (
               <p className="motion-panel-in mt-3 text-sm text-gray-600">
                 Was <span className="font-mono tabular-nums">{money(row.unitPrice)}</span>. The new price applies to invoices made from now on; invoices already
@@ -396,6 +419,7 @@ const blankRow: ServiceRow = {
   unitPrice: 0,
   unit: 'per visit',
   duration: null,
+  vatClass: 'vatable',
   active: true,
   notes: null,
   createdAt: '',

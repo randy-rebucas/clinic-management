@@ -13,7 +13,7 @@ import { requirePermission } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
 import { requireTenantSession, isTenantSessionError, tenantFilter, patientTenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, roundMoney } from '@/lib/api/validate';
-import { invoiceEditableSchema, computeInvoiceTotals, deriveStatus } from '../_lib/totals';
+import { invoiceEditableSchema, computeInvoiceTotals, deriveStatus, statutoryDiscountProblem, taxProfileOf } from '../_lib/totals';
 
 export async function GET(
   request: NextRequest,
@@ -177,7 +177,25 @@ export async function PUT(
       body.tax !== undefined;
 
     if (moneyChanged) {
+      // An issued BIR invoice is a filed document: corrections go on a new invoice, not over it.
+      if (current.bir?.serialNo) {
+        return NextResponse.json(
+          { success: false, error: `Sales invoice ${current.bir.serialNo} has been issued, so its amounts can’t change. Refund it and bill again.` },
+          { status: 409 }
+        );
+      }
       const settings = await getSettings(tenantId);
+      // Invoices made under BIR rules keep them; older ones keep the flat rate they were made with.
+      const taxProfile = current.taxBreakdown ? taxProfileOf(settings.birSettings) : undefined;
+      const discounts = body.discounts ?? (current.discounts || []).map((d: any) => ({
+        type: d.type,
+        reason: d.reason,
+        idNumber: d.idNumber,
+        percentage: d.percentage,
+        amount: d.amount,
+      }));
+      const discountProblem = taxProfile ? statutoryDiscountProblem(discounts) : null;
+      if (discountProblem) return NextResponse.json({ success: false, error: discountProblem }, { status: 400 });
       const totals = computeInvoiceTotals({
         items: body.items ?? (current.items || []).map((i: any) => ({
           serviceId: i.serviceId ? String(i.serviceId) : undefined,
@@ -186,17 +204,14 @@ export async function PUT(
           category: i.category,
           quantity: Number(i.quantity) || 1,
           unitPrice: Math.max(0, Number(i.unitPrice) || 0),
+          vatClass: i.vatClass,
         })),
-        discounts: body.discounts ?? (current.discounts || []).map((d: any) => ({
-          type: d.type,
-          reason: d.reason,
-          percentage: d.percentage,
-          amount: d.amount,
-        })),
+        discounts,
         professionalFee: body.professionalFee ?? current.professionalFee ?? 0,
         tax: body.tax ?? current.tax ?? 0,
         taxRate: settings.billingSettings?.taxRate,
         appliedBy: session.userId,
+        taxProfile,
       });
       total = totals.total;
       Object.assign($set, {
@@ -207,6 +222,8 @@ export async function PUT(
         tax: totals.tax,
         total: totals.total,
       });
+      if (totals.breakdown) $set.taxBreakdown = totals.breakdown;
+      else $unset.taxBreakdown = 1;
     }
 
     const derived = deriveStatus(total, totalPaid);

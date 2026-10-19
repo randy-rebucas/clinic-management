@@ -13,6 +13,10 @@ import {
   PROTECTED_DOCUMENT_HEADERS,
   withScriptNonce,
 } from '@/lib/document-protection';
+import { birSettingsOf } from '@/lib/bir';
+import { issueBirSerial } from '@/lib/bir-issue';
+import { birInvoiceHTML } from '@/lib/bir-invoice-html';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
 
 export async function GET(
   request: NextRequest,
@@ -38,14 +42,16 @@ export async function GET(
       );
     }
 
-    const invoice = await Invoice.findOne(query)
-      .populate({
-        path: 'patient',
-        select: 'firstName lastName patientCode email phone dateOfBirth address',
-        match: patientTenantFilter(tenantId),
-      })
-      .populate('visit', 'visitCode date')
-      .populate('createdBy', 'name email');
+    const load = () =>
+      Invoice.findOne(query)
+        .populate({
+          path: 'patient',
+          select: 'firstName lastName patientCode email phone dateOfBirth address',
+          match: patientTenantFilter(tenantId),
+        })
+        .populate('visit', 'visitCode date')
+        .populate('createdBy', 'name email');
+    let invoice = await load();
 
     if (!invoice) {
       return NextResponse.json(
@@ -68,6 +74,17 @@ export async function GET(
         { success: false, error: 'Nothing has been paid on this invoice yet, so there is no receipt to print' },
         { status: 409 }
       );
+    }
+
+    // Invoices made under BIR rules print as a BIR sales invoice, with a serial issued on first print.
+    const settings = await getSettings(tenantId);
+    const bir = birSettingsOf(settings.birSettings);
+    const asBir = Boolean(invoice.bir?.serialNo || (bir.enabled && invoice.taxBreakdown));
+    if (asBir && !invoice.bir?.serialNo) {
+      const issued = await issueBirSerial({ tenantId: String(tenantId), invoiceId: String(invoice._id), userId: session.userId, bir });
+      if (!issued.ok) return NextResponse.json({ success: false, error: issued.error }, { status: issued.status });
+      invoice = await load();
+      if (!invoice) return NextResponse.json({ success: false, error: 'Invoice not found' }, { status: 404 });
     }
 
     // Seal is computed from the stored record, before any display-only population below
@@ -112,9 +129,33 @@ export async function GET(
     }
 
     // Generate HTML for printable receipt (EOR - Electronic Official Receipt)
-    const html = await generateReceiptHTML(invoiceData, tenantId, seal);
+    const html = asBir
+      ? birInvoiceHTML({
+          invoice: invoiceData,
+          bir,
+          clinic: {
+            name: settings.clinicName || 'MyClinicSoft',
+            address: settings.clinicAddress || '',
+            phone: settings.clinicPhone || '',
+            email: settings.clinicEmail || '',
+            tin: settings.taxId || '',
+          },
+          currency: settings.billingSettings?.currency || 'PHP',
+          timezone: await getTenantTimezone(tenantId),
+          protection: sealedDocumentParts({ seal, clinicName: settings.clinicName || 'MyClinicSoft', documentLabel: 'Sales Invoice', documentCode: invoiceData.bir?.serialNo }),
+        })
+      : await generateReceiptHTML(invoiceData, tenantId, seal);
     after(() =>
-      logPrinted({ session, tenantId, resource: 'invoice', resourceId: id, patientId: invoiceData.patient?._id, what: 'an official receipt', seal, request })
+      logPrinted({
+        session,
+        tenantId,
+        resource: 'invoice',
+        resourceId: id,
+        patientId: invoiceData.patient?._id,
+        what: asBir ? `sales invoice ${invoiceData.bir?.serialNo}` : 'an official receipt',
+        seal,
+        request,
+      })
     );
 
     return new NextResponse(withScriptNonce(html, request), { headers: PROTECTED_DOCUMENT_HEADERS });
@@ -163,6 +204,8 @@ async function generateReceiptHTML(invoice: any, tenantId: string | null | undef
       check: 'Check',
       insurance: 'Insurance',
       hmo: 'HMO',
+      cwt: 'Withholding tax (BIR 2307)',
+      online: 'Online payment',
       other: 'Other',
     };
     return methods[method] || method;

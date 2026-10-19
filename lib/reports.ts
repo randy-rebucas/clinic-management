@@ -4,7 +4,7 @@
  * then refuse to load. Every report also needs reports:read.
  */
 
-export type ReportKey = 'consultations' | 'income' | 'hmo-claims' | 'patients' | 'inventory';
+export type ReportKey = 'consultations' | 'income' | 'hmo-claims' | 'bir' | 'patients' | 'inventory';
 
 type Can = (resource: string, action: string) => boolean;
 
@@ -21,6 +21,8 @@ export const REPORTS: {
   // Money reports: billing staff (invoices:write), as the income/HMO routes allowed before (admin, accountant).
   { key: 'income', label: 'Income', path: 'income', ranged: true, needs: ['invoices', 'write'] },
   { key: 'hmo-claims', label: 'HMO claims', path: 'hmo-claims', ranged: false, needs: ['invoices', 'write'] },
+  // Sales invoices issued, for the books BIR asks for; billing staff, like the other money reports.
+  { key: 'bir', label: 'BIR books', path: 'bir', ranged: true, needs: ['invoices', 'write'] },
   // Aggregates only; whoever may read patients or inventory may read their totals.
   { key: 'patients', label: 'Patients', path: 'demographics', ranged: true, needs: ['patients', 'read'] },
   { key: 'inventory', label: 'Inventory', path: 'inventory', ranged: true, needs: ['inventory', 'read'] },
