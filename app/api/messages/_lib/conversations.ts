@@ -3,7 +3,32 @@ import { Types } from 'mongoose';
 import User from '@/models/User';
 import '@/models/Role';
 import Conversation, { type IConversation } from '@/models/Conversation';
-import type { ChatUser, ConversationSummary } from '@/lib/messaging';
+import type { ChatMessage, ChatUser, ConversationSummary } from '@/lib/messaging';
+
+export function toChatMessage(m: any): ChatMessage {
+  const deleted = Boolean(m.deletedAt);
+  return {
+    id: String(m._id),
+    senderId: String(m.sender),
+    body: deleted ? '' : m.body,
+    createdAt: new Date(m.createdAt).toISOString(),
+    updatedAt: new Date(m.updatedAt ?? m.createdAt).toISOString(),
+    editedAt: m.editedAt && !deleted ? new Date(m.editedAt).toISOString() : null,
+    deleted,
+  };
+}
+
+/** Messages in a conversation the caller can see: not deleted for them, not before they cleared it. */
+export function visibleMessagesFilter(conversation: Pick<IConversation, 'members' | 'tenantId'> & { _id: unknown }, userId: string) {
+  const me = new Types.ObjectId(userId);
+  const clearedAt = conversation.members.find((m) => String(m.user) === userId)?.clearedAt;
+  return {
+    tenantId: conversation.tenantId,
+    conversation: conversation._id,
+    hiddenFor: { $ne: me },
+    ...(clearedAt ? { createdAt: { $gt: clearedAt } } : {}),
+  } as Record<string, any>;
+}
 
 /** Fetch a conversation only when the caller is one of its members. */
 export async function findMemberConversation(
@@ -50,17 +75,19 @@ export async function serializeConversations(
   return conversations.map((c) => {
     const me = c.members.find((m) => String(m.user) === meId);
     const otherId = String(c.members.find((m) => String(m.user) !== meId)?.user ?? '');
+    // Nothing sent since the caller deleted the conversation: it reads as empty to them
+    const cleared = Boolean(me?.clearedAt && c.lastMessageAt && c.lastMessageAt <= me.clearedAt);
     return {
       id: String(c._id),
       other: users.get(otherId) ?? { id: otherId, name: 'Former staff member', role: '' },
-      lastMessage: c.lastMessage?.body
+      lastMessage: c.lastMessage?.body && !cleared
         ? {
             body: c.lastMessage.body,
             senderId: String(c.lastMessage.sender),
             createdAt: new Date(c.lastMessage.createdAt).toISOString(),
           }
         : null,
-      lastMessageAt: c.lastMessageAt ? new Date(c.lastMessageAt).toISOString() : null,
+      lastMessageAt: c.lastMessageAt && !cleared ? new Date(c.lastMessageAt).toISOString() : null,
       unread: me?.unread ?? 0,
     };
   });

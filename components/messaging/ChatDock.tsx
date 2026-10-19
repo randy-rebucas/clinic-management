@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useMessaging } from './MessagingProvider';
 import { ChatAvatar, CHAT_FOCUS_RING, ContactSearch, ConversationList } from './ChatParts';
 import ChatThread from './ChatThread';
+import ConversationActions from './ConversationActions';
 import type { ConversationSummary } from '@/lib/messaging';
 
 const ICON_BUTTON = `p-1.5 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors ${CHAT_FOCUS_RING}`;
@@ -50,6 +51,11 @@ function ChatWindow({ conversation, minimized }: { conversation: ConversationSum
             </span>
           )}
         </button>
+        <ConversationActions
+          conversation={conversation}
+          onLeave={() => closeChat(conversation.id)}
+          triggerClassName="p-1.5 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+        />
         <Link
           href={`/messages?c=${conversation.id}`}
           onClick={() => closeChat(conversation.id)}

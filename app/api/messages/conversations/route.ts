@@ -23,7 +23,11 @@ export async function GET() {
     const me = new Types.ObjectId(session.userId);
 
     const [rows, unreadAgg] = await Promise.all([
-      Conversation.find({ tenantId: tenantObjectId, 'members.user': me, lastMessageAt: { $ne: null } })
+      Conversation.find({
+        tenantId: tenantObjectId,
+        members: { $elemMatch: { user: me, hidden: { $ne: true } } },
+        lastMessageAt: { $ne: null },
+      })
         .sort({ lastMessageAt: -1 })
         .limit(LIST_LIMIT)
         .lean(),

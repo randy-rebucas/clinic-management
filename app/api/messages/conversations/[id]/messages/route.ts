@@ -8,23 +8,14 @@ import User from '@/models/User';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { sendPushToUser } from '@/lib/push-notifications';
-import { MESSAGE_MAX_LENGTH, type ChatMessage } from '@/lib/messaging';
-import { findMemberConversation } from '../../../_lib/conversations';
+import { MESSAGE_MAX_LENGTH } from '@/lib/messaging';
+import { findMemberConversation, toChatMessage, visibleMessagesFilter } from '../../../_lib/conversations';
 
 const PAGE_LIMIT = 30;
 
 const sendMessageSchema = z.object({
   body: z.string().trim().min(1, 'Message is empty').max(MESSAGE_MAX_LENGTH),
 });
-
-function toChatMessage(m: any): ChatMessage {
-  return {
-    id: String(m._id),
-    senderId: String(m.sender),
-    body: m.body,
-    createdAt: new Date(m.createdAt).toISOString(),
-  };
-}
 
 function parseDate(value: string | null) {
   if (!value) return null;
@@ -34,8 +25,9 @@ function parseDate(value: string | null) {
 
 /**
  * Messages in a conversation, oldest first.
- * - `after` (ISO date): messages at or after that time, for polling. Callers dedupe by id.
- * - `before` (ISO date): the page of older messages before that time.
+ * - `after` (ISO date): messages sent, edited or deleted at or after that time (by `updatedAt`),
+ *   for polling. Callers replace by id.
+ * - `before` (ISO date): the page of older messages sent before that time.
  * - neither: the latest page.
  */
 export async function GET(
@@ -50,20 +42,21 @@ export async function GET(
     await connectDB();
     const { id } = await params;
     if (!isValidId(id)) return notFound('Conversation');
-    if (!(await findMemberConversation(tenantObjectId, session.userId, id))) return notFound('Conversation');
+    const conversation = await findMemberConversation(tenantObjectId, session.userId, id);
+    if (!conversation) return notFound('Conversation');
 
     const sp = request.nextUrl.searchParams;
     const after = parseDate(sp.get('after'));
     const before = parseDate(sp.get('before'));
-    const filter: Record<string, unknown> = { tenantId: tenantObjectId, conversation: new Types.ObjectId(id) };
+    const filter = visibleMessagesFilter(conversation, session.userId);
 
     if (after) {
-      filter.createdAt = { $gte: after };
-      const rows = await Message.find(filter).sort({ createdAt: 1, _id: 1 }).limit(200).lean();
+      filter.updatedAt = { $gte: after };
+      const rows = await Message.find(filter).sort({ updatedAt: 1, _id: 1 }).limit(200).lean();
       return NextResponse.json({ success: true, data: { messages: rows.map(toChatMessage), hasMore: false } });
     }
 
-    if (before) filter.createdAt = { $lt: before };
+    if (before) filter.createdAt = { ...filter.createdAt, $lt: before };
     const rows = await Message.find(filter)
       .sort({ createdAt: -1, _id: -1 })
       .limit(PAGE_LIMIT + 1)
@@ -112,6 +105,9 @@ export async function POST(
           lastMessageAt: message.createdAt,
           'members.$[self].unread': 0,
           'members.$[self].lastReadAt': message.createdAt,
+          // Bring the conversation back for anyone who deleted it
+          'members.$[self].hidden': false,
+          'members.$[other].hidden': false,
         },
         $inc: { 'members.$[other].unread': 1 },
       },

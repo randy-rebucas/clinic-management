@@ -63,13 +63,16 @@ export interface IInvoice extends Document {
     amount: number;
     /** Day of the visit, or discharge; the filing deadline runs from it. */
     servedOn: Date;
-    status: 'draft' | 'filed' | 'paid' | 'returned' | 'denied';
+    status: 'draft' | 'filed' | 'paid' | 'part_paid' | 'returned' | 'denied';
     claimNumber?: string;
     filedAt?: Date;
     paidAt?: Date;
     paidAmount?: number;
     withheldAmount?: number;
     note?: string;
+    /** When PhilHealth sent it back for correction; the deadline to file it again runs from here. */
+    returnedAt?: Date;
+    deniedAt?: Date;
   };
   /** The BIR sales invoice issued for this bill: serial from the registered range, set once. */
   bir?: {
@@ -208,13 +211,15 @@ const InvoiceSchema: Schema = new Schema(
           pfAmount: { type: Number, default: 0 },
           amount: { type: Number, default: 0 },
           servedOn: { type: Date, required: true },
-          status: { type: String, enum: ['draft', 'filed', 'paid', 'returned', 'denied'], default: 'draft' },
+          status: { type: String, enum: ['draft', 'filed', 'paid', 'part_paid', 'returned', 'denied'], default: 'draft' },
           claimNumber: String,
           filedAt: Date,
           paidAt: Date,
           paidAmount: Number,
           withheldAmount: Number,
           note: String,
+          returnedAt: Date,
+          deniedAt: Date,
         },
         { _id: false }
       ),
@@ -302,6 +307,7 @@ InvoiceSchema.index({ tenantId: 1, status: 1, createdAt: -1 }); // For status-ba
 InvoiceSchema.index({ tenantId: 1, patient: 1, status: 1 }); // For patient's unpaid invoices
 InvoiceSchema.index({ tenantId: 1, 'insurance.status': 1 }); // For insurance claim queries
 InvoiceSchema.index({ tenantId: 1, 'insurance.hmo': 1, 'insurance.batch': 1 }); // Claims still to send, per HMO
+InvoiceSchema.index({ tenantId: 1, 'philhealth.status': 1, 'philhealth.servedOn': 1 }); // PhilHealth claims by state, nearest deadline first
 InvoiceSchema.index({ tenantId: 1, createdAt: 1, status: 1 }); // For period + status queries (dashboard, reports)
 InvoiceSchema.index({ tenantId: 1, visit: 1, status: 1 }); // For visit's invoices by status
 InvoiceSchema.index(

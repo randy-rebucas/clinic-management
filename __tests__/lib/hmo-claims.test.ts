@@ -4,14 +4,14 @@ import { Types } from 'mongoose';
 vi.mock('server-only', () => ({}));
 vi.mock('@/models/Invoice', () => ({ default: { updateOne: vi.fn(), updateMany: vi.fn(), find: vi.fn() } }));
 vi.mock('@/models/Hmo', () => ({ default: { findOne: vi.fn(), find: vi.fn() } }));
-vi.mock('@/models/HmoClaimBatch', () => ({ default: { findOne: vi.fn(), create: vi.fn(), deleteOne: vi.fn() } }));
+vi.mock('@/models/HmoClaimBatch', () => ({ default: { findOne: vi.fn(), findOneAndUpdate: vi.fn(), updateOne: vi.fn(), exists: vi.fn(), create: vi.fn(), deleteOne: vi.fn() } }));
 vi.mock('@/lib/counters', () => ({ nextSequence: vi.fn(), formatCode: vi.fn() }));
 vi.mock('@/lib/invoice-payments', () => ({ recordInvoicePayments: vi.fn(), PAYMENT_EPSILON: 0.005 }));
 
 import Invoice from '@/models/Invoice';
 import HmoClaimBatch from '@/models/HmoClaimBatch';
 import { recordInvoicePayments } from '@/lib/invoice-payments';
-import { closeBatch, recordRemittance } from '@/lib/hmo-claims';
+import { claimHold, claimInvoiceStates, closeBatch, recordRemittance } from '@/lib/hmo-claims';
 import { claimProblem, suggestedWithholding } from '@/lib/hmo';
 
 const TENANT = '507f1f77bcf86cd799439011';
@@ -61,7 +61,7 @@ describe('recordRemittance', () => {
 
   it('posts an HMO payment and the withheld tax to each invoice, and settles the transmittal', async () => {
     const batch = fakeBatch();
-    vi.mocked(HmoClaimBatch.findOne).mockResolvedValue(batch as any);
+    vi.mocked(HmoClaimBatch.findOneAndUpdate).mockResolvedValue(batch as any);
     vi.mocked(recordInvoicePayments).mockResolvedValue({ ok: true, invoice: {} });
 
     const r = await recordRemittance({
@@ -91,7 +91,7 @@ describe('recordRemittance', () => {
 
   it('leaves a part-paid claim open, and marks the transmittal part paid', async () => {
     const batch = fakeBatch();
-    vi.mocked(HmoClaimBatch.findOne).mockResolvedValue(batch as any);
+    vi.mocked(HmoClaimBatch.findOneAndUpdate).mockResolvedValue(batch as any);
     vi.mocked(recordInvoicePayments).mockResolvedValue({ ok: true, invoice: {} });
 
     await recordRemittance({ tenantId: TENANT, batchId: String(batch._id), userId: USER, date: new Date(), form2307Received: false, lines: [{ invoiceId: String(INV_A), paid: 400, withheld: 0 }] });
@@ -103,7 +103,7 @@ describe('recordRemittance', () => {
 
   it('sends a refused claim back to the patient without posting money', async () => {
     const batch = fakeBatch();
-    vi.mocked(HmoClaimBatch.findOne).mockResolvedValue(batch as any);
+    vi.mocked(HmoClaimBatch.findOneAndUpdate).mockResolvedValue(batch as any);
 
     await recordRemittance({
       tenantId: TENANT,
@@ -122,7 +122,7 @@ describe('recordRemittance', () => {
 
   it('reports a claim the invoice refused and keeps it open', async () => {
     const batch = fakeBatch();
-    vi.mocked(HmoClaimBatch.findOne).mockResolvedValue(batch as any);
+    vi.mocked(HmoClaimBatch.findOneAndUpdate).mockResolvedValue(batch as any);
     vi.mocked(recordInvoicePayments).mockResolvedValue({ ok: false, status: 400, error: 'Payment exceeds the outstanding balance (100.00)' });
 
     const r = await recordRemittance({ tenantId: TENANT, batchId: String(batch._id), userId: USER, date: new Date(), form2307Received: false, lines: [{ invoiceId: String(INV_A), paid: 1000, withheld: 0 }] });
@@ -132,21 +132,105 @@ describe('recordRemittance', () => {
   });
 
   it('refuses a draft', async () => {
-    vi.mocked(HmoClaimBatch.findOne).mockResolvedValue(fakeBatch('draft') as any);
+    vi.mocked(HmoClaimBatch.findOneAndUpdate).mockResolvedValue(fakeBatch('draft') as any);
     const r = await recordRemittance({ tenantId: TENANT, batchId: String(new Types.ObjectId()), userId: USER, date: new Date(), form2307Received: false, lines: [] });
     expect(r).toMatchObject({ ok: false, status: 409 });
+    // Refused, so the transmittal is let go again.
+    expect(HmoClaimBatch.updateOne).toHaveBeenCalledWith(expect.anything(), { $unset: { postingSince: 1 } });
+  });
+
+  it('refuses while someone else is posting to the same transmittal, and posts nothing', async () => {
+    vi.mocked(HmoClaimBatch.findOneAndUpdate).mockResolvedValue(null);
+    vi.mocked(HmoClaimBatch.exists).mockResolvedValue({ _id: new Types.ObjectId() } as any);
+    const r = await recordRemittance({ tenantId: TENANT, batchId: String(new Types.ObjectId()), userId: USER, date: new Date(), form2307Received: false, lines: [{ invoiceId: String(INV_A), paid: 100, withheld: 0 }] });
+    expect(r).toMatchObject({ ok: false, status: 409, error: expect.stringMatching(/Someone else/) });
+    expect(recordInvoicePayments).not.toHaveBeenCalled();
+    expect(HmoClaimBatch.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('lets the transmittal go in the same save that records the payment', async () => {
+    const batch = fakeBatch();
+    vi.mocked(HmoClaimBatch.findOneAndUpdate).mockResolvedValue(batch as any);
+    vi.mocked(recordInvoicePayments).mockResolvedValue({ ok: true, invoice: {} });
+    await recordRemittance({ tenantId: TENANT, batchId: String(batch._id), userId: USER, date: new Date(), form2307Received: false, lines: [{ invoiceId: String(INV_A), paid: 400, withheld: 0 }] });
+    expect((batch as any).postingSince).toBeNull();
+    expect(batch.save).toHaveBeenCalled();
+    expect(HmoClaimBatch.updateOne).not.toHaveBeenCalled();
   });
 });
 
 describe('closeBatch', () => {
+  beforeEach(() => vi.clearAllMocks());
+
   it('marks unpaid claims refused and part-paid ones short paid', async () => {
     const batch = fakeBatch('partial');
     batch.claims[0].paid = 300;
-    vi.mocked(HmoClaimBatch.findOne).mockResolvedValue(batch as any);
+    vi.mocked(HmoClaimBatch.findOneAndUpdate).mockResolvedValue(batch as any);
 
     await closeBatch(TENANT, String(batch._id));
 
     expect(batch.claims.map((c) => c.status)).toEqual(['short_paid', 'denied']);
     expect(batch.status).toBe('closed');
+  });
+
+  it('closes the part-paid claim on its bill too, so reports stop counting it as open', async () => {
+    const batch = fakeBatch('partial');
+    batch.claims[0].paid = 300;
+    vi.mocked(HmoClaimBatch.findOneAndUpdate).mockResolvedValue(batch as any);
+    vi.mocked(Invoice.updateOne).mockClear();
+
+    await closeBatch(TENANT, String(batch._id));
+
+    expect(Invoice.updateOne).toHaveBeenCalledWith(
+      { _id: INV_A, tenantId: expect.anything() },
+      { $set: { 'insurance.status': 'paid', 'insurance.denialReason': 'Transmittal closed with the rest unpaid' } }
+    );
+    expect(Invoice.updateOne).toHaveBeenCalledWith(
+      { _id: INV_B, tenantId: expect.anything() },
+      { $set: { 'insurance.status': 'rejected', 'insurance.denialReason': 'Transmittal closed unpaid' } }
+    );
+  });
+});
+
+describe('claimHold', () => {
+  const lean = (value: unknown) => ({ select: () => ({ lean: () => Promise.resolve(value) }) });
+
+  it('holds a bill whose claim waits in a sent transmittal, and frees it once answered', async () => {
+    const batch = { batchNumber: 'TR-000007', hmoName: 'Maxicare', status: 'submitted', claims: [{ invoice: INV_A, status: 'pending' }] };
+    vi.mocked(HmoClaimBatch.findOne).mockReturnValue(lean(batch) as any);
+    const invoice = { _id: INV_A, insurance: { batch: new Types.ObjectId() } };
+
+    expect(await claimHold(TENANT, invoice, 'refund')).toMatch(/sent to Maxicare in transmittal TR-000007.*then refund it/);
+
+    batch.claims[0].status = 'denied';
+    expect(await claimHold(TENANT, invoice, 'refund')).toBeNull();
+  });
+
+  it('asks for a draft claim to be taken out first', async () => {
+    vi.mocked(HmoClaimBatch.findOne).mockReturnValue(lean({ batchNumber: 'TR-000008', hmoName: 'Intellicare', status: 'draft', claims: [{ invoice: INV_B, status: 'pending' }] }) as any);
+    expect(await claimHold(TENANT, { _id: INV_B, insurance: { batch: new Types.ObjectId() } }, 'change')).toMatch(/draft transmittal TR-000008.*Take it out/);
+  });
+
+  it('never holds a bill that was never claimed', async () => {
+    expect(await claimHold(TENANT, { _id: INV_A, insurance: {} }, 'change')).toBeNull();
+  });
+});
+
+describe('claimInvoiceStates', () => {
+  it('works out the withholding to expect at the HMO’s rates today, capped at what is left', async () => {
+    const invoice = { _id: INV_A, status: 'unpaid', total: 1000, outstandingBalance: 1000, subtotal: 500, professionalFee: 500, taxBreakdown: {} };
+    vi.mocked(Invoice.find).mockReturnValue({ select: () => ({ lean: () => Promise.resolve([invoice]) }) } as any);
+    const claims = [{ invoice: INV_A, amount: 1000, paid: 0, withheld: 0, status: 'pending' as const }];
+
+    // Half services at 2%, half doctor's fee at 10%: 10 + 50.
+    const now = await claimInvoiceStates(new Types.ObjectId(TENANT), claims, { withholdingServicesRate: 2, withholdingProfessionalRate: 10 });
+    expect(now[String(INV_A)].suggestedWithheld).toBe(60);
+
+    // The HMO's rates changed since the claim was sent.
+    const later = await claimInvoiceStates(new Types.ObjectId(TENANT), claims, { withholdingServicesRate: 1, withholdingProfessionalRate: 5 });
+    expect(later[String(INV_A)].suggestedWithheld).toBe(30);
+
+    const noRates = await claimInvoiceStates(new Types.ObjectId(TENANT), claims);
+    expect(noRates[String(INV_A)].suggestedWithheld).toBeNull();
   });
 });

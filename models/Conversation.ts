@@ -5,6 +5,10 @@ export interface IConversationMember {
   // Messages from others since this member last read the conversation
   unread: number;
   lastReadAt?: Date;
+  // Set when the member deletes the conversation: messages up to then are hidden from them
+  clearedAt?: Date;
+  // Out of the member's list until the next message arrives
+  hidden?: boolean;
 }
 
 export interface IConversation extends Document {
@@ -28,6 +32,8 @@ const ConversationMemberSchema = new Schema<IConversationMember>(
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     unread: { type: Number, default: 0, min: 0 },
     lastReadAt: { type: Date },
+    clearedAt: { type: Date },
+    hidden: { type: Boolean, default: false },
   },
   { _id: false }
 );

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import HmoClaimBatch from '@/models/HmoClaimBatch';
@@ -9,8 +9,12 @@ import { getSettings } from '@/lib/settings';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { escapeHtml as e, PROTECTED_DOCUMENT_HEADERS, withScriptNonce } from '@/lib/document-protection';
 import { formatTin, birSettingsOf } from '@/lib/bir';
+import { createAuditLog } from '@/lib/audit';
 
-/** GET: the transmittal letter to send with the claims: one line per claim, totals, sign-off. */
+/**
+ * GET: the transmittal letter to send with the claims: one line per claim, totals, sign-off. It
+ * lists patients' names, member IDs and LOA numbers for a third party, so each print is audited.
+ */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireTenantSession();
   if (isTenantSessionError(ctx)) return ctx;
@@ -80,6 +84,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 <p class="muted">Please quote ${e(batch.batchNumber)} on your remittance advice, and send BIR Form 2307 for any tax withheld.</p>
 <div class="sign"><div>Prepared by</div><div>Received by (name, date)</div></div>
 </body></html>`;
+    after(() =>
+      createAuditLog({
+        userId: ctx.session.userId,
+        userEmail: ctx.session.email,
+        userRole: ctx.session.role,
+        tenantId: ctx.tenantId,
+        action: 'print',
+        resource: 'hmo_claim',
+        resourceId: id,
+        isSensitive: true,
+        ipAddress: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || undefined,
+        userAgent: request.headers.get('user-agent') ?? undefined,
+        requestMethod: 'GET',
+        requestPath: request.nextUrl.pathname,
+        description: `Printed transmittal ${batch.batchNumber} to ${batch.hmoName} (${batch.claims.length} ${batch.claims.length === 1 ? 'claim' : 'claims'})`,
+        metadata: { invoices: batch.claims.map((c: any) => c.invoiceNumber) },
+      })
+    );
     return new NextResponse(withScriptNonce(html, request), { headers: PROTECTED_DOCUMENT_HEADERS });
   } catch (error) {
     console.error('Error printing transmittal:', error);

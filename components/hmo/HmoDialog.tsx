@@ -29,8 +29,8 @@ interface Form {
 
 type FieldKey = 'name' | 'email' | 'paymentTermsDays' | 'withholdingServicesRate' | 'withholdingProfessionalRate';
 
-const initial = (row: HmoRow | null): Form => ({
-  name: row?.name ?? '',
+const initial = (row: HmoRow | null, name = ''): Form => ({
+  name: row?.name ?? name,
   kind: row?.kind ?? 'hmo',
   code: row?.code ?? '',
   contactName: row?.contactName ?? '',
@@ -67,11 +67,29 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   );
 }
 
-/** Add or change an HMO, insurer or company account the clinic bills. */
-export default function HmoDialog({ row, rows, onClose, onSaved }: { row: HmoRow | null; rows: HmoRow[]; onClose: () => void; onSaved: (message: string) => void }) {
+/**
+ * Add or change an HMO, insurer or company account the clinic bills. `name` pre-fills a new one
+ * (a payer typed on invoices); `onSaved` gets the saved record.
+ */
+export default function HmoDialog({
+  row,
+  rows,
+  name,
+  hint,
+  onClose,
+  onSaved,
+}: {
+  row: HmoRow | null;
+  rows: HmoRow[];
+  name?: string;
+  /** Replaces the dialog's subtitle, e.g. to say what happens to waiting claims. */
+  hint?: string;
+  onClose: () => void;
+  onSaved: (message: string, saved: { _id: string; name: string }) => void;
+}) {
   const ids = useId();
   const send = useSend('The HMO couldn’t be saved');
-  const [form, setForm] = useState<Form>(() => initial(row));
+  const [form, setForm] = useState<Form>(() => initial(row, name));
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,7 +132,8 @@ export default function HmoDialog({ row, rows, onClose, onSaved }: { row: HmoRow
       setError(result.error);
       return;
     }
-    onSaved(editing ? `Saved ${body.name}.` : `Added ${body.name}. Pick it on an invoice’s insurer section to bill it.`);
+    const saved = result.data as { _id: string; name: string };
+    onSaved(editing ? `Saved ${body.name}.` : `Added ${body.name} to the HMO list.`, { _id: String(saved?._id ?? row?._id ?? ''), name: saved?.name ?? body.name });
   };
 
   const input = (key: FieldKey | 'code' | 'contactName' | 'phone' | 'address', label: string, props: React.InputHTMLAttributes<HTMLInputElement> = {}, optional = false) => {
@@ -149,7 +168,7 @@ export default function HmoDialog({ row, rows, onClose, onSaved }: { row: HmoRow
           <h2 id={`${ids}-title`} className="text-lg font-bold tracking-tight text-gray-900">
             {editing ? row.name : 'Add an HMO'}
           </h2>
-          <p className="mt-0.5 text-sm text-gray-600">Claims to it are sent together in transmittals, and its payments are matched to them.</p>
+          <p className="mt-0.5 text-sm text-gray-600">{hint ?? 'Claims to it are sent together in transmittals, and its payments are matched to them.'}</p>
         </div>
 
         <div className="divide-y divide-gray-100">

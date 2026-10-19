@@ -15,7 +15,11 @@ export interface IClaimLine {
   paid: number;
   /** Tax withheld and certified on Form 2307. */
   withheld: number;
-  /** What the payer is likely to withhold (lib/hmo.ts suggestedWithholding), worked out when sent. */
+  /**
+   * What the payer was likely to withhold at its rates when the claim was sent (lib/hmo.ts
+   * suggestedWithholding). Recording a payment works it out again at the rates of the day
+   * (claimInvoiceStates); this is the fallback.
+   */
   suggestedWithheld: number;
   status: ClaimLineStatus;
   denialReason?: string;
@@ -48,6 +52,11 @@ export interface IHmoClaimBatch extends Document {
   dueAt?: Date;
   remittances: IRemittance[];
   notes?: string;
+  /**
+   * Set while a payment is being posted or the transmittal closed (lib/hmo-claims.ts
+   * takeForPosting), so two of them can't overwrite each other's claim lines.
+   */
+  postingSince?: Date | null;
   createdBy?: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -93,6 +102,7 @@ const HmoClaimBatchSchema = new Schema<IHmoClaimBatch>(
     dueAt: Date,
     remittances: { type: [RemittanceSchema], default: [] },
     notes: String,
+    postingSince: Date,
     createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }

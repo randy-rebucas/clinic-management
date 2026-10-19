@@ -31,3 +31,31 @@ export async function POST(
     return NextResponse.json({ success: false, error: 'Failed to mark conversation read' }, { status: 500 });
   }
 }
+
+/** Mark the conversation unread for the caller, as a reminder to come back to it. */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const ctx = await requireTenantSession();
+  if (isTenantSessionError(ctx)) return ctx;
+  const { session, tenantObjectId } = ctx;
+
+  try {
+    await connectDB();
+    const { id } = await params;
+    if (!isValidId(id)) return notFound('Conversation');
+
+    const me = new Types.ObjectId(session.userId);
+    const result = await Conversation.updateOne(
+      { _id: id, tenantId: tenantObjectId, members: { $elemMatch: { user: me, hidden: { $ne: true } } } },
+      { $max: { 'members.$.unread': 1 } }
+    );
+    if (result.matchedCount === 0) return notFound('Conversation');
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error('Error marking conversation unread:', error);
+    return NextResponse.json({ success: false, error: 'Failed to mark conversation unread' }, { status: 500 });
+  }
+}

@@ -1,62 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
-import HmoClaimBatch from '@/models/HmoClaimBatch';
 import { requirePermission } from '@/app/lib/auth-helpers';
-import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
+import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
 import { createAuditLog } from '@/lib/audit';
-import { createBatch, listOpenClaims } from '@/lib/hmo-claims';
+import { createBatch, listBatches } from '@/lib/hmo-claims';
+import { isBatchShow, isOwedAgingKey } from '@/lib/hmo';
 
 /**
- * GET: the HMO claims work queue: claims still to send (grouped on the page by payer) and the
- * transmittals, newest first, with what is still owed on each. Billing staff (invoices:write).
+ * GET: transmittals, one page at a time. `show` = waiting | overdue | draft | done, `hmo` = a
+ * payer id, `aging` = days since sent (waiting only), `search` = transmittal number, payer,
+ * patient, invoice or LOA number. Billing staff (invoices:write).
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   const ctx = await requireTenantSession();
   if (isTenantSessionError(ctx)) return ctx;
   const permissionCheck = await requirePermission(ctx.session, 'invoices', 'write');
   if (permissionCheck) return permissionCheck;
 
+  const sp = request.nextUrl.searchParams;
+  const show = sp.get('show');
+  const aging = sp.get('aging');
+  const hmo = sp.get('hmo');
+  const page = Math.max(1, Math.floor(Number(sp.get('page')) || 1));
+  const limit = Math.min(50, Math.max(1, Math.floor(Number(sp.get('limit')) || 20)));
+
   try {
     await connectDB();
-    const [open, batches] = await Promise.all([
-      listOpenClaims(ctx.tenantId),
-      HmoClaimBatch.find({ tenantId: ctx.tenantObjectId })
-        .select('hmo hmoName batchNumber status totalClaimed submittedAt dueAt createdAt claims.paid claims.withheld claims.status claims.amount')
-        .sort({ createdAt: -1 })
-        .limit(200)
-        .lean<any[]>(),
-    ]);
-    const now = Date.now();
-    return NextResponse.json({
-      success: true,
-      data: {
-        open,
-        batches: batches.map((b) => {
-          const received = b.claims.reduce((s: number, c: any) => s + (c.paid || 0) + (c.withheld || 0), 0);
-          const outstanding = b.claims.filter((c: any) => c.status === 'pending').reduce((s: number, c: any) => s + c.amount - (c.paid || 0) - (c.withheld || 0), 0);
-          return {
-            _id: String(b._id),
-            hmoId: String(b.hmo),
-            hmoName: b.hmoName,
-            batchNumber: b.batchNumber,
-            status: b.status,
-            claims: b.claims.length,
-            totalClaimed: b.totalClaimed,
-            received: Math.round(received * 100) / 100,
-            outstanding: Math.round(outstanding * 100) / 100,
-            submittedAt: b.submittedAt ?? null,
-            dueAt: b.dueAt ?? null,
-            overdue: Boolean(b.dueAt && ['submitted', 'partial'].includes(b.status) && new Date(b.dueAt).getTime() < now),
-            createdAt: b.createdAt,
-          };
-        }),
-      },
+    const { rows, total } = await listBatches({
+      tenantId: ctx.tenantId,
+      show: isBatchShow(show) ? show : null,
+      aging: isOwedAgingKey(aging) ? aging : null,
+      hmo: hmo && isValidId(hmo) ? hmo : null,
+      search: (sp.get('search') ?? '').slice(0, 100),
+      page,
+      limit,
     });
+    return NextResponse.json({ success: true, data: rows, pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) } });
   } catch (error) {
-    console.error('Error loading HMO claims:', error);
-    return NextResponse.json({ success: false, error: 'Failed to load HMO claims' }, { status: 500 });
+    console.error('Error loading HMO transmittals:', error);
+    return NextResponse.json({ success: false, error: 'Failed to load the transmittals' }, { status: 500 });
   }
 }
 
