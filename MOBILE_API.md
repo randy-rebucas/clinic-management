@@ -11,6 +11,8 @@ to the endpoints below. Staff keep the web app.
 | `POST /api/patients/[id]/login-qr` | Staff issue a sign-in QR from the patient record. Single use, valid 15 minutes, scoped to the issuing clinic (`tid`). Issuing a new one cancels the previous unused one |
 | `DELETE /api/patients/[id]/login-qr` | Staff cancel the QR. **Also signs the patient out of the app everywhere** (sessions from an already-scanned QR can't be singled out) |
 | `POST /api/patients/[id]/app-credentials` | Staff set the patient's password (and email). Password sign-ins with it are scoped to that clinic (`tid`) until the patient proves their phone and sets their own. Signs the patient out everywhere |
+| `GET/POST/DELETE /api/patients/[id]/guardians` | **New.** Family access from the patient record: who may manage this patient's records from their own app login. The manager must be registered at the same clinic. Removing a manager removes them at every clinic |
+| `GET /api/queue/check-in-qr` | **New.** The clinic's rotating self check-in QR (`{ enabled, qrImage, expiresAt }`), shown from Queue → Check-in QR |
 
 ## Conventions
 
@@ -108,6 +110,7 @@ after linking joins at the patient's next code sign-in.
 | `GET /api/patients/me` | Own profile. **Changed:** a fixed field list: `_id, patientCode, firstName, middleName, lastName, suffix, dateOfBirth, sex, email, phone, contacts, address, emergencyContact, allergies, preExistingConditions`, plus `hasPassword` (boolean). Nothing else (internal fields, medical history, auth fields) is returned |
 | `PATCH /api/patients/me` | Only `contacts.{email,address}`, `address.{street,city,state,zipCode}` and `emergencyContact.{name,phone,relationship}` |
 | `POST /api/patients/me/change-password` | `{ currentPassword?, newPassword, otp?, deviceId? }` (min 8). Returns `token`, `expiresIn`, `refreshToken`, `refreshExpiresIn`. **Changed:** **forgot password** = OTP sign-in, then call this with only `newPassword` within 15 minutes (`amr: "otp"`, `iat` under 15 min old). Otherwise a patient with a password must send `currentPassword`: missing gives `400 CURRENT_PASSWORD_REQUIRED`, wrong gives `400 WRONG_CURRENT_PASSWORD`. A patient with **no** password (signed in by QR, or by code more than 15 minutes ago) needs the same phone proof to set one: on `400 OTP_REQUIRED`, request a code and resend with `otp`, or sign in with a code again |
+| `POST /api/patients/me/phone-code` | **New.** Text a confirmation code to the signed-in patient's own phone, stored on their own record, for the `otp` field after `400 OTP_REQUIRED` (change-password, setup-credentials, adding a family member). → `{ phone }` (masked). `400 NO_PHONE` when the record has no usable mobile number. Prefer it over `auth/otp/request` when signed in: that one finds a record by number, so in a household sharing one phone the code can land on a child's record and then fail to verify |
 | `POST /api/patients/me/login-qr` | Issue a login QR to sign in on another device (replaces any unused one). Single use, 15 minutes. A scoped session issues a QR with the same `tid` |
 | `DELETE /api/patients/me/login-qr` | Revoke the login QR **and sign out every session** (a QR that was already scanned can't be told apart). The caller gets a new `token`, `expiresIn`, `refreshToken`, `refreshExpiresIn`. Optional `{ deviceId }` keeps this device's push |
 | `POST /api/patients/me/devices` | `{ deviceId, platform: "ios"\|"android", pushToken?, appVersion? }`. Call after sign-in, after a password change, and when the Expo token changes. **Changed:** a device or push token belongs to one patient at a time; registering it removes any other patient's registration of the same `deviceId` or `pushToken` |
@@ -183,7 +186,86 @@ name from `request.testType`, and flags results with any value marked high or lo
 booking doctor objects now carry a real `specialization` name, which was always blank before.
 
 Push payloads (Expo) carry `data.tag` and sometimes `data.url`. Treat both as hints and refresh the
-relevant list.
+relevant list. **New:** pushes now reach every device of the person (devices registered from any of
+their linked records) and the devices of family members who manage them (see below).
+
+### Health summary (new)
+
+| Method & path | Notes |
+|---|---|
+| `GET /api/patients/me/health-summary` | The patient's record across every clinic in the session's scope, merged and tagged with the clinic that recorded each item: `{ generatedAt, patient: { firstName, middleName, lastName, suffix, dateOfBirth, sex }, clinics: [{ tenantId, name, patientCode }], allergies: [{ substance, reaction, severity, clinics[] }], conditions: [{ condition, status, diagnosisDate, notes, clinics[] }], medications: { current: [...], recent: [...] }, immunizations: [{ name, date, batch, notes, clinic }] }` |
+| `POST /api/patients/me/health-summary/pdf-link` | `{ url, expiresAt }`: a 10-minute link to the same summary as a PDF (`GET /api/health-summary/[token]`). Hand it to the browser or share sheet |
+
+- **Merging:** one allergy per substance and one condition per name (case-insensitive); an active
+  or chronic record outranks a resolved one. The same vaccine on the same day at two clinics is
+  one dose. Open conditions come first; vaccinations newest first.
+- **Medicines:** `current` = on a prescription that is still open (`active`, `dispensed`,
+  `partially-dispensed`) whose course hasn't ended: issue date + `durationDays`, or 30 days when
+  no duration is given (`endsAt` is set only when there is a duration). `recent` = the other
+  medicines prescribed in the last 12 months. Each medicine appears once per list, from its
+  latest prescription: `{ name, genericName, strength, dose, frequency, route, durationDays,
+  instructions, issuedAt, endsAt, prescriptionId, prescriber, clinic }`.
+- A clinic-scoped session (`tid`) gets a summary of that clinic only, PDF included.
+
+### Self check-in and live queue (new)
+
+Clinics that turn on **Settings → Queue → "Let patients check themselves in from the app"** show a
+rotating check-in QR on a reception tablet (Queue → Check-in QR) or the waiting-room screen. The QR
+holds `{"type":"clinic_checkin","tenantId":"…","code":"…"}`; the code changes every 5 minutes and
+the previous one is still accepted.
+
+| Method & path | Notes |
+|---|---|
+| `POST /api/patients/me/check-in` | `{ qrCode }` (the raw scanned string). Checks in the patient's queue entry at that clinic, or, when they have an in-person appointment there today but no queue entry yet, seats them in the queue already checked in. → `{ status: "checked-in" \| "already-checked-in", queue: { _id, queueNumber, status, checkedIn, checkedInAt, queuedAt, doctor, room, position, clinic: { tenantId, name } } }` |
+
+Errors carry a `code`: `400 INVALID_QR` (not a clinic check-in QR, e.g. a login QR), `400
+QR_EXPIRED` (scan again), `403 NOT_REGISTERED` (not a patient of that clinic, or outside a scoped
+session's clinic), `403 SELF_CHECKIN_OFF`, `404 NO_APPOINTMENT` (walk-ins register at the desk).
+
+**Changed:** `GET /api/patients/me/queue` now counts `position` within the patient's doctor's line
+(unassigned patients share one line), the same number the staff queue screen shows. It used to
+count everyone waiting at the clinic. Use `checkedIn` to decide whether to offer "Check in".
+
+**Queue pushes (new).** As the line moves, waiting patients within 3 of the front get one push per
+step: `"You're 3rd in line"`, `"You're 2nd in line"`, `"You're next"`, then `"It's Your Turn!"`
+when called. `data: { type: "queue", queueId, position? }`, `url: "/queue"`. Refresh the queue
+screen when one arrives.
+
+### Family accounts (new)
+
+One login can manage other people's records: a parent with their children, an adult child with an
+elderly parent. To act for a family member, send **`X-Patient-Profile: <their record id>`** on any
+patient request: every `/me/*` route, booking, check-in and the health summary then answer for
+that person, within the caller's own clinic scope (`tid`). Without the header the caller is
+themselves.
+
+| Method & path | Notes |
+|---|---|
+| `GET /api/patients/me/family` | Always about the signed-in person (the header is ignored): `{ self: { id, firstName, lastName }, members: [{ id, firstName, lastName, dateOfBirth, sex, relationship, source, accessEndsAt, clinics[] }], suggestions: [{ key, firstName, lastInitial, birthYear, clinics[] }] }`. `members[].id` is the value for `X-Patient-Profile` |
+| `POST /api/patients/me/family` | `{ key, relationship?, otp? }`: add a suggestion. Needs proof of the phone like setting a password: a code sign-in in the last 15 minutes, or a code from `POST /me/phone-code` as `otp`, else `400 OTP_REQUIRED`. `404` when the suggestion no longer applies. → `201 { members, addedId }` |
+| `DELETE /api/patients/me/family/[id]` | Stop managing that person (removes the link at every clinic) |
+
+How people join a family:
+
+- **Children, in the app.** `suggestions` lists minors (under 18) registered at any clinic with the
+  signed-in person's own phone number, one entry per child even when several clinics registered
+  them. Only first name, last initial and birth year are shown before adding. Adding links all of
+  that child's records together, so their profile shows every clinic. This access (`source:
+  "phone"`) **ends on their 18th birthday** (`accessEndsAt`).
+- **Anyone, at the clinic.** Staff add a family manager from the patient record (Family access),
+  after confirming consent in person (`source: "clinic"`, no end date). Needed for adults such as
+  elderly parents, and for children registered under another number. Staff can remove any link.
+
+Rules for the header:
+
+- A profile the caller doesn't (or no longer) manage gets `403 { code: "PROFILE_FORBIDDEN" }`.
+  Keep the session: drop the header, switch back to the signed-in person and reload the family list.
+- These always act for the signed-in person and refuse the header with `403 { code:
+  "NOT_FOR_FAMILY_PROFILE" }`: `change-password`, `auth/setup-credentials`, `me/login-qr`, and
+  adding/removing family members. `me/devices`, `session` (sign-out) and `GET /me/family` ignore it.
+- Pushes about a family member also go to their managers' devices, with the title prefixed by the
+  member's first name (`"Ana: You're next"`) and `data.profileId` set to the member's record id, so
+  a tap can open that profile.
 
 ---
 

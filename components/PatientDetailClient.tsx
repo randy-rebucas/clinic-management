@@ -15,6 +15,7 @@ import { ageFrom, allergyList } from './visits/form/PatientSummary';
 import AttachForm from './records/AttachForm';
 import { INVOICE_LABEL, LAB_LABEL, RX_LABEL, fileSize, money } from './records/labels';
 import { formatApiError } from './utils/apiError';
+import PatientSearch, { type PatientOption } from './patients/PatientSearch';
 import type { PatientRecordPermissions } from '@/lib/patient-record-page';
 
 const QRCode = dynamic(() => import('react-qr-code'), { ssr: false });
@@ -372,6 +373,7 @@ export default function PatientDetailClient({ patientId, permissions }: { patien
             <DetailsPanel patient={p} missing={data.missing} canEdit={permissions.canEdit} patientId={patientId} />
             {data.billing && <BillingPanel billing={data.billing} currency={currency} canInvoice={permissions.canInvoice} patientId={patientId} />}
             {permissions.canSetAppAccess && <AppAccessPanel patientId={patientId} fallbackEmail={p.email} firstName={p.firstName} />}
+            {permissions.canSetAppAccess && <FamilyAccessPanel patientId={patientId} firstName={p.firstName} />}
           </aside>
         </div>
       </div>
@@ -1300,6 +1302,224 @@ function AppAccessPanel({ patientId, fallbackEmail, firstName }: { patientId: st
           </div>
         </form>
       )}
+    </Panel>
+  );
+}
+
+type FamilyPerson = { patientId: string; firstName: string; lastName: string; patientCode: string | null; relationship: string | null; source: 'phone' | 'clinic'; active: boolean };
+
+const RELATIONSHIPS = [
+  { value: 'parent', label: 'Parent' },
+  { value: 'child', label: 'Child' },
+  { value: 'spouse', label: 'Spouse' },
+  { value: 'sibling', label: 'Sibling' },
+  { value: 'grandparent', label: 'Grandparent' },
+  { value: 'grandchild', label: 'Grandchild' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+/**
+ * Family accounts: who may manage this patient's records from their own eMCR login (a parent for
+ * a child, an adult child for an elderly parent), and whose records this patient manages.
+ * Staff add a manager only after confirming consent in person.
+ */
+function FamilyAccessPanel({ patientId, firstName }: { patientId: string; firstName: string }) {
+  const ids = useId();
+  const family = useKeyedFetch<{ guardians: FamilyPerson[]; dependents: FamilyPerson[] }>(`/api/patients/${patientId}/guardians`);
+  const [open, setOpen] = useState(false);
+  const [guardian, setGuardian] = useState<PatientOption | null>(null);
+  const [relationship, setRelationship] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<FamilyPerson | null>(null);
+
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!guardian) return setError('Choose the family member from the search results.');
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/patients/${patientId}/guardians`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guardianPatientId: guardian._id, ...(relationship ? { relationship } : {}) }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) throw new Error(formatApiError(json, 'Family access wasn’t added'));
+      setDone(`${guardian.firstName} can now see and manage ${firstName}’s records from their own eMCR app.`);
+      setOpen(false);
+      setGuardian(null);
+      setRelationship('');
+      family.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Family access wasn’t added');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (person: FamilyPerson) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/patients/${patientId}/guardians?guardianPatientId=${person.patientId}`, { method: 'DELETE' });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) throw new Error(formatApiError(json, 'Family access wasn’t removed'));
+      setDone(`${person.firstName} no longer has access to ${firstName}’s records, at any clinic.`);
+      family.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Family access wasn’t removed');
+    } finally {
+      setBusy(false);
+      setRemoving(null);
+    }
+  };
+
+  const f = family.value;
+  const label = (p: FamilyPerson) => (p.relationship ? titleCase(p.relationship) : 'Family');
+
+  return (
+    <Panel id="family-access" title="Family access">
+      <div className="px-5 py-4 text-sm">
+        {family.error && !f ? (
+          <p className="text-gray-600">
+            Family access didn’t load.{' '}
+            <button type="button" onClick={family.reload} className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+              Try again
+            </button>
+          </p>
+        ) : !f ? (
+          <p className="text-gray-500">Checking…</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {f.guardians.length === 0 && f.dependents.length === 0 && <p className="text-gray-600">Nobody else manages {firstName}’s records in the app.</p>}
+            {f.guardians.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">Managed by</p>
+                <ul className="divide-y divide-gray-100">
+                  {f.guardians.map((g) => (
+                    <li key={g.patientId} className="flex items-center justify-between gap-3 py-2">
+                      <span className="min-w-0">
+                        <Link href={`/patients/${g.patientId}`} className={`rounded font-medium text-gray-900 hover:text-brand-teal-dark ${FOCUS_RING}`}>
+                          {g.firstName} {g.lastName}
+                        </Link>
+                        <span className="block text-xs text-gray-500">
+                          {label(g)} · {g.source === 'clinic' ? 'added by clinic staff' : 'added in the app (until 18)'}
+                          {!g.active && ' · access ended'}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setRemoving(g)}
+                        disabled={busy}
+                        className={`shrink-0 rounded px-2 py-1 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60 ${FOCUS_RING}`}
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {f.dependents.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">{firstName} manages</p>
+                <ul className="divide-y divide-gray-100">
+                  {f.dependents.map((d) => (
+                    <li key={d.patientId} className="py-2">
+                      <Link href={`/patients/${d.patientId}`} className={`rounded font-medium text-gray-900 hover:text-brand-teal-dark ${FOCUS_RING}`}>
+                        {d.firstName} {d.lastName}
+                      </Link>
+                      <span className="block text-xs text-gray-500">
+                        {label(d)}
+                        {!d.active && ' · access ended'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+        {done && (
+          <p role="status" className="mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-green-800">
+            {done}
+          </p>
+        )}
+        {error && !open && (
+          <p role="alert" className="mt-3 flex items-start gap-1.5 text-sm font-medium text-red-700">
+            <Svg d={ICONS.alert} className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            {error}
+          </p>
+        )}
+        {f && !open && (
+          <button
+            type="button"
+            onClick={() => {
+              setDone(null);
+              setError(null);
+              setOpen(true);
+            }}
+            className={`mt-3 inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}
+          >
+            <Svg d={ICONS.plus} />
+            Add a family manager
+          </button>
+        )}
+      </div>
+      {open && (
+        <form onSubmit={add} className="motion-panel-in flex flex-col gap-3 border-t border-gray-200 bg-gray-50/60 px-5 py-4" noValidate>
+          {error && (
+            <p role="alert" className="flex items-start gap-1.5 text-sm font-medium text-red-700">
+              <Svg d={ICONS.alert} className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              {error}
+            </p>
+          )}
+          <PatientSearch label="Family member (registered here)" value={guardian} onChange={setGuardian} />
+          <div>
+            <label htmlFor={`${ids}-rel`} className="mb-1.5 block text-sm font-medium text-gray-700">
+              They are {firstName}’s <span className="font-normal text-gray-500">· optional</span>
+            </label>
+            <select id={`${ids}-rel`} value={relationship} onChange={(e) => setRelationship(e.target.value)} className={FIELD}>
+              <option value="">Choose…</option>
+              {RELATIONSHIPS.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs text-gray-500">
+            They will see {firstName}’s visits, prescriptions, results and bills from every clinic, and can book and check in for them. Confirm {firstName} (or their legal guardian) agrees first.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setOpen(false)} disabled={busy} className={`rounded-md px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 ${FOCUS_RING}`}>
+              Cancel
+            </button>
+            <button type="submit" disabled={busy} aria-busy={busy} className={`rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`}>
+              {busy ? 'Saving…' : 'Give access'}
+            </button>
+          </div>
+        </form>
+      )}
+      {removing &&
+        createPortal(
+          <AlertDialog
+            open
+            onOpenChange={(o) => !o && setRemoving(null)}
+            title={`Remove ${removing.firstName}’s access?`}
+            description={`${removing.firstName} ${removing.lastName} will no longer see or manage ${firstName}’s records in the eMCR app, at this or any other clinic.`}
+          >
+            <button type="button" onClick={() => setRemoving(null)} className={`rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}>
+              Keep access
+            </button>
+            <button type="button" onClick={() => remove(removing)} disabled={busy} className={`rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60 ${FOCUS_RING}`}>
+              Remove access
+            </button>
+          </AlertDialog>,
+          document.body
+        )}
     </Panel>
   );
 }

@@ -5,7 +5,13 @@ vi.mock('server-only', () => ({}));
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn() }));
 vi.mock('@/lib/logger', () => ({ default: { error: vi.fn() } }));
 vi.mock('@/lib/audit', () => ({ recordPatientRefused: vi.fn() }));
-vi.mock('@/app/lib/patient-auth', () => ({ verifyPatientAuth: vi.fn() }));
+vi.mock('@/app/lib/patient-auth', async () => {
+  const { NextResponse } = await import('next/server');
+  return {
+    verifyPatientAuth: vi.fn(),
+    patientAuthError: () => NextResponse.json({ success: false, error: 'Not authenticated. Please login.' }, { status: 401 }),
+  };
+});
 vi.mock('@/models/Patient', () => ({ default: { findById: vi.fn(), updateOne: vi.fn() } }));
 vi.mock('@/models/Appointment', () => ({ default: { find: vi.fn() } }));
 vi.mock('@/models/LabResult', () => ({ default: { find: vi.fn() } }));

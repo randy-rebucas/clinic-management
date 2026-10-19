@@ -37,7 +37,9 @@ export interface IQueue extends Document {
   // Check-in
   checkedIn: boolean;
   checkedInAt?: Date;
-  checkInMethod?: 'manual' | 'qr_code' | 'kiosk';
+  checkInMethod?: 'manual' | 'qr_code' | 'kiosk' | 'app'; // app = the patient scanned the clinic QR in eMCR
+  /** Last "you're Nth in line" position pushed to the patient, so each step is sent once. */
+  positionNotified?: number;
   qrCode?: string; // QR code data for check-in
   
   // Consultation tracking
@@ -101,9 +103,10 @@ const QueueSchema: Schema = new Schema(
     checkedInAt: { type: Date },
     checkInMethod: {
       type: String,
-      enum: ['manual', 'qr_code', 'kiosk'],
+      enum: ['manual', 'qr_code', 'kiosk', 'app'],
     },
     qrCode: { type: String },
+    positionNotified: { type: Number },
     consultationDuration: { type: Number }, // Minutes
     completionNotes: { type: String },
     nextAction: {

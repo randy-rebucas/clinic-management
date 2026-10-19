@@ -82,6 +82,10 @@ export async function sendPushToUser(
  * A device signed in with a clinic-scoped session (MobileDevice.tenantId set) only receives
  * pushes about that clinic: pass `options.tenantId` (the record's clinic). Without it, only
  * unscoped devices are notified.
+ *
+ * Delivered to every device of the person (devices register under whichever of their linked
+ * records they signed in with) and to their family managers' devices, whose copy names the
+ * family member and carries `data.profileId` so the app opens that profile.
  */
 export async function sendPushToPatientDevices(
   patientId: string,
@@ -90,7 +94,30 @@ export async function sendPushToPatientDevices(
 ): Promise<{ sent: boolean }> {
   const scopes: Record<string, unknown>[] = [{ tenantId: null }];
   if (options.tenantId) scopes.push({ tenantId: new Types.ObjectId(String(options.tenantId)) });
-  return sendToMobileDevices({ patientId: new Types.ObjectId(patientId), $or: scopes }, payload);
+
+  const { personRecordIds, guardianRecordIds } = await import('@/lib/patient-family');
+  const [ownIds, guardianIds] = await Promise.all([
+    personRecordIds(patientId).catch(() => []),
+    guardianRecordIds(patientId).catch(() => []),
+  ]);
+  const own = ownIds.length ? ownIds : [new Types.ObjectId(patientId)];
+  const ownKeys = new Set(own.map(String));
+  const managers = guardianIds.filter((id) => !ownKeys.has(String(id)));
+
+  const self = await sendToMobileDevices({ patientId: { $in: own }, $or: scopes }, payload);
+  if (!managers.length) return self;
+
+  const Patient = (await import('@/models/Patient')).default;
+  const member = await Patient.findById(patientId).select('firstName').lean<{ firstName?: string } | null>();
+  const family = await sendToMobileDevices(
+    { patientId: { $in: managers }, $or: scopes },
+    {
+      ...payload,
+      title: member?.firstName ? `${member.firstName}: ${payload.title}` : payload.title,
+      data: { ...payload.data, profileId: patientId },
+    }
+  );
+  return { sent: self.sent || family.sent };
 }
 
 /**
@@ -105,7 +132,7 @@ export async function sendPushToUserDevices(
 }
 
 async function sendToMobileDevices(
-  owner: { patientId: Types.ObjectId; $or?: Record<string, unknown>[] } | { userId: Types.ObjectId },
+  owner: { patientId: { $in: Types.ObjectId[] }; $or?: Record<string, unknown>[] } | { userId: Types.ObjectId },
   payload: PushPayload
 ): Promise<{ sent: boolean }> {
   await connectDB();

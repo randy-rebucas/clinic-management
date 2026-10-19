@@ -45,6 +45,16 @@ export default async function AppLayout({
           >
             Skip to main content
           </a>
+          {session.imp && (
+            <div role="status" className="fixed inset-x-0 top-0 z-[90] flex flex-wrap items-center justify-center gap-x-3 bg-amber-400 px-4 py-1.5 text-center text-sm text-brand-navy">
+              <span>
+                <strong className="font-semibold">Platform view</strong> — you are seeing this clinic as {session.email}, read-only. Signed in as {session.imp}.
+              </span>
+              <a href="/api/platform/view-as/exit" className="font-semibold underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-navy rounded">
+                Exit
+              </a>
+            </div>
+          )}
           <Suspense fallback={
             <div className="hidden lg:block fixed left-0 top-0 h-screen w-[280px] bg-white border-r border-gray-200 z-40">
               <div className="flex items-center justify-center h-full">

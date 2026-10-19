@@ -4,7 +4,7 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { z } from 'zod';
-import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 
 const optionalText = (max: number) => z.string().trim().max(max).optional();
 
@@ -71,12 +71,7 @@ function toSetPaths(input: Record<string, Record<string, string | undefined> | u
 export async function GET(request: NextRequest) {
   const session = await verifyPatientAuth(request);
 
-  if (!session) {
-    return NextResponse.json(
-      { success: false, error: 'Not authenticated. Please login.' },
-      { status: 401 }
-    );
-  }
+  if (!session) return patientAuthError(request);
 
   try {
     await connectDB();
@@ -128,12 +123,7 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const session = await verifyPatientAuth(request);
 
-  if (!session) {
-    return NextResponse.json(
-      { success: false, error: 'Not authenticated. Please login.' },
-      { status: 401 }
-    );
-  }
+  if (!session) return patientAuthError(request);
 
   try {
     await connectDB();

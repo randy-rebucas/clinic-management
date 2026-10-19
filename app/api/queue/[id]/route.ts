@@ -19,7 +19,7 @@ const updateQueueSchema = z.object({
   room: zObjectId.nullable().optional(),
   estimatedWaitTime: z.coerce.number().min(0).max(1440).optional(),
   checkedIn: z.boolean().optional(),
-  checkInMethod: z.enum(['manual', 'qr_code', 'kiosk']).optional(),
+  checkInMethod: z.enum(['manual', 'qr_code', 'kiosk', 'app']).optional(),
   completionNotes: z.string().max(5000).optional(),
   nextAction: z.enum(['billing', 'pharmacy', 'lab', 'checkout']).optional(),
   notes: z.string().max(5000).optional(),
@@ -162,6 +162,11 @@ export async function PUT(
       }).catch((error) => {
         console.error('[Queue API] Error loading queue-notifications module:', error);
       });
+    } else if (fields.doctor !== undefined || fields.priority !== undefined) {
+      // Moving someone to another doctor or changing priority reshuffles the lines.
+      import('@/lib/automations/queue-notifications')
+        .then(({ notifyQueuePositions }) => notifyQueuePositions(tenantObjectId))
+        .catch((error) => console.error('[Queue API] Error sending queue position updates:', error));
     }
 
     return NextResponse.json({ success: true, data: updatedQueue });
@@ -204,6 +209,10 @@ export async function DELETE(
     );
 
     if (!queue) return notFoundResponse();
+
+    import('@/lib/automations/queue-notifications')
+      .then(({ notifyQueuePositions }) => notifyQueuePositions(ctx.tenantObjectId))
+      .catch((error) => console.error('[Queue API] Error sending queue position updates:', error));
 
     return NextResponse.json({ success: true, data: queue });
   } catch (error: any) {

@@ -7,7 +7,7 @@ import LabResult from '@/models/LabResult';
 import Invoice from '@/models/Invoice';
 import Prescription from '@/models/Prescription';
 import logger from '@/lib/logger';
-import { verifyPatientAuth, type PatientSessionPayload } from '@/app/lib/patient-auth';
+import { patientAuthError, verifyPatientAuth, type PatientSessionPayload } from '@/app/lib/patient-auth';
 import { parsePagination, tenantScopeFilter } from '../_lib/patient-scope';
 import { notificationId } from '../_lib/notification-id';
 import { linkedRecords, type LinkedRecords } from '../_lib/linked-records';
@@ -217,12 +217,7 @@ async function buildPatientNotifications(
 export async function GET(request: NextRequest) {
   const session = await verifyPatientAuth(request);
 
-  if (!session) {
-    return NextResponse.json(
-      { success: false, error: 'Not authenticated. Please login.' },
-      { status: 401 }
-    );
-  }
+  if (!session) return patientAuthError(request);
 
   try {
     await connectDB();
@@ -283,12 +278,7 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const session = await verifyPatientAuth(request);
 
-  if (!session) {
-    return NextResponse.json(
-      { success: false, error: 'Not authenticated. Please login.' },
-      { status: 401 }
-    );
-  }
+  if (!session) return patientAuthError(request);
 
   try {
     await connectDB();

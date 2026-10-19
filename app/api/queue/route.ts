@@ -11,7 +11,7 @@ import { Types } from 'mongoose';
 import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
 import { getSettings } from '@/lib/settings';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
-import { nextQueueNumber } from '@/lib/queue-number';
+import { createQueueEntry } from '@/lib/queue-entry';
 import { QUEUE_SORT } from '@/lib/queue-order';
 import { dayRangeInTz } from '@/lib/tz';
 
@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
     }
 
     const patient = await Patient.findOne({ _id: patientId, tenantIds: tenantObjectId })
-      .select('firstName lastName')
+      .select('_id firstName lastName')
       .lean() as any;
     if (!patient) {
       return NextResponse.json(
@@ -170,34 +170,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Room not found' }, { status: 404 });
     }
 
-    const finalQueueType = queueType || 'appointment';
-    const tz = await getTenantTimezone(tenantId);
-    const queueNumber = await nextQueueNumber(tenantId, finalQueueType, tz);
-
-    const queue = await Queue.create({
+    const queue = await createQueueEntry({
       tenantId: tenantObjectId,
-      queueNumber,
-      patient: patientId,
-      patientName,
-      appointment: appointmentId || undefined,
-      visit: visitId || undefined,
-      doctor: doctorId || undefined,
-      room: roomId || undefined,
-      queueType: finalQueueType,
+      patient,
+      queueType: queueType || 'appointment',
+      appointmentId,
+      visitId,
+      doctorId,
+      roomId,
       priority: Number.isFinite(Number(priority)) ? Math.min(2, Math.max(0, Math.round(Number(priority)))) : 0,
       notes: typeof notes === 'string' && notes.trim() ? notes.trim().slice(0, 500) : undefined,
-      checkedIn: false,
-      status: 'waiting',
     });
-
-    // QR code for check-in (needs the queue id)
-    queue.qrCode = JSON.stringify({
-      queueId: queue._id.toString(),
-      patientId,
-      appointmentId: appointmentId || null,
-      timestamp: Date.now(),
-    });
-    await queue.save();
 
     await queue.populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } });
     await queue.populate({ path: 'doctor', select: 'firstName lastName', match: { tenantId: tenantObjectId } });
@@ -219,6 +202,9 @@ export async function POST(request: NextRequest) {
       const { autoOptimizeQueueOnJoin } = await import('@/lib/automations/queue-optimization');
       autoOptimizeQueueOnJoin(queue._id, tenantId).catch(console.error);
     }
+    import('@/lib/automations/queue-notifications')
+      .then(({ notifyQueuePositions }) => notifyQueuePositions(tenantObjectId))
+      .catch((error) => console.error('[Queue API] Error sending queue position updates:', error));
 
     return NextResponse.json({ success: true, data: queue }, { status: 201 });
   } catch (error: any) {

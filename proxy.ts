@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { decodeJwt } from 'jose';
 import { isAuthorizedCronRequest, safeEqual } from '@/lib/cron-auth';
 
 /**
@@ -15,7 +16,10 @@ import { isAuthorizedCronRequest, safeEqual } from '@/lib/cron-auth';
  * 3. CSRF protection — state-changing API requests that carry a session cookie
  *    must come from this site (Origin, or Referer when Origin is absent).
  *
- * 4. Security headers — adds a per-request nonce CSP and additional headers to every response.
+ * 4. View-as is read-only — a staff session minted for a platform admin viewing a clinic
+ *    (`imp` claim) may not make any state-changing request, API or server action.
+ *
+ * 5. Security headers — adds a per-request nonce CSP and additional headers to every response.
  */
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -148,12 +152,18 @@ export function proxy(request: NextRequest): NextResponse {
     return next();
   }
 
-  // ─── 4. CSRF protection for state-changing API requests ───────────────────
+  // ─── 4. View-as sessions are read-only ────────────────────────────────────
+  if (!SAFE_METHODS.has(method) && isViewAsRequest(request)) {
+    return json(403, 'Read-only: you are viewing this clinic from the platform console.');
+  }
+
+  // ─── 5. CSRF protection for state-changing API requests ───────────────────
   if (!SAFE_METHODS.has(method) && pathname.startsWith('/api/')) {
     const hasSession =
       request.cookies.has('session') ||
       request.cookies.has('patient_session') ||
-      request.cookies.has('pending_2fa');
+      request.cookies.has('pending_2fa') ||
+      request.cookies.has('platform_session');
 
     const csrfExempt = CSRF_EXEMPT_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
@@ -180,8 +190,26 @@ export function proxy(request: NextRequest): NextResponse {
     }
   }
 
-  // ─── 5. Add security headers to all responses ────────────────────────────
+  // ─── 6. Add security headers to all responses ────────────────────────────
   return next();
+}
+
+/**
+ * True when the staff session on this request (cookie or bearer) carries the view-as `imp`
+ * claim. The token is only decoded here, not verified: the claim can only take rights away,
+ * and the route itself still verifies the signature.
+ */
+function isViewAsRequest(request: NextRequest): boolean {
+  const bearer = request.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
+  for (const token of [request.cookies.get('session')?.value, bearer]) {
+    if (!token) continue;
+    try {
+      if (typeof decodeJwt(token).imp === 'string') return true;
+    } catch {
+      // not a JWT; the route will reject it
+    }
+  }
+  return false;
 }
 
 /** Org and project ids from the browser DSN (https://key@o<org>.ingest.sentry.io/<project>). */

@@ -1,5 +1,6 @@
 import 'server-only';
 import { Types } from 'mongoose';
+import { after } from 'next/server';
 import Invoice from '@/models/Invoice';
 import { roundMoney } from '@/lib/invoice-totals';
 import type { InvoicePaymentMethod } from '@/models/Invoice';
@@ -92,5 +93,17 @@ export async function recordInvoicePayments(opts: {
     { new: true }
   );
   if (!invoice) return { ok: false, status: 409, error: 'Invoice changed while recording the payment. Please reload and try again.' };
+  if (current.status !== 'paid' && invoice.status === 'paid') {
+    const paid = invoice.toObject ? invoice.toObject() : invoice;
+    const send = () =>
+      import('@/lib/webhook-events')
+        .then(({ onInvoicePaid }) => onInvoicePaid(paid))
+        .catch((error) => console.error('[webhooks] invoice.paid:', error));
+    try {
+      after(send);
+    } catch {
+      void send();
+    }
+  }
   return { ok: true, invoice };
 }

@@ -124,6 +124,7 @@ export function getDefaultSettings() {
       autoAssignRooms: false,
       estimatedWaitTimeMinutes: 15,
       displayQueuePublicly: false,
+      patientSelfCheckIn: false,
     },
     generalSettings: {
       timezone: 'Asia/Manila',

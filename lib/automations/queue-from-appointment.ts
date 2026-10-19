@@ -52,7 +52,12 @@ export async function updateQueueFromAppointment(params: UpdateQueueFromAppointm
       updateData.completedAt = new Date();
     }
 
-    await Queue.findOneAndUpdate(query, { $set: updateData }, { new: true, sort: { queuedAt: -1 } });
+    const updated = await Queue.findOneAndUpdate(query, { $set: updateData }, { new: true, sort: { queuedAt: -1 } });
+    if (updated) {
+      // Someone left the line: tell the patients behind them.
+      const { notifyQueuePositions } = await import('./queue-notifications');
+      void notifyQueuePositions(tenantId);
+    }
   } catch (error) {
     console.error('[Queue Automation] Error updating queue from appointment:', error);
     // Don't throw - we don't want to fail appointment operations if queue update fails

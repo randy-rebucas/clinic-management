@@ -90,6 +90,7 @@ const settingsUpdateSchema = z.object({
       autoAssignRooms: z.boolean(),
       estimatedWaitTimeMinutes: zNum(0, 1440),
       displayQueuePublicly: z.boolean(),
+      patientSelfCheckIn: z.boolean(),
     })
     .partial()
     .optional(),

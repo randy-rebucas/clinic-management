@@ -3,7 +3,7 @@ import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import MobileDevice from '@/models/MobileDevice';
 import logger from '@/lib/logger';
-import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 
 /**
  * POST /api/patients/me/devices
@@ -19,10 +19,8 @@ import { verifyPatientAuth } from '@/app/lib/patient-auth';
  * Body: { deviceId, platform: 'ios' | 'android', pushToken?, appVersion? }
  */
 export async function POST(request: NextRequest) {
-  const session = await verifyPatientAuth(request);
-  if (!session) {
-    return NextResponse.json({ success: false, error: 'Not authenticated. Please login.' }, { status: 401 });
-  }
+  const session = await verifyPatientAuth(request, { profile: 'ignore' });
+  if (!session) return patientAuthError(request);
 
   let body: Record<string, any>;
   try {
@@ -98,10 +96,8 @@ export async function POST(request: NextRequest) {
  * audit trail of what was ever registered.
  */
 export async function DELETE(request: NextRequest) {
-  const session = await verifyPatientAuth(request);
-  if (!session) {
-    return NextResponse.json({ success: false, error: 'Not authenticated. Please login.' }, { status: 401 });
-  }
+  const session = await verifyPatientAuth(request, { profile: 'ignore' });
+  if (!session) return patientAuthError(request);
 
   const deviceId = request.nextUrl.searchParams.get('deviceId')?.trim();
   if (!deviceId) {

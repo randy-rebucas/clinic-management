@@ -13,7 +13,7 @@ import Referral from '@/models/Referral';
 import MobileDevice from '@/models/MobileDevice';
 import { Types } from 'mongoose';
 import logger from '@/lib/logger';
-import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import {
   findRefreshTokenSubject,
   readRefreshTokenFromBody,
@@ -30,14 +30,9 @@ void Doctor;
  */
 export async function GET(request: NextRequest) {
   try {
-    const sessionData = await verifyPatientAuth(request);
+    const sessionData = await verifyPatientAuth(request, { profile: 'ignore' });
 
-    if (!sessionData) {
-      return NextResponse.json(
-        { success: false, error: 'Not authenticated. Please login.' },
-        { status: 401 }
-      );
-    }
+    if (!sessionData) return patientAuthError(request);
 
     await connectDB();
 
@@ -287,7 +282,7 @@ export async function DELETE(request: NextRequest) {
 
   let patientId: string | null = null;
   if (all || deviceId) {
-    const session = await verifyPatientAuth(request);
+    const session = await verifyPatientAuth(request, { profile: 'ignore' });
     if (session) patientId = session.patientId;
   }
 
