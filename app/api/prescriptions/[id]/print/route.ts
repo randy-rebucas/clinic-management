@@ -8,12 +8,12 @@ import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-ses
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { formatInTz } from '@/lib/tz';
 import { issueSeal, tenantScopedQuery, IssuedSeal } from '@/lib/document-seal';
-import {
-  escapeHtml as e,
-  sealedDocumentParts,
-  PROTECTED_DOCUMENT_HEADERS,
-  withScriptNonce,
-} from '@/lib/document-protection';
+import { loadSigner, pickSignature, type Signer } from '@/lib/doctor-signature';
+import { escapeHtml as e, sealedDocumentParts } from '@/lib/document-protection';
+import { documentResponse, pdfFilename } from '@/lib/pdf';
+
+// Headroom for a cold Chromium start when ?format=pdf.
+export const maxDuration = 30;
 
 export async function GET(
   request: NextRequest,
@@ -55,14 +55,7 @@ export async function GET(
             select: 'firstName lastName patientCode email phone dateOfBirth address gender',
             match: { tenantIds: query.tenantId },
           })
-          .populate({
-            path: 'prescribedBy',
-            select: 'name email doctorProfile licenseNumber',
-            populate: {
-              path: 'doctorProfile',
-              select: 'licenseNumber ptrNumber ptr s2Number',
-            },
-          })
+          .populate({ path: 'prescribedBy', select: 'name email licenseNumber' })
           .populate({ path: 'visit', select: 'visitCode date followUpDate', match: { tenantId: query.tenantId } })
       : null;
 
@@ -101,17 +94,23 @@ export async function GET(
       await prescription.save();
     }
 
-    const seal = await issueSeal({
-      request,
-      documentType: 'prescription',
-      document: prescription,
-      tenantId,
-      userId: session.userId,
-      copyType,
-    });
+    const [seal, signer] = await Promise.all([
+      issueSeal({
+        request,
+        documentType: 'prescription',
+        document: prescription,
+        tenantId,
+        userId: session.userId,
+        copyType,
+      }),
+      loadSigner({ tenantId, userId: prescription.prescribedBy?._id }),
+    ]);
+    const signatureSrc = showSignature
+      ? pickSignature(prescription.digitalSignature?.signatureData, signer, true)
+      : null;
 
     // Generate HTML for printable prescription
-    const html = generatePrescriptionHTML(prescription, copyType, showSignature, settingInfo, seal, paperSize, tz);
+    const html = generatePrescriptionHTML(prescription, copyType, signer, signatureSrc, settingInfo, seal, paperSize, tz);
     after(() =>
       logPrinted({
         session,
@@ -125,7 +124,7 @@ export async function GET(
       })
     );
 
-    return new NextResponse(withScriptNonce(html, request), { headers: PROTECTED_DOCUMENT_HEADERS });
+    return documentResponse(request, html, pdfFilename('Prescription', prescription.prescriptionCode));
   } catch (error: any) {
     console.error('Error generating prescription:', error);
     return NextResponse.json(
@@ -159,7 +158,8 @@ const A5_OVERRIDES = `
 function generatePrescriptionHTML(
   prescription: any,
   copyType: string,
-  showSignature: boolean,
+  signer: Signer | null,
+  signatureSrc: string | null,
   settingInfo: any,
   seal: IssuedSeal,
   paperSize: PaperSize,
@@ -261,6 +261,11 @@ function generatePrescriptionHTML(
       padding-top: 5px;
       margin-top: 38px;
       min-width: 200px;
+    }
+    .signature-image {
+      max-height: 64px;
+      max-width: 220px;
+      margin-top: 16px;
     }
     .footer {
       padding-top: 4px;
@@ -394,21 +399,23 @@ function generatePrescriptionHTML(
     })()}
 
       <div class="signature-section">
-        <div class="signature-box">
-          <div>${provider ? e(provider.name) : 'Provider'}</div>
+        ${signatureSrc ? `<div><img class="signature-image" src="${signatureSrc}" alt="Signature" /></div>` : ''}
+        <div class="signature-box"${signatureSrc ? ' style="margin-top: 0;"' : ''}>
+          <div>${e(signer?.name || provider?.name || 'Provider')}</div>
           <div style="font-size: 12px; margin-top: 5px;">
             ${(() => {
       // The prescribing doctor's own credentials; clinic settings are only a fallback.
-      const doctor = provider?.doctorProfile && typeof provider.doctorProfile === 'object' ? provider.doctorProfile : null;
-      const licenseValue = doctor?.licenseNumber || provider?.licenseNumber || settingInfo?.licenseNumber;
+      const licenseValue = signer?.licenseNumber || provider?.licenseNumber || settingInfo?.licenseNumber;
       const licenseLine = licenseValue
         ? `License No: ${e(licenseValue)}`
         : 'License No: ____________';
-      const ptrValue = doctor?.ptrNumber || doctor?.ptr || settingInfo?.ptr || settingInfo?.PTR;
+      const ptrValue = signer?.ptr || settingInfo?.ptr || settingInfo?.PTR;
       const ptrLine = ptrValue
         ? `<br>PTR No: ${e(ptrValue)}`
         : '<br>PTR No: ____________';
-      return `${licenseLine}${ptrLine}`;
+      // S2 is only required for dangerous drugs, so it prints only when on file.
+      const s2Line = signer?.s2Number ? `<br>S2 No: ${e(signer.s2Number)}` : '';
+      return `${licenseLine}${ptrLine}${s2Line}`;
     })()}
           </div>
         </div>

@@ -12,7 +12,17 @@ export interface IDoctor extends Document {
   ptr?: string;
   philhealthPan?: string;
   ptrNumber?: string;
-  
+  /** PDEA S2 licence, required on prescriptions for dangerous drugs. */
+  s2Number?: string;
+  /**
+   * The doctor's own signature, applied to documents they issue. Only the doctor may set it
+   * (see /api/account/signature); the image is excluded from queries unless selected.
+   */
+  signature?: {
+    image?: string;
+    updatedAt?: Date;
+  };
+
   // Schedule and availability
   schedule: {
     dayOfWeek: number; // 0 = Sunday, 1 = Monday, etc.
@@ -111,6 +121,14 @@ const DoctorSchema: Schema = new Schema(
     philhealthPan: {
       type: String,
       trim: true,
+    },
+    s2Number: {
+      type: String,
+      trim: true,
+    },
+    signature: {
+      image: { type: String, select: false },
+      updatedAt: { type: Date },
     },
     schedule: [
       {
