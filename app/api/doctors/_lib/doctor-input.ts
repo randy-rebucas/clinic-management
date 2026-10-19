@@ -29,6 +29,7 @@ const doctorFields = {
   specializationId: zObjectId.optional(),
   licenseNumber: z.string().trim().min(1).max(100),
   ptr: z.string().trim().max(100).optional(),
+  philhealthPan: z.string().trim().max(50).optional(),
   title: z.string().trim().max(50).optional(),
   qualifications: z.array(zShortText).max(50).optional(),
   bio: z.string().max(5000).optional(),

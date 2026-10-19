@@ -15,6 +15,7 @@ import { requireTenantSession, isTenantSessionError, tenantFilter, patientTenant
 import { parseBody, isValidationError, roundMoney } from '@/lib/api/validate';
 import { invoiceEditableSchema, computeInvoiceTotals, deriveStatus, statutoryDiscountProblem, taxProfileOf } from '../_lib/totals';
 import { resolveInsurance } from '../_lib/insurance';
+import { resolvePhilhealth, capBenefit, grossOf } from '../_lib/philhealth';
 
 export async function GET(
   request: NextRequest,
@@ -184,7 +185,16 @@ export async function PUT(
       body.items !== undefined ||
       body.discounts !== undefined ||
       body.professionalFee !== undefined ||
-      body.tax !== undefined;
+      body.tax !== undefined ||
+      body.philhealth !== undefined;
+
+    // A filed PhilHealth claim is PhilHealth's record now; the bill it was filed for stays put.
+    if (moneyChanged && current.philhealth && current.philhealth.status !== 'draft' && current.philhealth.status !== 'returned') {
+      return NextResponse.json(
+        { success: false, error: 'This bill’s PhilHealth claim has been filed, so its amounts can’t change. Change it on the PhilHealth page if it’s returned.' },
+        { status: 409 }
+      );
+    }
 
     if (moneyChanged) {
       // An issued BIR invoice is a filed document: corrections go on a new invoice, not over it.
@@ -206,8 +216,7 @@ export async function PUT(
       }));
       const discountProblem = taxProfile ? statutoryDiscountProblem(discounts) : null;
       if (discountProblem) return NextResponse.json({ success: false, error: discountProblem }, { status: 400 });
-      const totals = computeInvoiceTotals({
-        items: body.items ?? (current.items || []).map((i: any) => ({
+      const items = body.items ?? (current.items || []).map((i: any) => ({
           serviceId: i.serviceId ? String(i.serviceId) : undefined,
           code: i.code,
           description: i.description,
@@ -215,15 +224,42 @@ export async function PUT(
           quantity: Number(i.quantity) || 1,
           unitPrice: Math.max(0, Number(i.unitPrice) || 0),
           vatClass: i.vatClass,
-        })),
+        }));
+      const professionalFee = body.professionalFee ?? current.professionalFee ?? 0;
+
+      // The PhilHealth benefit follows the bill: priced again from its case rate, or taken off.
+      const phInput =
+        body.philhealth === null
+          ? null
+          : body.philhealth ??
+            (current.philhealth?.caseRate
+              ? {
+                  pin: current.philhealth.pin,
+                  relationship: current.philhealth.relationship,
+                  memberName: current.philhealth.memberName,
+                  caseRate: String(current.philhealth.caseRate),
+                  servedOn: current.philhealth.servedOn,
+                }
+              : null);
+      const philhealth = phInput ? await resolvePhilhealth(tenantId, phInput, grossOf(items, professionalFee)) : null;
+      if (philhealth && !philhealth.ok) return NextResponse.json({ success: false, error: philhealth.error }, { status: 400 });
+
+      const totals = computeInvoiceTotals({
+        items,
         discounts,
-        professionalFee: body.professionalFee ?? current.professionalFee ?? 0,
+        professionalFee,
         tax: body.tax ?? current.tax ?? 0,
         taxRate: settings.billingSettings?.taxRate,
         appliedBy: session.userId,
         taxProfile,
+        payerDeduction: philhealth?.ok ? philhealth.benefit : 0,
       });
       total = totals.total;
+      if (philhealth?.ok) {
+        // A returned claim being corrected keeps its history and goes back to be filed again.
+        const keep = current.philhealth && current.philhealth.status === 'returned' ? { claimNumber: current.philhealth.claimNumber, note: current.philhealth.note } : {};
+        $set.philhealth = { ...capBenefit(philhealth.value, totals.total), ...keep };
+      } else if (body.philhealth === null) $unset.philhealth = 1;
       Object.assign($set, {
         items: totals.items,
         discounts: totals.discounts,

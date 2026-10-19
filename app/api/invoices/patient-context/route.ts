@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     await connectDB();
     const pid = new Types.ObjectId(patientId);
     const patient = await Patient.findOne(patientTenantFilter(tenantId, { _id: pid }))
-      .select('firstName lastName patientCode phone dateOfBirth discountEligibility')
+      .select('firstName lastName patientCode phone dateOfBirth discountEligibility identifiers.philHealth')
       .lean();
     if (!patient) return notFound('Patient');
 

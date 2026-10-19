@@ -4,6 +4,7 @@ import { zMoney, zObjectId, zShortText } from '@/lib/api/validate';
 // The arithmetic lives in lib/ so the invoice form previews exactly what the API stores.
 export { computeInvoiceTotals, deriveStatus, statutoryDiscountProblem } from '@/lib/invoice-totals';
 export { taxProfileOf } from '@/lib/bir';
+import { invoicePhilhealthSchema } from './philhealth';
 
 export const invoiceItemSchema = z.object({
   serviceId: zObjectId.optional(),
@@ -50,4 +51,6 @@ export const invoiceEditableSchema = z.object({
   // Only used when the clinic has no tax rate configured.
   tax: zMoney.optional(),
   insurance: invoiceInsuranceSchema.optional(),
+  /** A PhilHealth claim; null takes it off (only while it hasn't been filed). */
+  philhealth: invoicePhilhealthSchema.optional().nullable(),
 });

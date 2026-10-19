@@ -122,6 +122,9 @@ export interface ISettings extends Document {
   prescriptionDigitalSignatureEnabled?: boolean;
   prescriptionPaperSize?: 'A5' | 'A4';
 
+  // PhilHealth claims (lib/philhealth.ts)
+  philhealthSettings?: { enabled: boolean; hciAccreditationNo: string; filingDays: number };
+
   // BIR invoicing (lib/bir.ts)
   birSettings?: {
     enabled: boolean;
@@ -276,6 +279,12 @@ const SettingsSchema = new Schema<ISettings>(
     // Prescription Settings
     prescriptionDigitalSignatureEnabled: { type: Boolean, default: true },
     prescriptionPaperSize: { type: String, enum: ['A5', 'A4'], default: 'A4' },
+
+    philhealthSettings: {
+      enabled: { type: Boolean, default: false },
+      hciAccreditationNo: { type: String, default: '' },
+      filingDays: { type: Number, default: 60, min: 1, max: 365 },
+    },
 
     birSettings: {
       enabled: { type: Boolean, default: false },

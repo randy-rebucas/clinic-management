@@ -14,6 +14,7 @@ import PaymentDialog from './invoices/PaymentDialog';
 import { DISCOUNT_LABEL, INVOICE_STATE, PF_TYPES, clock, methodLabel, shortDate, useMoney } from './invoices/shared';
 import type { InvoiceStatus } from '@/lib/invoices';
 import type { InvoiceDetailPermissions } from '@/lib/invoices-page';
+import { PHILHEALTH_STATUS, type PhilhealthStatus } from '@/lib/philhealth';
 
 interface Item {
   serviceId?: { _id: string; name: string; code?: string; category?: string } | string | null;
@@ -61,6 +62,19 @@ interface Invoice {
     statutoryDiscount: number;
   };
   bir?: { serialNo?: string; issuedAt?: string };
+  philhealth?: {
+    pin: string;
+    relationship: 'member' | 'dependent';
+    caseRateCode: string;
+    caseRateDescription?: string;
+    amount: number;
+    servedOn: string;
+    status: PhilhealthStatus;
+    claimNumber?: string;
+    paidAmount?: number;
+    withheldAmount?: number;
+    note?: string;
+  };
   payments: Payment[];
   insurance?: {
     provider?: string;
@@ -596,6 +610,51 @@ export default function InvoiceDetailClient({
             )}
           </Panel>
 
+          {p.philhealth && (
+            <Panel
+              id="inv-philhealth"
+              title="PhilHealth"
+              aside={
+                <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${PHILHEALTH_STATUS[p.philhealth.status].badge}`}>
+                  {PHILHEALTH_STATUS[p.philhealth.status].label}
+                </span>
+              }
+            >
+              <dl className="divide-y divide-gray-100 text-sm">
+                <Field label="Benefit">
+                  <span className="font-mono">{money(p.philhealth.amount)}</span>
+                  <span className="text-gray-500"> · patient pays {money(Math.max(0, total - p.philhealth.amount))}</span>
+                </Field>
+                <Field label="PIN">
+                  <span className="font-mono">{p.philhealth.pin}</span>
+                  {p.philhealth.relationship === 'dependent' && <span className="text-gray-500"> · dependent</span>}
+                </Field>
+                <Field label="Case rate">
+                  <span className="font-mono">{p.philhealth.caseRateCode}</span> {p.philhealth.caseRateDescription}
+                </Field>
+                <Field label="Seen on">{shortDate(p.philhealth.servedOn)}</Field>
+                {p.philhealth.claimNumber && (
+                  <Field label="Claim">
+                    <span className="font-mono">{p.philhealth.claimNumber}</span>
+                  </Field>
+                )}
+                {p.philhealth.status === 'paid' && (
+                  <Field label="Paid">
+                    <span className="font-mono">{money(p.philhealth.paidAmount ?? 0)}</span>
+                    {(p.philhealth.withheldAmount ?? 0) > 0 && <span className="text-gray-500"> + {money(p.philhealth.withheldAmount ?? 0)} withheld</span>}
+                  </Field>
+                )}
+                {p.philhealth.note && <Field label="Note">{p.philhealth.note}</Field>}
+                {permissions.canPay && (
+                  <Field label="Claim">
+                    <Link href="/philhealth" className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                      Open on the PhilHealth page
+                    </Link>
+                  </Field>
+                )}
+              </dl>
+            </Panel>
+          )}
           {p.insurance?.provider && (
             <Panel
               id="inv-insurance"

@@ -10,6 +10,7 @@ export interface IDoctor extends Document {
   specializationId: Types.ObjectId; // Reference to Specialization model
   licenseNumber: string;
   ptr?: string;
+  philhealthPan?: string;
   ptrNumber?: string;
   
   // Schedule and availability
@@ -104,6 +105,10 @@ const DoctorSchema: Schema = new Schema(
       default: '',
     },
     ptrNumber: {
+      type: String,
+      trim: true,
+    },
+    philhealthPan: {
       type: String,
       trim: true,
     },

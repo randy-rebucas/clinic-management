@@ -5,8 +5,9 @@
  */
 
 import type { BirSettings } from './bir';
+import type { PhilhealthSettings } from './philhealth';
 
-export const WEEKDAYS =['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
+export const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 export type Weekday = (typeof WEEKDAYS)[number];
 export const WEEKDAY_LABEL: Record<Weekday, string> = {
   monday: 'Monday',
@@ -68,6 +69,7 @@ export interface ClinicSettingsForm {
   sidebarCollapsed: boolean;
   automations: Record<string, boolean>;
   bir: BirSettings;
+  philhealth: PhilhealthSettings;
 }
 
 export interface ClinicSettingsPageData {

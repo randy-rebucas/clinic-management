@@ -11,6 +11,7 @@ import { isSMSConfigured } from '@/lib/sms';
 import { isCloudinaryConfigured } from '@/lib/cloudinary';
 import { AUTOMATIONS } from '@/lib/clinic-automations';
 import { birSettingsOf } from '@/lib/bir';
+import { philhealthSettingsOf } from '@/lib/philhealth';
 import { CURRENCIES, WEEKDAYS, type ClinicSettingsPageData, type DayHours } from '@/lib/clinic-settings';
 
 const FALLBACK_ZONES = ['Asia/Manila', 'Asia/Singapore', 'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Kolkata', 'Australia/Sydney', 'Europe/London', 'America/New_York', 'America/Los_Angeles'];
@@ -79,6 +80,7 @@ export async function loadClinicSettingsPage(tenantIdInput: string): Promise<Cli
       prescriptionDigitalSignatureEnabled: s.prescriptionDigitalSignatureEnabled !== false,
       sidebarCollapsed: s.displaySettings?.sidebarCollapsed === true,
       bir: birSettingsOf(s.birSettings),
+      philhealth: philhealthSettingsOf(s.philhealthSettings),
       // Each switch shows what the automation will actually do: unset keys read as their default.
       automations: Object.fromEntries(
         AUTOMATIONS.map((a) => [a.key, typeof automationsStored[a.key] === 'boolean' ? (automationsStored[a.key] as boolean) : a.defaultOn])

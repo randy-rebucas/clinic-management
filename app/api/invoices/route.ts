@@ -13,6 +13,7 @@ import { nextSequence, formatCode, maxCodeSeed } from '@/lib/counters';
 import { INVOICE_STATUSES, OPEN_STATUSES, agingRange, isAgingKey } from '@/lib/invoices';
 import { invoiceEditableSchema, computeInvoiceTotals, statutoryDiscountProblem, taxProfileOf } from './_lib/totals';
 import { resolveInsurance } from './_lib/insurance';
+import { resolvePhilhealth, capBenefit, grossOf } from './_lib/philhealth';
 
 const MAX_RESULTS = 1000;
 
@@ -175,6 +176,9 @@ export async function POST(request: NextRequest) {
     const discountProblem = taxProfile ? statutoryDiscountProblem(body.discounts) : null;
     if (discountProblem) return NextResponse.json({ success: false, error: discountProblem }, { status: 400 });
 
+    const philhealth = body.philhealth ? await resolvePhilhealth(tenantId, body.philhealth, grossOf(body.items, body.professionalFee)) : null;
+    if (philhealth && !philhealth.ok) return NextResponse.json({ success: false, error: philhealth.error }, { status: 400 });
+
     const totals = computeInvoiceTotals({
       items: body.items,
       discounts: body.discounts,
@@ -183,6 +187,7 @@ export async function POST(request: NextRequest) {
       taxRate: settings.billingSettings?.taxRate,
       appliedBy: session.userId,
       taxProfile,
+      payerDeduction: philhealth?.ok ? philhealth.benefit : 0,
     });
 
     const seq = await nextSequence(
@@ -207,6 +212,7 @@ export async function POST(request: NextRequest) {
       total: totals.total,
       ...(totals.breakdown ? { taxBreakdown: totals.breakdown } : {}),
       insurance: insurance.value,
+      ...(philhealth?.ok ? { philhealth: capBenefit(philhealth.value, totals.total) } : {}),
       payments: [],
       totalPaid: 0,
       outstandingBalance: totals.total,

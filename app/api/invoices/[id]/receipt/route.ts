@@ -204,6 +204,7 @@ async function generateReceiptHTML(invoice: any, tenantId: string | null | undef
       check: 'Check',
       insurance: 'Insurance',
       hmo: 'HMO',
+      philhealth: 'PhilHealth',
       cwt: 'Withholding tax (BIR 2307)',
       online: 'Online payment',
       other: 'Other',
