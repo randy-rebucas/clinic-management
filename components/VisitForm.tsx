@@ -30,7 +30,8 @@ import {
 import { PhrasesProvider } from './templates/phrases';
 import { useTemplates } from './templates/useTemplates';
 import { SaveTemplateDialog, TemplatePickerDialog } from './templates/TemplateDialogs';
-import { fillBlank, mergeDiagnoses, mergeMedications, type ClinicalTemplateDTO, type TemplateMedication } from '@/lib/clinical-templates';
+import { fillBlank, mergeDiagnoses, mergeMedications, type ClinicalTemplateDTO, type TemplateMedication, type TemplateVisitContent } from '@/lib/clinical-templates';
+import ScribePanel, { type ScribeSelection } from './visits/ScribePanel';
 
 const SignaturePad = dynamic(() => import('./SignaturePad'), { ssr: false });
 
@@ -204,7 +205,7 @@ const medToTemplate = (m: Med): TemplateMedication => ({
  * Apply a visit template or saved prescription to the note: blank fields are filled, fields
  * the doctor already wrote are left alone, diagnoses and medicines are added (no duplicates).
  */
-function applyTemplate(note: Note, t: ClinicalTemplateDTO): { note: Note; skipped: number } {
+function applyTemplate(note: Note, t: Pick<ClinicalTemplateDTO, 'visit' | 'medications'>): { note: Note; skipped: number } {
   let skipped = 0;
   const fill = (current: string, incoming?: string) => {
     const r = fillBlank(current, incoming);
@@ -302,6 +303,74 @@ export default function VisitForm({ initialData, patients, onSubmit, onCancel, o
     tpl.markUsed(t._id);
     setTemplateNotice(
       `Applied “${t.name}”.${skipped ? ` ${skipped === 1 ? 'One field' : `${skipped} fields`} you had already written ${skipped === 1 ? 'was' : 'were'} left as ${skipped === 1 ? 'it was' : 'they were'}.` : ''} Review before saving.`
+    );
+  };
+
+  // --- AI scribe --------------------------------------------------------------------
+
+  const [scribe, setScribe] = useState<{ available: boolean; planAllows: boolean; configured: boolean } | null>(null);
+  const [scribeOpen, setScribeOpen] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/ai-scribe')
+      .then((r) => r.json())
+      .then((json) => alive && json?.success && setScribe(json.data))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const applyScribe = ({ draft, include, replace }: ScribeSelection) => {
+    const visit: TemplateVisitContent = {
+      chiefComplaint: include.chiefComplaint ? draft.chiefComplaint : undefined,
+      historyOfPresentIllness: include.historyOfPresentIllness ? draft.historyOfPresentIllness : undefined,
+      soapNotes: {
+        subjective: include.soap.subjective ? draft.soap.subjective : undefined,
+        objective: include.soap.objective ? draft.soap.objective : undefined,
+        assessment: include.soap.assessment ? draft.soap.assessment : undefined,
+        plan: include.soap.plan ? draft.soap.plan : undefined,
+      },
+      physicalExam: include.exam ? Object.fromEntries(draft.physicalExam.map((p) => [p.system, p.finding])) : undefined,
+      diagnoses: draft.diagnoses.filter((_, i) => include.diagnoses[i]),
+      followUpInstructions: include.followUp ? draft.followUp.instructions : undefined,
+    };
+    const medications: TemplateMedication[] = draft.medications
+      .filter((_, i) => include.medications[i])
+      .map((m) => ({ name: m.name, dosage: m.dosage, frequency: m.frequency, duration: m.duration, quantity: m.quantity ?? undefined, instructions: m.instructions }));
+
+    // "Replace" clears the fields the draft has content for; otherwise only blanks are filled.
+    let base = note;
+    if (replace) {
+      const clear = (cur: string, incoming?: string) => (incoming?.trim() ? '' : cur);
+      const exam = { ...note.exam };
+      for (const key of Object.keys(visit.physicalExam ?? {})) if (key in exam) exam[key as ExamKey] = '';
+      base = {
+        ...note,
+        chiefComplaint: clear(note.chiefComplaint, visit.chiefComplaint),
+        historyOfPresentIllness: clear(note.historyOfPresentIllness, visit.historyOfPresentIllness),
+        soap: {
+          subjective: clear(note.soap.subjective, visit.soapNotes?.subjective),
+          objective: clear(note.soap.objective, visit.soapNotes?.objective),
+          assessment: clear(note.soap.assessment, visit.soapNotes?.assessment),
+          plan: clear(note.soap.plan, visit.soapNotes?.plan),
+        },
+        exam,
+        diagnoses: visit.diagnoses?.length ? [] : note.diagnoses,
+        medications: medications.length ? [] : note.medications,
+        followUpInstructions: clear(note.followUpInstructions, visit.followUpInstructions),
+      };
+    }
+    const { note: next, skipped } = applyTemplate(base, { visit, medications });
+    const days = include.followUp ? draft.followUp.inDays : null;
+    if (days && days > 0 && (replace || !next.followUpDate)) {
+      const d = new Date();
+      d.setDate(d.getDate() + Math.round(days));
+      next.followUpDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    setNote(next);
+    setTemplateNotice(
+      `AI draft applied.${skipped ? ` ${skipped === 1 ? 'One field' : `${skipped} fields`} you had already written ${skipped === 1 ? 'was' : 'were'} kept.` : ''} Check every field before saving — you are signing this note.`
     );
   };
 
@@ -513,6 +582,18 @@ export default function VisitForm({ initialData, patients, onSubmit, onCancel, o
           )}
         </p>
         <div className="flex shrink-0 flex-wrap gap-2">
+          {scribe?.configured && (
+            <button
+              type="button"
+              onClick={() => setScribeOpen(true)}
+              disabled={!scribe.planAllows}
+              title={scribe.planAllows ? 'Draft the note from a dictated or pasted consult' : 'Part of the Professional and Enterprise plans'}
+              className={`inline-flex items-center gap-1.5 rounded-md bg-brand-teal-dark px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
+            >
+              <Svg d="M12 18.5a6.5 6.5 0 006.5-6.5M12 18.5A6.5 6.5 0 015.5 12M12 18.5V22m0-7.5a3 3 0 01-3-3V5a3 3 0 116 0v6.5a3 3 0 01-3 3z" />
+              AI scribe
+            </button>
+          )}
           <button type="button" onClick={() => setPicker('visit')} className={ADD_BUTTON}>
             <Svg d="M4 6h16M4 12h16M4 18h10" />
             Apply template
@@ -1036,6 +1117,9 @@ export default function VisitForm({ initialData, patients, onSubmit, onCancel, o
         </Modal>
       )}
 
+      {scribeOpen && (
+        <ScribePanel open onClose={() => setScribeOpen(false)} patientId={note.patient || undefined} visitType={note.visitType} onApply={applyScribe} />
+      )}
       {picker && (
         <TemplatePickerDialog
           open

@@ -90,7 +90,7 @@ function addSecurityHeaders(response: NextResponse, csp: string): NextResponse {
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
   // Camera is needed on our own pages for QR scanning
-  response.headers.set('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');
+  response.headers.set('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
   return response;
 }
 
