@@ -4,6 +4,8 @@ import { RequestLinkForm } from '@/components/platform/PlatformLoginForms';
 import { verifyPlatformSession } from '@/lib/platform-auth';
 import { getTenantContext } from '@/lib/tenant';
 
+export const dynamic = 'force-dynamic';
+
 export default async function PlatformLoginPage() {
   if ((await getTenantContext()).subdomain) notFound();
   if (await verifyPlatformSession()) redirect('/platform');
