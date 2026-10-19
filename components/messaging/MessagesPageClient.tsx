@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useMessaging } from './MessagingProvider';
 import { ChatAvatar, CHAT_FOCUS_RING, ContactSearch, ConversationList } from './ChatParts';
 import ChatThread from './ChatThread';
+import ConversationActions from './ConversationActions';
 
 export default function MessagesPageClient() {
   const router = useRouter();
@@ -91,10 +92,15 @@ export default function MessagesPageClient() {
                   </svg>
                 </button>
                 <ChatAvatar name={selected.other.name} />
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <h2 className="truncate text-sm font-semibold text-gray-900">{selected.other.name}</h2>
                   {selected.other.role && <p className="truncate text-xs text-gray-500 capitalize">{selected.other.role}</p>}
                 </div>
+                <ConversationActions
+                  conversation={selected}
+                  onLeave={() => select(null)}
+                  triggerClassName="p-2 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+                />
               </header>
               <div className="flex-1 min-h-0">
                 <ChatThread key={selected.id} conversation={selected} />

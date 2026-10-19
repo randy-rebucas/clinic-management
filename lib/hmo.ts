@@ -38,8 +38,8 @@ export type ClaimLineStatus = 'pending' | 'paid' | 'short_paid' | 'denied';
 export const CLAIM_LINE_STATUS: Record<ClaimLineStatus, string> = {
   pending: 'Waiting',
   paid: 'Paid',
-  short_paid: 'Short paid',
-  denied: 'Denied',
+  short_paid: 'Part refused',
+  denied: 'Refused',
 };
 
 /**
@@ -69,3 +69,88 @@ export function claimProblem(claim: { loaNumber?: string | null; amount: number 
 }
 
 export const dueDate = (submittedAt: Date, termsDays: number) => new Date(submittedAt.getTime() + termsDays * 86_400_000);
+
+// ---------------------------------------------------------------------------
+// The claims page: what the list can be narrowed to, and the rows it shows
+// ---------------------------------------------------------------------------
+
+/** Transmittals still expecting money from the payer. */
+export const WAITING_STATUSES: BatchStatus[] = ['submitted', 'partial'];
+
+export type BatchShow = 'waiting' | 'overdue' | 'draft' | 'done';
+export const BATCH_SHOWS: { key: BatchShow; label: string }[] = [
+  { key: 'waiting', label: 'Waiting for payment' },
+  { key: 'overdue', label: 'Past due' },
+  { key: 'draft', label: 'Not sent yet' },
+  { key: 'done', label: 'Settled or closed' },
+];
+export const isBatchShow = (v: string | null | undefined): v is BatchShow => BATCH_SHOWS.some((s) => s.key === v);
+
+/** Days since a transmittal was sent, for what is still owed on it. The invoice aging buckets. */
+export type OwedAgingKey = '0-30' | '31-60' | '61-90' | '90+';
+export const OWED_AGING: { key: OwedAgingKey; label: string; minDays: number; maxDays: number | null }[] = [
+  { key: '0-30', label: 'Under 31 days', minDays: 0, maxDays: 30 },
+  { key: '31-60', label: '31–60 days', minDays: 31, maxDays: 60 },
+  { key: '61-90', label: '61–90 days', minDays: 61, maxDays: 90 },
+  { key: '90+', label: 'Over 90 days', minDays: 91, maxDays: null },
+];
+export const isOwedAgingKey = (v: string | null | undefined): v is OwedAgingKey => OWED_AGING.some((a) => a.key === v);
+export const owedAgingOf = (days: number): OwedAgingKey => OWED_AGING.find((a) => days >= a.minDays && (a.maxDays === null || days <= a.maxDays))!.key;
+
+export interface OpenClaim {
+  invoiceId: string;
+  invoiceNumber: string;
+  createdAt: string;
+  patientName: string;
+  provider: string;
+  hmoId: string | null;
+  memberId: string;
+  loaNumber: string;
+  amount: number;
+  problem: string | null;
+}
+
+/** A draft transmittal claims to that payer can still be added to. */
+export interface DraftRef {
+  _id: string;
+  hmoId: string;
+  batchNumber: string;
+  claims: number;
+}
+
+export interface BatchRow {
+  _id: string;
+  hmoId: string;
+  hmoName: string;
+  batchNumber: string;
+  status: BatchStatus;
+  claims: number;
+  /** Claims the payer refused in whole or in part. */
+  refused: number;
+  totalClaimed: number;
+  received: number;
+  outstanding: number;
+  submittedAt: string | null;
+  dueAt: string | null;
+  overdue: boolean;
+  createdAt: string;
+}
+
+export interface HmoInsights {
+  toSend: { count: number; amount: number; ready: number; readyAmount: number; needLoa: number; unlisted: number; oldestAt: string | null };
+  owed: { amount: number; batches: number; pastDue: { amount: number; batches: number }; aging: { key: OwedAgingKey; amount: number; batches: number }[] };
+  drafts: number;
+  received30: { amount: number; withheld: number };
+  byHmo: {
+    hmoId: string;
+    name: string;
+    active: boolean;
+    termsDays: number;
+    owed: number;
+    pastDue: number;
+    toSend: number;
+    toSendAmount: number;
+    /** Average days from sending to being paid, weighted by amount, over the last 12 months; null when nothing was paid. */
+    daysToPay: number | null;
+  }[];
+}

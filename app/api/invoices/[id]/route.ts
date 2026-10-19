@@ -15,6 +15,7 @@ import { requireTenantSession, isTenantSessionError, tenantFilter, patientTenant
 import { parseBody, isValidationError, roundMoney } from '@/lib/api/validate';
 import { invoiceEditableSchema, computeInvoiceTotals, deriveStatus, statutoryDiscountProblem, taxProfileOf } from '../_lib/totals';
 import { resolveInsurance } from '../_lib/insurance';
+import { claimHold } from '@/lib/hmo-claims';
 import { resolvePhilhealth, capBenefit, grossOf } from '../_lib/philhealth';
 
 export async function GET(
@@ -196,6 +197,19 @@ export async function PUT(
       );
     }
 
+    // A claim waiting in an HMO transmittal was sent for this bill as it stands.
+    if (moneyChanged || body.status === 'refunded') {
+      const hold = await claimHold(tenantId, current, moneyChanged ? 'change' : 'refund');
+      if (hold) return NextResponse.json({ success: false, error: hold }, { status: 409 });
+    }
+    // A filed PhilHealth claim is waiting on PhilHealth's answer for this bill.
+    if (body.status === 'refunded' && current.philhealth?.status === 'filed') {
+      return NextResponse.json(
+        { success: false, error: 'This bill’s PhilHealth claim has been filed. Record PhilHealth’s answer on the PhilHealth page first (paid, returned or denied), then refund it.' },
+        { status: 409 }
+      );
+    }
+
     if (moneyChanged) {
       // An issued BIR invoice is a filed document: corrections go on a new invoice, not over it.
       if (current.bir?.serialNo) {
@@ -257,7 +271,12 @@ export async function PUT(
       total = totals.total;
       if (philhealth?.ok) {
         // A returned claim being corrected keeps its history and goes back to be filed again.
-        const keep = current.philhealth && current.philhealth.status === 'returned' ? { claimNumber: current.philhealth.claimNumber, note: current.philhealth.note } : {};
+        const keep =
+          current.philhealth && current.philhealth.status === 'returned'
+            ? { claimNumber: current.philhealth.claimNumber, note: current.philhealth.note, returnedAt: current.philhealth.returnedAt }
+            : current.philhealth?.status === 'draft' && current.philhealth.returnedAt
+              ? { claimNumber: current.philhealth.claimNumber, note: current.philhealth.note, returnedAt: current.philhealth.returnedAt }
+              : {};
         $set.philhealth = { ...capBenefit(philhealth.value, totals.total), ...keep };
       } else if (body.philhealth === null) $unset.philhealth = 1;
       Object.assign($set, {

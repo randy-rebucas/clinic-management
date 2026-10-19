@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { format, isThisYear, isToday, isYesterday } from 'date-fns';
 import { chatInitials, type ChatUser, type ConversationSummary } from '@/lib/messaging';
 
@@ -34,6 +34,155 @@ export function ChatAvatar({ name, size = 'md' }: { name: string; size?: 'sm' | 
     </span>
   );
 }
+
+export interface ChatAction {
+  label: string;
+  onSelect: () => void;
+  icon?: ReactNode;
+  danger?: boolean;
+}
+
+/**
+ * "More actions" button with a small popup menu. The menu is fixed-positioned so a scrolling
+ * thread can't clip it, flips upward near the bottom of the viewport, and closes on scroll.
+ */
+export function ActionMenu({
+  actions,
+  label,
+  align = 'end',
+  triggerClassName = '',
+  onOpenChange,
+}: {
+  actions: ChatAction[];
+  label: string;
+  align?: 'start' | 'end';
+  triggerClassName?: string;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const [open, setOpenState] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left?: number; right?: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const setOpen = (next: boolean) => {
+    setOpenState(next);
+    if (!next) setPos(null);
+    onOpenChange?.(next);
+  };
+
+  // Place the menu once it has rendered and can be measured
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current || !menuRef.current) return;
+    const r = triggerRef.current.getBoundingClientRect();
+    const h = menuRef.current.offsetHeight;
+    const below = r.bottom + 4;
+    const top = below + h > window.innerHeight - 8 ? Math.max(8, r.top - h - 4) : below;
+    setPos(align === 'end' ? { top, right: window.innerWidth - r.right } : { top, left: r.left });
+    itemRefs.current[0]?.focus({ preventScroll: true });
+  }, [open, align]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!menuRef.current?.contains(t) && !triggerRef.current?.contains(t)) close();
+    };
+    document.addEventListener('mousedown', onDown);
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', close, true);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('scroll', close, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const onMenuKeyDown = (e: React.KeyboardEvent) => {
+    const items = itemRefs.current.filter(Boolean) as HTMLButtonElement[];
+    const i = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === 'Escape' || e.key === 'Tab') {
+      e.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      items[(i + 1) % items.length]?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      items[(i - 1 + items.length) % items.length]?.focus();
+    }
+  };
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={label}
+        title={label}
+        className={`${triggerClassName} ${CHAT_FOCUS_RING}`}
+      >
+        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M6 10a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm5.5 0a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm5.5 0a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label={label}
+          onKeyDown={onMenuKeyDown}
+          style={pos ? { top: pos.top, left: pos.left, right: pos.right } : { top: -9999, left: -9999 }}
+          className="fixed z-[60] min-w-[11rem] py-1 rounded-lg border border-gray-200 bg-white shadow-[0_8px_30px_rgb(15,23,42,0.12)]"
+        >
+          {actions.map((a, i) => (
+            <button
+              key={a.label}
+              ref={(el) => {
+                itemRefs.current[i] = el;
+              }}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                a.onSelect();
+              }}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm focus-visible:outline-none ${
+                a.danger
+                  ? 'text-red-600 hover:bg-red-50 focus-visible:bg-red-50'
+                  : 'text-gray-700 hover:bg-gray-50 focus-visible:bg-gray-50'
+              }`}
+            >
+              {a.icon && <span className={`w-4 h-4 shrink-0 ${a.danger ? '' : 'text-gray-400'}`} aria-hidden="true">{a.icon}</span>}
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function ActionIcon({ d }: { d: string }) {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d={d} />
+    </svg>
+  );
+}
+
+export const ACTION_ICONS = {
+  copy: <ActionIcon d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />,
+  edit: <ActionIcon d="M15.232 5.232l3.536 3.536M9 13l6.232-6.232a2.5 2.5 0 113.536 3.536L12.536 16.536 8 18l1.464-4.536z" />,
+  trash: <ActionIcon d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />,
+  unread: <ActionIcon d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />,
+};
 
 export function ConversationList({
   conversations,

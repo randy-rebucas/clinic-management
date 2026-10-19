@@ -9,9 +9,12 @@ import { requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId, zShortText } from '@/lib/api/validate';
 import { createAuditLog } from '@/lib/audit';
-import { closeBatch, recordRemittance, removeClaim, submitBatch } from '@/lib/hmo-claims';
+import { addClaims, claimInvoiceStates, closeBatch, discardDraft, recordRemittance, removeClaim, submitBatch } from '@/lib/hmo-claims';
 
-/** GET: one transmittal with its claims, payments received and the HMO's terms. */
+/**
+ * GET: one transmittal with its claims, payments received and the HMO's terms, and each claim's
+ * bill as it is now (`invoices`), so a claim the bill no longer supports is flagged.
+ */
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireTenantSession();
   if (isTenantSessionError(ctx)) return ctx;
@@ -29,8 +32,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     if (!batch) return notFound('Transmittal');
     const hmo = await Hmo.findOne({ _id: batch.hmo, tenantId: ctx.tenantObjectId })
       .select('name email phone contactName paymentTermsDays withholdingServicesRate withholdingProfessionalRate')
-      .lean();
-    return NextResponse.json({ success: true, data: { ...batch, hmo } });
+      .lean<{ withholdingServicesRate: number; withholdingProfessionalRate: number } | null>();
+    // The withholding to expect is worked out from the HMO's rates today, not when it was sent.
+    const invoices = await claimInvoiceStates(ctx.tenantObjectId, batch.claims, hmo);
+    return NextResponse.json({ success: true, data: { ...batch, hmo, invoices } });
   } catch (error) {
     console.error('Error loading transmittal:', error);
     return NextResponse.json({ success: false, error: 'Failed to load the transmittal' }, { status: 500 });
@@ -41,6 +46,8 @@ const actionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('submit') }),
   z.object({ action: z.literal('close') }),
   z.object({ action: z.literal('remove'), invoice: zObjectId }),
+  z.object({ action: z.literal('add'), invoices: z.array(zObjectId).min(1).max(500) }),
+  z.object({ action: z.literal('discard') }),
   z.object({
     action: z.literal('remit'),
     date: z.coerce.date().refine((d) => d.getTime() <= Date.now() + 86_400_000, 'A payment can’t be dated in the future'),
@@ -62,7 +69,7 @@ const actionSchema = z.discriminatedUnion('action', [
   }),
 ]);
 
-/** PUT { action }: send a draft, take a claim out of it, record the HMO's payment, or close it. */
+/** PUT { action }: send a draft, add claims to it or take one out, throw it away, record the HMO's payment, or close it. */
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireTenantSession();
   if (isTenantSessionError(ctx)) return ctx;
@@ -99,6 +106,18 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (!r.ok) return NextResponse.json({ success: false, error: r.error }, { status: r.status });
       await audit('Closed an HMO transmittal');
       return NextResponse.json({ success: true, data: { status: 'closed' } });
+    }
+    if (body.action === 'add') {
+      const r = await addClaims(ctx.tenantId, id, body.invoices);
+      if (!r.ok) return NextResponse.json({ success: false, error: r.error }, { status: r.status });
+      if (r.added) await audit(`Added ${r.added} claims to an HMO transmittal`);
+      return NextResponse.json({ success: true, data: { added: r.added } });
+    }
+    if (body.action === 'discard') {
+      const r = await discardDraft(ctx.tenantId, id);
+      if (!r.ok) return NextResponse.json({ success: false, error: r.error }, { status: r.status });
+      await audit(`Threw away a draft HMO transmittal; ${r.claims} claims back to send`);
+      return NextResponse.json({ success: true, data: { deleted: true } });
     }
     if (body.action === 'remove') {
       const r = await removeClaim(ctx.tenantId, id, body.invoice);

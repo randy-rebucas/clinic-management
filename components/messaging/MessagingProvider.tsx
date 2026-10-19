@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { ChatMessage, ConversationSummary } from '@/lib/messaging';
+import { DELETED_MESSAGE_PREVIEW, type ChatMessage, type ConversationSummary } from '@/lib/messaging';
 
 const POLL_MS = 15000;
 // How many chat windows the floating dock keeps open side by side
@@ -25,6 +25,14 @@ interface MessagingContextValue {
   markRead: (conversationId: string) => void;
   /** Record a message the user just sent, so the list reorders without waiting for the next poll. */
   noteSent: (conversationId: string, message: ChatMessage) => void;
+  /** Record an edit or delete, so the list preview follows if it was the last message. */
+  noteChanged: (conversationId: string, message: ChatMessage) => void;
+  /** Flag the conversation unread. It stays unread until the thread is opened again. */
+  markUnread: (conversationId: string) => void;
+  /** Allow an open thread to mark itself read again after markUnread. */
+  releaseUnread: (conversationId: string) => void;
+  /** Delete the conversation for the current user. Resolves false if the server refused. */
+  deleteConversation: (conversationId: string) => Promise<boolean>;
   /** Make sure a conversation is in the list (e.g. one opened by URL or started fresh). */
   upsertConversation: (conversation: ConversationSummary) => void;
   // Floating dock windows
@@ -65,6 +73,10 @@ export default function MessagingProvider({ meId, children }: { meId: string | n
   const [openChats, setOpenChats] = useState<OpenChat[]>([]);
   // Conversations started locally that have no messages yet, so the server list omits them
   const pendingRef = useRef<Map<string, ConversationSummary>>(new Map());
+  // Conversations the user marked unread; an open thread must not clear them until reopened
+  const heldUnreadRef = useRef<Set<string>>(new Set());
+  // Conversations deleted this session; keeps a stale ?c= link from re-adding them
+  const deletedRef = useRef<Set<string>>(new Set());
   const conversationsRef = useRef(conversations);
   useEffect(() => {
     conversationsRef.current = conversations;
@@ -78,7 +90,11 @@ export default function MessagingProvider({ meId, children }: { meId: string | n
       return;
     }
     if (!result) return;
-    for (const c of result.conversations) pendingRef.current.delete(c.id);
+    for (const c of result.conversations) {
+      pendingRef.current.delete(c.id);
+      // Back on the server list: someone messaged after it was deleted
+      deletedRef.current.delete(c.id);
+    }
     setConversations([...pendingRef.current.values(), ...result.conversations]);
     setTotalUnread(result.totalUnread);
     setLoaded(true);
@@ -101,6 +117,7 @@ export default function MessagingProvider({ meId, children }: { meId: string | n
   }, [meId, available, refresh]);
 
   const upsertConversation = useCallback((conversation: ConversationSummary) => {
+    if (deletedRef.current.has(conversation.id)) return;
     setConversations((prev) => {
       if (prev.some((c) => c.id === conversation.id)) return prev;
       if (!conversation.lastMessageAt) pendingRef.current.set(conversation.id, conversation);
@@ -118,6 +135,7 @@ export default function MessagingProvider({ meId, children }: { meId: string | n
         });
         const data = await res.json();
         if (!data.success) return null;
+        deletedRef.current.delete(data.data.id);
         upsertConversation(data.data);
         return data.data as ConversationSummary;
       } catch (error) {
@@ -129,6 +147,7 @@ export default function MessagingProvider({ meId, children }: { meId: string | n
   );
 
   const markRead = useCallback((conversationId: string) => {
+    if (heldUnreadRef.current.has(conversationId)) return;
     const cleared = conversationsRef.current.find((c) => c.id === conversationId)?.unread ?? 0;
     if (cleared > 0) {
       setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, unread: 0 } : c)));
@@ -153,15 +172,64 @@ export default function MessagingProvider({ meId, children }: { meId: string | n
     });
   }, []);
 
+  const noteChanged = useCallback((conversationId: string, message: ChatMessage) => {
+    setConversations((prev) =>
+      prev.map((c) => {
+        const last = c.lastMessage;
+        if (c.id !== conversationId || !last) return c;
+        if (last.senderId !== message.senderId || new Date(last.createdAt).getTime() !== new Date(message.createdAt).getTime()) return c;
+        return { ...c, lastMessage: { ...last, body: message.deleted ? DELETED_MESSAGE_PREVIEW : message.body } };
+      })
+    );
+  }, []);
+
+  const markUnread = useCallback((conversationId: string) => {
+    heldUnreadRef.current.add(conversationId);
+    const current = conversationsRef.current.find((c) => c.id === conversationId);
+    if (current && current.unread === 0) {
+      setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, unread: 1 } : c)));
+      setTotalUnread((n) => n + 1);
+    }
+    fetch(`/api/messages/conversations/${conversationId}/read`, { method: 'DELETE' }).catch((error) =>
+      console.error('Error marking conversation unread:', error)
+    );
+  }, []);
+
+  const releaseUnread = useCallback((conversationId: string) => {
+    heldUnreadRef.current.delete(conversationId);
+  }, []);
+
+  const closeChat = useCallback((conversationId: string) => {
+    setOpenChats((prev) => prev.filter((c) => c.id !== conversationId));
+  }, []);
+
+  const deleteConversation = useCallback(
+    async (conversationId: string) => {
+      try {
+        const res = await fetch(`/api/messages/conversations/${conversationId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!data.success) return false;
+      } catch (error) {
+        console.error('Error deleting conversation:', error);
+        return false;
+      }
+      const removed = conversationsRef.current.find((c) => c.id === conversationId);
+      pendingRef.current.delete(conversationId);
+      heldUnreadRef.current.delete(conversationId);
+      deletedRef.current.add(conversationId);
+      setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+      if (removed?.unread) setTotalUnread((n) => Math.max(0, n - removed.unread));
+      closeChat(conversationId);
+      return true;
+    },
+    [closeChat]
+  );
+
   const openChat = useCallback((conversationId: string) => {
     setOpenChats((prev) => {
       const rest = prev.filter((c) => c.id !== conversationId);
       return [{ id: conversationId, minimized: false }, ...rest].slice(0, MAX_OPEN_CHATS);
     });
-  }, []);
-
-  const closeChat = useCallback((conversationId: string) => {
-    setOpenChats((prev) => prev.filter((c) => c.id !== conversationId));
   }, []);
 
   const toggleMinimized = useCallback((conversationId: string) => {
@@ -179,13 +247,17 @@ export default function MessagingProvider({ meId, children }: { meId: string | n
       startConversation,
       markRead,
       noteSent,
+      noteChanged,
+      markUnread,
+      releaseUnread,
+      deleteConversation,
       upsertConversation,
       openChats,
       openChat,
       closeChat,
       toggleMinimized,
     }),
-    [enabled, meId, conversations, totalUnread, loaded, refresh, startConversation, markRead, noteSent, upsertConversation, openChats, openChat, closeChat, toggleMinimized]
+    [enabled, meId, conversations, totalUnread, loaded, refresh, startConversation, markRead, noteSent, noteChanged, markUnread, releaseUnread, deleteConversation, upsertConversation, openChats, openChat, closeChat, toggleMinimized]
   );
 
   return <MessagingContext.Provider value={value}>{children}</MessagingContext.Provider>;

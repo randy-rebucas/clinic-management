@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { daysToFile, formatPin, isPin, philhealthBenefit } from '@/lib/philhealth';
+import { RTH_DAYS, daysLeftToFile, paidStatusFor, daysToFile, deadlineOf, formatPin, isPin, philhealthBenefit, waitOf } from '@/lib/philhealth';
 import { computeInvoiceTotals } from '@/lib/invoice-totals';
 
 describe('PhilHealth number', () => {
@@ -50,5 +50,29 @@ describe('daysToFile', () => {
     const now = new Date('2026-10-19T00:00:00Z');
     expect(daysToFile('2026-10-01T00:00:00Z', 60, now)).toBe(42);
     expect(daysToFile('2026-08-01T00:00:00Z', 60, now)).toBe(-19);
+  });
+});
+
+describe('filing deadline', () => {
+  it('gives a returned claim 60 calendar days from the notice, whatever the clinic’s own window', () => {
+    const now = new Date('2026-10-19T00:00:00Z');
+    const returned = { servedOn: '2026-07-01T00:00:00Z', returnedAt: '2026-10-10T00:00:00Z' };
+    expect(RTH_DAYS).toBe(60);
+    expect(daysLeftToFile(returned, 30, now)).toBe(51);
+    expect(daysLeftToFile({ servedOn: returned.servedOn }, 30, now)).toBeLessThan(0);
+    expect(daysLeftToFile({ servedOn: '2026-10-10T00:00:00Z' }, 30, now)).toBe(21);
+  });
+
+  it('sorts days left and days waiting into the page’s buckets', () => {
+    expect([-1, 0, 7, 8, 30, 31].map(deadlineOf)).toEqual(['late', 'week', 'week', 'month', 'month', 'later']);
+    expect([0, 30, 31, 60, 61, 90, 91].map(waitOf)).toEqual(['0-30', '0-30', '31-60', '31-60', '61-90', '61-90', '90+']);
+  });
+});
+
+describe('PhilHealth payment', () => {
+  it('is part paid when PhilHealth pays less than the claim, tax withheld included', () => {
+    expect(paidStatusFor(1000, 980, 20)).toBe('paid');
+    expect(paidStatusFor(1000, 900, 20)).toBe('part_paid');
+    expect(paidStatusFor(1000, 999.996, 0)).toBe('paid');
   });
 });

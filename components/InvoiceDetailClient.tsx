@@ -690,10 +690,15 @@ export default function InvoiceDetailClient({
                     <span className="font-mono">{p.philhealth.claimNumber}</span>
                   </Field>
                 )}
-                {p.philhealth.status === 'paid' && (
+                {(p.philhealth.status === 'paid' || p.philhealth.status === 'part_paid') && (
                   <Field label="Paid">
                     <span className="font-mono">{money(p.philhealth.paidAmount ?? 0)}</span>
                     {(p.philhealth.withheldAmount ?? 0) > 0 && <span className="text-gray-500"> + {money(p.philhealth.withheldAmount ?? 0)} withheld</span>}
+                    {p.philhealth.status === 'part_paid' && (
+                      <span className="block text-xs font-medium text-amber-800">
+                        {money(Math.max(0, p.philhealth.amount - (p.philhealth.paidAmount ?? 0) - (p.philhealth.withheldAmount ?? 0)))} less than claimed; the patient owes it
+                      </span>
+                    )}
                   </Field>
                 )}
                 {p.philhealth.note && <Field label="Note">{p.philhealth.note}</Field>}

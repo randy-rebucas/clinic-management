@@ -8,6 +8,7 @@ import { requireTenantSession, isTenantSessionError, isValidId, notFound } from 
 import { parseBody, isValidationError, zShortText, roundMoney } from '@/lib/api/validate';
 import { createAuditLog } from '@/lib/audit';
 import { recordInvoicePayments, PAYMENT_EPSILON } from '@/lib/invoice-payments';
+import { paidStatusFor } from '@/lib/philhealth';
 
 const notFuture = (d: Date) => d.getTime() <= Date.now() + 86_400_000;
 
@@ -20,14 +21,19 @@ const actionSchema = z.discriminatedUnion('action', [
     date: z.coerce.date().refine(notFuture, 'A payment can’t be dated in the future'),
     reference: zShortText.optional(),
   }),
-  z.object({ action: z.literal('return'), note: z.string().trim().min(1, 'Say why PhilHealth returned it.').max(1000) }),
+  z.object({
+    action: z.literal('return'),
+    note: z.string().trim().min(1, 'Say why PhilHealth returned it.').max(1000),
+    returnedAt: z.coerce.date().refine(notFuture, 'Not in the future').optional(),
+  }),
   z.object({ action: z.literal('deny'), note: z.string().trim().max(1000).optional() }),
 ]);
 
 /**
  * PUT { action } on the PhilHealth claim of invoice :id.
  *  file: filed through eClaims (with the claim series number, when known).
- *  pay: PhilHealth paid; the payment and any tax withheld post to the invoice.
+ *  pay: PhilHealth paid; the payment and any tax withheld post to the invoice. Less than the
+ *       claim makes it part paid: the rest stays on the bill for the patient.
  *  return: returned for correction ("return to hospital"); fix the bill and file again.
  *  deny: refused; the patient owes the benefit amount.
  */
@@ -68,6 +74,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       const withheld = roundMoney(body.withheld);
       if (amount + withheld > ph.amount + PAYMENT_EPSILON) return NextResponse.json({ success: false, error: `That’s more than the claim (${ph.amount.toFixed(2)}).` }, { status: 400 });
       const ref = [ph.claimNumber, body.reference].filter(Boolean).join(' · ') || undefined;
+      const status = paidStatusFor(ph.amount, amount, withheld);
       const result = await recordInvoicePayments({
         tenantId: ctx.tenantId,
         invoiceId: id,
@@ -75,23 +82,27 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
           { method: 'philhealth', amount, date: body.date, referenceNo: ref, processedBy: ctx.session.userId, notes: `PhilHealth ${ph.caseRateCode}` },
           { method: 'cwt', amount: withheld, date: body.date, referenceNo: ref, processedBy: ctx.session.userId, notes: 'Withheld by PhilHealth' },
         ],
-        alsoSet: { 'philhealth.status': 'paid', 'philhealth.paidAt': body.date, 'philhealth.paidAmount': amount, 'philhealth.withheldAmount': withheld },
+        alsoSet: { 'philhealth.status': status, 'philhealth.paidAt': body.date, 'philhealth.paidAmount': amount, 'philhealth.withheldAmount': withheld },
       });
       if (!result.ok) return NextResponse.json({ success: false, error: result.error }, { status: result.status });
-      await audit(`Recorded PhilHealth’s payment on ${inv.invoiceNumber}`);
-      return NextResponse.json({ success: true, data: { status: 'paid' } });
+      await audit(
+        status === 'paid'
+          ? `Recorded PhilHealth’s payment on ${inv.invoiceNumber}`
+          : `Recorded PhilHealth’s payment on ${inv.invoiceNumber}: ${roundMoney(ph.amount - amount - withheld).toFixed(2)} less than claimed, left for the patient`
+      );
+      return NextResponse.json({ success: true, data: { status } });
     }
 
     if (body.action === 'return') {
       if (ph.status !== 'filed') return refuse('Only a filed claim can be returned.');
-      await Invoice.updateOne(query, { $set: { 'philhealth.status': 'returned', 'philhealth.note': body.note } });
+      await Invoice.updateOne(query, { $set: { 'philhealth.status': 'returned', 'philhealth.note': body.note, 'philhealth.returnedAt': body.returnedAt ?? new Date() } });
       await audit(`PhilHealth returned the claim on ${inv.invoiceNumber}`);
       return NextResponse.json({ success: true, data: { status: 'returned' } });
     }
 
     if (!['filed', 'returned', 'draft'].includes(ph.status)) return refuse('This claim is already settled.');
-    await Invoice.updateOne(query, { $set: { 'philhealth.status': 'denied', ...(body.note ? { 'philhealth.note': body.note } : {}) } });
-    await audit(`PhilHealth denied the claim on ${inv.invoiceNumber}`);
+    await Invoice.updateOne(query, { $set: { 'philhealth.status': 'denied', 'philhealth.deniedAt': new Date(), ...(body.note ? { 'philhealth.note': body.note } : {}) } });
+    await audit(ph.status === 'filed' ? `PhilHealth denied the claim on ${inv.invoiceNumber}` : `Dropped the PhilHealth claim on ${inv.invoiceNumber} without filing it`);
     return NextResponse.json({ success: true, data: { status: 'denied' } });
   } catch (error) {
     console.error('Error updating PhilHealth claim:', error);
