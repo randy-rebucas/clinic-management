@@ -72,6 +72,7 @@ export default function BookingModal({
   const [duration, setDuration] = useState(defaultDuration);
   const [status, setStatus] = useState<'scheduled' | 'confirmed' | 'pending'>('scheduled');
   const [room, setRoom] = useState('');
+  const [video, setVideo] = useState(false);
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -122,7 +123,8 @@ export default function BookingModal({
         body: JSON.stringify({
           patient: patient._id,
           doctor: doctor || undefined,
-          room: room.trim() || undefined,
+          room: video ? undefined : room.trim() || undefined,
+          modality: !walkIn && video ? 'teleconsult' : 'in-person',
           appointmentDate: walkIn ? today : day,
           appointmentTime: time || undefined,
           duration,
@@ -143,7 +145,10 @@ export default function BookingModal({
       const created = data.data as Appointment;
       const who = `${patient.firstName} ${patient.lastName}`;
       if (!walkIn) {
-        onBooked(created, `${who} is booked for ${dayLabel(day, { weekday: 'short', month: 'short', day: 'numeric' })} at ${timeLabel(time)}.`);
+        onBooked(
+          created,
+          `${who} is booked for ${video ? 'a video visit on ' : ''}${dayLabel(day, { weekday: 'short', month: 'short', day: 'numeric' })} at ${timeLabel(time)}.${video ? ' They join from the patient app.' : ''}`
+        );
         return;
       }
 
@@ -299,13 +304,40 @@ export default function BookingModal({
                 </select>
               </div>
             )}
-            <div>
-              <label htmlFor={`${ids}-room`} className="mb-1.5 block text-sm font-medium text-gray-700">
-                Room <span className="font-normal text-gray-500">· optional</span>
-              </label>
-              <input id={`${ids}-room`} type="text" value={room} onChange={(e) => setRoom(e.target.value)} placeholder="e.g. Consultation Room A" className={FIELD} />
-            </div>
+            {!video && (
+              <div>
+                <label htmlFor={`${ids}-room`} className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Room <span className="font-normal text-gray-500">· optional</span>
+                </label>
+                <input id={`${ids}-room`} type="text" value={room} onChange={(e) => setRoom(e.target.value)} placeholder="e.g. Consultation Room A" className={FIELD} />
+              </div>
+            )}
           </div>
+
+          {!walkIn && (
+            <fieldset>
+              <legend className="mb-1.5 block text-sm font-medium text-gray-700">Where</legend>
+              <div className="inline-flex gap-1 rounded-md border border-gray-300 bg-white p-1">
+                {[
+                  { value: false, label: 'In the clinic' },
+                  { value: true, label: 'Video visit' },
+                ].map((o) => (
+                  <label
+                    key={o.label}
+                    className="cursor-pointer rounded px-3.5 py-1 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 has-[:checked]:bg-brand-teal-dark has-[:checked]:text-white has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-teal has-[:focus-visible]:ring-offset-1"
+                  >
+                    <input type="radio" name={`${ids}-where`} checked={video === o.value} onChange={() => setVideo(o.value)} className="sr-only" />
+                    {o.label}
+                  </label>
+                ))}
+              </div>
+              {video && (
+                <p className="mt-1.5 text-sm text-gray-600">
+                  The patient joins from the eMCR app, from 15 minutes before the start. You join from the appointment page.
+                </p>
+              )}
+            </fieldset>
+          )}
 
           <div>
             <label htmlFor={`${ids}-reason`} className="mb-1.5 block text-sm font-medium text-gray-700">

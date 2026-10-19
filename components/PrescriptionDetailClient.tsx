@@ -14,6 +14,7 @@ import DispenseDialog from './prescriptions/DispenseDialog';
 import { SERIES } from './dashboards/charts';
 import { dispensedPerMedication, type DispenseItem } from '@/lib/prescription-dispense';
 import type { PrescriptionDetailPermissions } from '@/lib/prescriptions-page';
+import PdfLink from './documents/PdfLink';
 
 type Allergy = string | { substance?: string; reaction?: string; severity?: string };
 
@@ -255,6 +256,7 @@ export default function PrescriptionDetailClient({ prescriptionId, permissions }
           {!cancelled && (
             <>
               {printLink('patient', 'Patient copy')}
+              <PdfLink href={`/api/prescriptions/${p._id}/print?copy=patient`} label="patient copy" onClick={() => setTimeout(rx.reload, 3000)} />
               {printLink('clinic', 'Clinic copy')}
             </>
           )}

@@ -75,7 +75,7 @@ const nextConfig: NextConfig = {
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(self), microphone=(), geolocation=()'
+            value: 'camera=(self), microphone=(self), geolocation=()'
           },
           // Content-Security-Policy is set per request in proxy.ts (single source of truth)
         ],
@@ -92,6 +92,19 @@ const nextConfig: NextConfig = {
     ];
   },
   
+  // PDF rendering (lib/pdf.ts) loads the Chromium binary from disk at runtime, which the
+  // tracer can't see; ship it only with the routes that can return ?format=pdf.
+  outputFileTracingIncludes: Object.fromEntries(
+    [
+      '/api/prescriptions/[id]/print',
+      '/api/visits/[id]/print/medical-certificate',
+      '/api/visits/[id]/print/lab-request',
+      '/api/referrals/[id]/letter',
+      '/api/invoices/[id]/receipt',
+      '/api/rx/[token]',
+    ].map((route) => [route.replace(/[[\]]/g, '\\$&'), ['./node_modules/@sparticuz/chromium/bin/**/*']])
+  ),
+
   // Turbopack configuration (Next.js 16 uses Turbopack by default)
   // Empty config to silence the warning about webpack vs turbopack
   turbopack: {},

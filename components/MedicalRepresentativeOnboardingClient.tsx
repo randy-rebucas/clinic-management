@@ -142,6 +142,12 @@ export default function MedicalRepresentativeOnboardingClient() {
         throw new Error(data.error || 'Registration failed. Please try again.');
       }
 
+      // Pay the activation fee on PayMongo when the server offers it; activation follows by itself.
+      if (typeof data.checkoutUrl === 'string' && data.checkoutUrl.startsWith('https://')) {
+        window.location.assign(data.checkoutUrl);
+        return;
+      }
+
       setSuccess(true);
       setRegistrationId(data.medicalRepresentative?.id);
 

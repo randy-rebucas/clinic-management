@@ -42,7 +42,7 @@ async function getJson(url: string) {
 
 const hasReadings = (v?: VisitFormData['vitals'] | null) => Boolean(v && Object.values(v).some((x) => x !== null && x !== undefined && x !== ''));
 
-export default function VisitFormClient({ patientId, queueId }: { patientId?: string; queueId?: string }) {
+export default function VisitFormClient({ patientId, queueId, visitType }: { patientId?: string; queueId?: string; visitType?: string }) {
   const router = useRouter();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [failure, setFailure] = useState<{ status: number; message: string } | null>(null);
@@ -256,7 +256,11 @@ export default function VisitFormClient({ patientId, queueId }: { patientId?: st
         initialData={
           continuing
             ? { ...draft, status: 'draft', vitals: hasReadings(draft.vitals) ? draft.vitals : queueVitals ?? undefined }
-            : { ...(formPatient ? { patient: formPatient._id } : {}), ...(queueVitals ? { vitals: queueVitals } : {}) }
+            : {
+                ...(formPatient ? { patient: formPatient._id } : {}),
+                ...(queueVitals ? { vitals: queueVitals } : {}),
+                ...(visitType === 'teleconsult' ? { visitType: 'teleconsult' as const } : {}),
+              }
         }
         patients={formPatient ? [formPatient] : []}
         lockPatientSelection={Boolean(patient)}

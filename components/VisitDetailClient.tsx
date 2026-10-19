@@ -14,6 +14,7 @@ import VitalsPanel, { type VitalsReading, type VitalsRecord } from './visits/Vit
 import AttachForm from './records/AttachForm';
 import { INVOICE_LABEL, LAB_LABEL, RX_LABEL, fileSize, money } from './records/labels';
 import type { VisitDetailPermissions } from '@/lib/visits-page';
+import PdfLink from './documents/PdfLink';
 
 export interface Visit {
   _id: string;
@@ -370,6 +371,7 @@ export default function VisitDetailClient({ visitId, permissions }: { visitId: s
                   <Svg d={ICONS.print} />
                   Medical certificate
                 </a>
+                <PdfLink href={`/api/visits/${v._id}/print/medical-certificate`} label="medical certificate" />
                 <a
                   href={`/api/visits/${v._id}/print/lab-request`}
                   target="_blank"
@@ -379,6 +381,7 @@ export default function VisitDetailClient({ visitId, permissions }: { visitId: s
                   <Svg d={ICONS.print} />
                   Lab request
                 </a>
+                <PdfLink href={`/api/visits/${v._id}/print/lab-request`} label="lab request" />
               </>
             )}
             {permissions.canUpdate && (v.status === 'draft' || v.status === 'open') && (

@@ -14,6 +14,7 @@ import PaymentDialog from './invoices/PaymentDialog';
 import { DISCOUNT_LABEL, INVOICE_STATE, PF_TYPES, clock, methodLabel, shortDate, useMoney } from './invoices/shared';
 import type { InvoiceStatus } from '@/lib/invoices';
 import type { InvoiceDetailPermissions } from '@/lib/invoices-page';
+import { PHILHEALTH_STATUS, type PhilhealthStatus } from '@/lib/philhealth';
 
 interface Item {
   serviceId?: { _id: string; name: string; code?: string; category?: string } | string | null;
@@ -47,9 +48,33 @@ interface Invoice {
   professionalFeeType?: string;
   professionalFeeDoctor?: { _id: string; firstName: string; lastName: string } | null;
   professionalFeeNotes?: string;
-  discounts: { type: string; reason?: string; percentage?: number; amount: number }[];
+  discounts: { type: string; reason?: string; idNumber?: string; percentage?: number; amount: number }[];
   tax?: number;
   total?: number;
+  taxBreakdown?: {
+    regime: 'vat' | 'non_vat';
+    grossSales: number;
+    vatableSales: number;
+    vatAmount: number;
+    vatExemptSales: number;
+    zeroRatedSales: number;
+    lessVat: number;
+    statutoryDiscount: number;
+  };
+  bir?: { serialNo?: string; issuedAt?: string };
+  philhealth?: {
+    pin: string;
+    relationship: 'member' | 'dependent';
+    caseRateCode: string;
+    caseRateDescription?: string;
+    amount: number;
+    servedOn: string;
+    status: PhilhealthStatus;
+    claimNumber?: string;
+    paidAmount?: number;
+    withheldAmount?: number;
+    note?: string;
+  };
   payments: Payment[];
   insurance?: {
     provider?: string;
@@ -60,6 +85,12 @@ interface Invoice {
     claimNumber?: string;
     status?: string;
     notes?: string;
+    loaNumber?: string;
+    loaDate?: string;
+    batch?: string;
+    submittedAt?: string;
+    withheldAmount?: number;
+    denialReason?: string;
   };
   outstandingBalance?: number;
   totalPaid?: number;
@@ -115,6 +146,35 @@ export default function InvoiceDetailClient({
     const t = setTimeout(() => setNotice(null), 8000);
     return () => clearTimeout(t);
   }, [notice]);
+
+  const [payLink, setPayLink] = useState<string | null>(null);
+  const sendPayLink = async () => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}/pay-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sms: permissions.canText }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        setActionError(formatApiError(json, 'The payment link couldn’t be made'));
+        return;
+      }
+      setPayLink(json.data.url);
+      setNotice({
+        text: json.data.texted
+          ? 'Payment link texted to the patient. The payment shows here by itself once they pay.'
+          : 'Payment link made. Send it to the patient; the payment shows here by itself once they pay.',
+        receipt: false,
+      });
+    } catch {
+      setActionError('The server couldn’t be reached. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const markRefunded = async () => {
     setConfirmRefund(false);
@@ -214,7 +274,9 @@ export default function InvoiceDetailClient({
   const payments = [...p.payments].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const other = p.patientOtherOpen;
 
-  const receiptLink = (className: string, label = 'Print receipt') => (
+  const tb = p.taxBreakdown;
+  const serial = p.bir?.serialNo;
+  const receiptLink = (className: string, label = tb ? (serial ? 'Reprint sales invoice' : 'Issue sales invoice') : 'Print receipt') => (
     <a href={`/api/invoices/${p._id}/receipt`} target="_blank" rel="noopener noreferrer" className={className}>
       <Svg d={ICONS.print} />
       {label}
@@ -231,6 +293,11 @@ export default function InvoiceDetailClient({
             <h1 className={`text-2xl sm:text-3xl font-extrabold tracking-tight ${refunded ? 'text-gray-500 line-through decoration-gray-400 decoration-2' : 'text-gray-900'}`}>{who}</h1>
             <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${st.badge}`}>{st.label}</span>
             <span className="font-mono text-sm text-gray-500">{p.invoiceNumber}</span>
+            {serial && (
+              <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs font-semibold text-gray-700" title="BIR sales invoice serial">
+                SI {serial}
+              </span>
+            )}
           </div>
           <p className="mt-1 text-sm sm:text-base text-gray-600">
             Billed {longDate(p.createdAt)} at <span className="font-mono">{clock(p.createdAt)}</span>
@@ -272,6 +339,16 @@ export default function InvoiceDetailClient({
               Record payment
             </button>
           )}
+          {permissions.canSendPayLink && open && (
+            <button
+              type="button"
+              onClick={sendPayLink}
+              disabled={busy}
+              className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 disabled:cursor-wait ${FOCUS_RING}`}
+            >
+              {permissions.canText && p.patient?.phone ? 'Text a payment link' : 'Make a payment link'}
+            </button>
+          )}
           {permissions.canRefund && !refunded && (
             <button
               type="button"
@@ -303,6 +380,19 @@ export default function InvoiceDetailClient({
           <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className={`shrink-0 rounded p-0.5 opacity-80 hover:opacity-100 ${FOCUS_RING}`}>
             <Svg d={ICONS.x} />
           </button>
+        </div>
+      )}
+      {payLink && (
+        <div className="motion-chip-in flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm">
+          <span className="min-w-0 truncate font-mono text-xs text-gray-700">{payLink}</span>
+          <span className="flex shrink-0 gap-3">
+            <button type="button" onClick={() => navigator.clipboard?.writeText(payLink)} className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+              Copy link
+            </button>
+            <button type="button" onClick={() => setPayLink(null)} aria-label="Hide the payment link" className={`rounded p-0.5 text-gray-500 hover:text-gray-900 ${FOCUS_RING}`}>
+              <Svg d={ICONS.x} />
+            </button>
+          </span>
         </div>
       )}
       {actionError && (
@@ -382,7 +472,11 @@ export default function InvoiceDetailClient({
                     <>
                       {DISCOUNT_LABEL[d.type] ?? 'Discount'} discount
                       {d.percentage ? <span className="font-mono"> {d.percentage}%</span> : null}
-                      {d.reason && d.reason !== `${DISCOUNT_LABEL[d.type]} Discount` && <span className="text-gray-500"> · {d.reason}</span>}
+                      {d.idNumber ? (
+                        <span className="text-gray-500"> · ID <span className="font-mono">{d.idNumber}</span></span>
+                      ) : (
+                        d.reason && d.reason !== `${DISCOUNT_LABEL[d.type]} Discount` && <span className="text-gray-500"> · {d.reason}</span>
+                      )}
                     </>
                   }
                   value={`−${money(d.amount)}`}
@@ -400,14 +494,36 @@ export default function InvoiceDetailClient({
                   value={money(p.professionalFee ?? 0)}
                 />
               )}
-              {(p.tax ?? 0) > 0 && <Line label="Tax" value={money(p.tax ?? 0)} />}
+              {tb && tb.lessVat > 0 && <Line label="Less VAT (VAT-exempt sale)" value={`−${money(tb.lessVat)}`} />}
+              {tb
+                ? // VAT added on top of the prices (VAT-exclusive pricing); included VAT shows in the breakdown below.
+                  total > tb.grossSales - discountTotal - tb.lessVat + 0.005 && <Line label="VAT" value={money(tb.vatAmount)} />
+                : (p.tax ?? 0) > 0 && <Line label="Tax" value={money(p.tax ?? 0)} />}
               <div className="mt-2 flex items-baseline justify-between gap-4 border-t border-gray-200 pt-3">
                 <dt className="font-semibold text-gray-900">Total</dt>
                 <dd className="font-mono text-base font-semibold tabular-nums text-gray-900">{money(total)}</dd>
               </div>
+              {tb?.regime === 'vat' && (
+                <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-0.5 border-t border-dashed border-gray-200 pt-2 text-xs text-gray-500 sm:grid-cols-4">
+                  <span>
+                    VATable <span className="block font-mono tabular-nums text-gray-900">{money(tb.vatableSales)}</span>
+                  </span>
+                  <span>
+                    VAT <span className="block font-mono tabular-nums text-gray-900">{money(tb.vatAmount)}</span>
+                  </span>
+                  <span>
+                    VAT-exempt <span className="block font-mono tabular-nums text-gray-900">{money(tb.vatExemptSales)}</span>
+                  </span>
+                  <span>
+                    Zero-rated <span className="block font-mono tabular-nums text-gray-900">{money(tb.zeroRatedSales)}</span>
+                  </span>
+                </div>
+              )}
               {discountTotal > 0 && (
                 <p className="mt-1 text-right text-xs text-gray-500">
-                  Discounts apply to services only, not the professional fee.
+                  {tb?.statutoryDiscount
+                    ? 'The senior citizen or PWD discount covers the professional fee too.'
+                    : 'Discounts apply to services only, not the professional fee.'}
                 </p>
               )}
             </dl>
@@ -546,6 +662,51 @@ export default function InvoiceDetailClient({
             )}
           </Panel>
 
+          {p.philhealth && (
+            <Panel
+              id="inv-philhealth"
+              title="PhilHealth"
+              aside={
+                <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${PHILHEALTH_STATUS[p.philhealth.status].badge}`}>
+                  {PHILHEALTH_STATUS[p.philhealth.status].label}
+                </span>
+              }
+            >
+              <dl className="divide-y divide-gray-100 text-sm">
+                <Field label="Benefit">
+                  <span className="font-mono">{money(p.philhealth.amount)}</span>
+                  <span className="text-gray-500"> · patient pays {money(Math.max(0, total - p.philhealth.amount))}</span>
+                </Field>
+                <Field label="PIN">
+                  <span className="font-mono">{p.philhealth.pin}</span>
+                  {p.philhealth.relationship === 'dependent' && <span className="text-gray-500"> · dependent</span>}
+                </Field>
+                <Field label="Case rate">
+                  <span className="font-mono">{p.philhealth.caseRateCode}</span> {p.philhealth.caseRateDescription}
+                </Field>
+                <Field label="Seen on">{shortDate(p.philhealth.servedOn)}</Field>
+                {p.philhealth.claimNumber && (
+                  <Field label="Claim">
+                    <span className="font-mono">{p.philhealth.claimNumber}</span>
+                  </Field>
+                )}
+                {p.philhealth.status === 'paid' && (
+                  <Field label="Paid">
+                    <span className="font-mono">{money(p.philhealth.paidAmount ?? 0)}</span>
+                    {(p.philhealth.withheldAmount ?? 0) > 0 && <span className="text-gray-500"> + {money(p.philhealth.withheldAmount ?? 0)} withheld</span>}
+                  </Field>
+                )}
+                {p.philhealth.note && <Field label="Note">{p.philhealth.note}</Field>}
+                {permissions.canPay && (
+                  <Field label="Claim">
+                    <Link href="/philhealth" className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                      Open on the PhilHealth page
+                    </Link>
+                  </Field>
+                )}
+              </dl>
+            </Panel>
+          )}
           {p.insurance?.provider && (
             <Panel
               id="inv-insurance"
@@ -581,6 +742,36 @@ export default function InvoiceDetailClient({
                     <span className="font-mono">{p.insurance.claimNumber}</span>
                   </Field>
                 )}
+                {p.insurance.loaNumber && (
+                  <Field label="LOA">
+                    <span className="font-mono">{p.insurance.loaNumber}</span>
+                    {p.insurance.loaDate && <span className="text-gray-500"> · {shortDate(p.insurance.loaDate)}</span>}
+                  </Field>
+                )}
+                {p.insurance.batch ? (
+                  <Field label="Sent in">
+                    <Link href={`/hmo-claims/${p.insurance.batch}`} className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                      {p.insurance.submittedAt ? `Transmittal, ${shortDate(p.insurance.submittedAt)}` : 'A draft transmittal'}
+                    </Link>
+                  </Field>
+                ) : (
+                  permissions.canPay &&
+                  !refunded &&
+                  p.insurance.status !== 'paid' &&
+                  p.insurance.status !== 'rejected' && (
+                    <Field label="Sent in">
+                      <Link href="/hmo-claims" className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                        Not sent yet
+                      </Link>
+                    </Field>
+                  )
+                )}
+                {(p.insurance.withheldAmount ?? 0) > 0 && (
+                  <Field label="Tax withheld">
+                    <span className="font-mono">{money(p.insurance.withheldAmount ?? 0)}</span>
+                  </Field>
+                )}
+                {p.insurance.denialReason && <Field label="Refused">{p.insurance.denialReason}</Field>}
                 {p.insurance.notes && <Field label="Notes">{p.insurance.notes}</Field>}
               </dl>
             </Panel>

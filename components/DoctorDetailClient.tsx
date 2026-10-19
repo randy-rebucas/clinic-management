@@ -378,6 +378,7 @@ export default function DoctorDetailClient({ doctorId, permissions, saved }: { d
                 <span className="font-mono">{d.licenseNumber || '—'}</span>
               </Field>
               <Field label="PTR">{d.ptr ? <span className="font-mono">{d.ptr}</span> : <span className="text-gray-500">None on file</span>}</Field>
+              <Field label="S2 licence">{d.s2Number ? <span className="font-mono">{d.s2Number}</span> : <span className="text-gray-500">None on file</span>}</Field>
               <Field label="Qualifications">
                 {d.qualifications && d.qualifications.length > 0 ? (
                   <ul className="space-y-0.5">

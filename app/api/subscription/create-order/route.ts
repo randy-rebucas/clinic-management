@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
-import { createPayPalOrder, isPayPalConfigured } from '@/lib/paypal';
-import { PAID_PLANS, isPaidPlan, planPrice } from '@/lib/subscription-period';
+import { createPayPalOrder } from '@/lib/paypal';
+import { createCheckoutSession } from '@/lib/paymongo';
+import { subscriptionGateway, gatewayCurrency } from '@/lib/payment-gateway';
+import { randomBytes } from 'crypto';
+import { PAID_PLANS, isPaidPlan, planPrice, planLabel } from '@/lib/subscription-period';
 import connectDB from '@/lib/mongodb';
 import PaypalOrder from '@/models/PaypalOrder';
 import { Types } from 'mongoose';
@@ -31,7 +34,8 @@ export async function POST(request: NextRequest) {
       return refuseAccess(session, 'Forbidden', 'subscription', 'write');
     }
 
-    if (!isPayPalConfigured()) {
+    const gateway = subscriptionGateway();
+    if (!gateway) {
       return NextResponse.json(
         { success: false, error: 'Online payment isn’t set up on this server, so no payment was started.' },
         { status: 503 }
@@ -49,7 +53,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { amount, currency } = planPrice(planName, billingCycle);
+    const { amount, currency } = planPrice(planName, billingCycle, gatewayCurrency(gateway));
+
+    if (gateway === 'paymongo') {
+      // Our own reference is the order id; PayMongo's session id is kept beside it.
+      const orderId = `pm_${randomBytes(12).toString('hex')}`;
+      const origin = appOrigin(request);
+      const checkout = await createCheckoutSession({
+        name: `MyClinicSoft ${planLabel(planName)}, ${billingCycle}`,
+        amount,
+        description: `${planLabel(planName)} plan, ${billingCycle === 'yearly' ? 'one year' : 'one month'}`,
+        referenceNumber: orderId,
+        successUrl: `${origin}/admin/subscription/success?token=${orderId}`,
+        cancelUrl: `${origin}/admin/subscription?cancelled=1`,
+        email: session.email,
+        // Enough to apply the payment even if this order record has lapsed by the time it's paid.
+        metadata: { purpose: 'subscription', orderId, tenantId: String(tenantId), plan: planName, billingCycle, amount: String(amount) },
+      });
+      await connectDB();
+      await PaypalOrder.create({ orderId, tenantId: new Types.ObjectId(tenantId), plan: planName, billingCycle, amount, currency, provider: 'paymongo', gatewayId: checkout.id });
+      return NextResponse.json({ success: true, orderId, approvalUrl: checkout.checkoutUrl, plan: planName, billingCycle, amount, currency, gateway });
+    }
 
     // Create PayPal order — include billingCycle in the plan label
     const { orderId, approvalUrl } = await createPayPalOrder(
@@ -85,7 +109,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('Error creating subscription order:', error);
     return NextResponse.json(
-      { success: false, error: 'PayPal couldn’t start the payment. Nothing was charged; try again in a few minutes.' },
+      { success: false, error: 'The payment couldn’t be started. Nothing was charged; try again in a few minutes.' },
       { status: 502 }
     );
   }

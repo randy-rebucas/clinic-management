@@ -10,6 +10,10 @@ export interface IPaypalOrder extends Document {
   amount: number;
   currency: string;
   status: PaypalOrderStatus;
+  /** Which gateway took it; orders made before PayMongo are PayPal's. */
+  provider?: 'paypal' | 'paymongo';
+  /** PayMongo checkout session id (orderId is then our own reference). */
+  gatewayId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -23,6 +27,8 @@ const PaypalOrderSchema = new Schema<IPaypalOrder>(
     amount:       { type: Number, required: true },
     currency:     { type: String, default: 'USD' },
     status:       { type: String, enum: ['pending', 'processing', 'completed', 'failed'], default: 'pending' },
+    provider:     { type: String, enum: ['paypal', 'paymongo'], default: 'paypal' },
+    gatewayId:    { type: String, index: true, sparse: true },
   },
   { timestamps: true }
 );

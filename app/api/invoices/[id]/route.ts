@@ -13,7 +13,9 @@ import { requirePermission } from '@/app/lib/auth-helpers';
 import { getSettings } from '@/lib/settings';
 import { requireTenantSession, isTenantSessionError, tenantFilter, patientTenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, roundMoney } from '@/lib/api/validate';
-import { invoiceEditableSchema, computeInvoiceTotals, deriveStatus } from '../_lib/totals';
+import { invoiceEditableSchema, computeInvoiceTotals, deriveStatus, statutoryDiscountProblem, taxProfileOf } from '../_lib/totals';
+import { resolveInsurance } from '../_lib/insurance';
+import { resolvePhilhealth, capBenefit, grossOf } from '../_lib/philhealth';
 
 export async function GET(
   request: NextRequest,
@@ -157,8 +159,17 @@ export async function PUT(
 
     const $set: Record<string, unknown> = {};
     const $unset: Record<string, 1> = {};
-    for (const key of ['professionalFeeType', 'professionalFeeNotes', 'insurance'] as const) {
+    for (const key of ['professionalFeeType', 'professionalFeeNotes'] as const) {
       if (body[key] !== undefined) $set[key] = body[key];
+    }
+    if (body.insurance !== undefined) {
+      // Once sent in a transmittal the claim is the payer's record; it changes through the transmittal.
+      if (current.insurance?.batch) {
+        return NextResponse.json({ success: false, error: 'This claim has been sent to the HMO in a transmittal. Change it there.' }, { status: 409 });
+      }
+      const insurance = await resolveInsurance(tenantId, body.insurance);
+      if (!insurance.ok) return NextResponse.json({ success: false, error: insurance.error }, { status: 400 });
+      $set.insurance = insurance.value;
     }
     for (const key of ['visit', 'professionalFeeDoctor'] as const) {
       if (body[key] === null) $unset[key] = 1;
@@ -174,31 +185,81 @@ export async function PUT(
       body.items !== undefined ||
       body.discounts !== undefined ||
       body.professionalFee !== undefined ||
-      body.tax !== undefined;
+      body.tax !== undefined ||
+      body.philhealth !== undefined;
+
+    // A filed PhilHealth claim is PhilHealth's record now; the bill it was filed for stays put.
+    if (moneyChanged && current.philhealth && current.philhealth.status !== 'draft' && current.philhealth.status !== 'returned') {
+      return NextResponse.json(
+        { success: false, error: 'This bill’s PhilHealth claim has been filed, so its amounts can’t change. Change it on the PhilHealth page if it’s returned.' },
+        { status: 409 }
+      );
+    }
 
     if (moneyChanged) {
+      // An issued BIR invoice is a filed document: corrections go on a new invoice, not over it.
+      if (current.bir?.serialNo) {
+        return NextResponse.json(
+          { success: false, error: `Sales invoice ${current.bir.serialNo} has been issued, so its amounts can’t change. Refund it and bill again.` },
+          { status: 409 }
+        );
+      }
       const settings = await getSettings(tenantId);
-      const totals = computeInvoiceTotals({
-        items: body.items ?? (current.items || []).map((i: any) => ({
+      // Invoices made under BIR rules keep them; older ones keep the flat rate they were made with.
+      const taxProfile = current.taxBreakdown ? taxProfileOf(settings.birSettings) : undefined;
+      const discounts = body.discounts ?? (current.discounts || []).map((d: any) => ({
+        type: d.type,
+        reason: d.reason,
+        idNumber: d.idNumber,
+        percentage: d.percentage,
+        amount: d.amount,
+      }));
+      const discountProblem = taxProfile ? statutoryDiscountProblem(discounts) : null;
+      if (discountProblem) return NextResponse.json({ success: false, error: discountProblem }, { status: 400 });
+      const items = body.items ?? (current.items || []).map((i: any) => ({
           serviceId: i.serviceId ? String(i.serviceId) : undefined,
           code: i.code,
           description: i.description,
           category: i.category,
           quantity: Number(i.quantity) || 1,
           unitPrice: Math.max(0, Number(i.unitPrice) || 0),
-        })),
-        discounts: body.discounts ?? (current.discounts || []).map((d: any) => ({
-          type: d.type,
-          reason: d.reason,
-          percentage: d.percentage,
-          amount: d.amount,
-        })),
-        professionalFee: body.professionalFee ?? current.professionalFee ?? 0,
+          vatClass: i.vatClass,
+        }));
+      const professionalFee = body.professionalFee ?? current.professionalFee ?? 0;
+
+      // The PhilHealth benefit follows the bill: priced again from its case rate, or taken off.
+      const phInput =
+        body.philhealth === null
+          ? null
+          : body.philhealth ??
+            (current.philhealth?.caseRate
+              ? {
+                  pin: current.philhealth.pin,
+                  relationship: current.philhealth.relationship,
+                  memberName: current.philhealth.memberName,
+                  caseRate: String(current.philhealth.caseRate),
+                  servedOn: current.philhealth.servedOn,
+                }
+              : null);
+      const philhealth = phInput ? await resolvePhilhealth(tenantId, phInput, grossOf(items, professionalFee)) : null;
+      if (philhealth && !philhealth.ok) return NextResponse.json({ success: false, error: philhealth.error }, { status: 400 });
+
+      const totals = computeInvoiceTotals({
+        items,
+        discounts,
+        professionalFee,
         tax: body.tax ?? current.tax ?? 0,
         taxRate: settings.billingSettings?.taxRate,
         appliedBy: session.userId,
+        taxProfile,
+        payerDeduction: philhealth?.ok ? philhealth.benefit : 0,
       });
       total = totals.total;
+      if (philhealth?.ok) {
+        // A returned claim being corrected keeps its history and goes back to be filed again.
+        const keep = current.philhealth && current.philhealth.status === 'returned' ? { claimNumber: current.philhealth.claimNumber, note: current.philhealth.note } : {};
+        $set.philhealth = { ...capBenefit(philhealth.value, totals.total), ...keep };
+      } else if (body.philhealth === null) $unset.philhealth = 1;
       Object.assign($set, {
         items: totals.items,
         discounts: totals.discounts,
@@ -207,6 +268,8 @@ export async function PUT(
         tax: totals.tax,
         total: totals.total,
       });
+      if (totals.breakdown) $set.taxBreakdown = totals.breakdown;
+      else $unset.taxBreakdown = 1;
     }
 
     const derived = deriveStatus(total, totalPaid);

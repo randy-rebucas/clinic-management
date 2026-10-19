@@ -7,7 +7,7 @@ import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { formatInTz } from '@/lib/tz';
 import { checkSubscriptionStatus } from '@/lib/subscription';
 import { getSubscriptionUsage } from '@/lib/subscription-limits';
-import { isPayPalConfigured } from '@/lib/paypal';
+import { subscriptionGateway, gatewayCurrency, GATEWAY_NAME } from '@/lib/payment-gateway';
 import { SUBSCRIPTION_PACKAGES } from '@/lib/subscription-packages';
 import { buildUsageRows, planLimits, type UsageKey, type UsageRow } from '@/lib/plan-usage';
 import {
@@ -98,7 +98,10 @@ export interface SubscriptionPageData {
   offers: PlanOffer[];
   payments: PaymentRow[];
   unfinished: UnfinishedPayment[];
+  /** A payment gateway is set up (PayMongo or PayPal). */
   paypalReady: boolean;
+  /** "PayMongo" or "PayPal", for the page's wording. */
+  gatewayName: string;
 }
 
 const SUPPORT: Record<string, string> = { basic: 'Email', priority: 'Priority', '24/7': 'Around the clock' };
@@ -187,16 +190,18 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
   // --- What each plan allows, costs, and would run to --------------------------------------
   // Activation extends from the current end only while the plan is active; mirror it exactly.
   const current = { status: sub?.status, expiresAt: sub?.expiresAt };
+  const gateway = subscriptionGateway();
+  const cur = gatewayCurrency(gateway);
   const offers: PlanOffer[] = PAID_PLANS.map((p) => {
-    const monthly = planPrice(p, 'monthly');
-    const yearly = planPrice(p, 'yearly');
+    const monthly = planPrice(p, 'monthly', cur);
+    const yearly = planPrice(p, 'yearly', cur);
     return {
       plan: p,
       label: planLabel(p),
       limits: planLimits(p),
       support: SUPPORT[SUBSCRIPTION_PACKAGES[p].features.supportLevel] ?? SUBSCRIPTION_PACKAGES[p].features.supportLevel,
       monthly: { ...monthly, paidUntil: day(periodEndAfterPayment(current, 'monthly', now)) },
-      yearly: { ...yearly, paidUntil: day(periodEndAfterPayment(current, 'yearly', now)), monthsSaved: monthsSavedYearly(p) },
+      yearly: { ...yearly, paidUntil: day(periodEndAfterPayment(current, 'yearly', now)), monthsSaved: monthsSavedYearly(p, cur) },
     };
   });
 
@@ -226,6 +231,7 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
         currency: o.currency || 'USD',
         status: o.status,
       })),
-    paypalReady: isPayPalConfigured(),
+    paypalReady: gateway !== null,
+    gatewayName: gateway ? GATEWAY_NAME[gateway] : 'the payment page',
   };
 }

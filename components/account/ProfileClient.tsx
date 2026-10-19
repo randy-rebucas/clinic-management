@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import type { Account } from '@/lib/account';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
+import SignatureSection from './SignatureSection';
 import {
   ACCOUNT_UPDATED_EVENT,
   AccountHeader,
@@ -216,6 +217,8 @@ export default function ProfileClient({ initial }: { initial: Account }) {
               </div>
             </form>
           </Section>
+
+          {account.doctorId && <SignatureSection doctorName={displayName} />}
 
           <Section id="account" title="Account" description="Set by your clinic. Ask an administrator if any of this is wrong.">
             <dl className="divide-y divide-gray-100">

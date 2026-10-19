@@ -22,6 +22,7 @@ export interface Settings {
     defaultDuration: number;
     reminderHoursBefore: number[];
     allowOnlineBooking: boolean;
+    teleconsultBooking?: boolean;
     requireConfirmation: boolean;
     maxAdvanceBookingDays: number;
     minAdvanceBookingHours: number;

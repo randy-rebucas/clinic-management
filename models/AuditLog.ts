@@ -116,7 +116,7 @@ const AuditLogSchema: Schema = new Schema(
     },
     resource: {
       type: String,
-      enum: ['patient', 'visit', 'appointment', 'prescription', 'lab_result', 'invoice', 'document', 'user', 'doctor', 'room', 'service', 'notification', 'referral', 'membership', 'staff', 'medicine', 'settings', 'system'],
+      enum: ['patient', 'visit', 'appointment', 'prescription', 'lab_result', 'invoice', 'document', 'user', 'doctor', 'room', 'service', 'notification', 'referral', 'membership', 'staff', 'medicine', 'settings', 'system', 'hmo', 'hmo_claim', 'philhealth'],
       required: true,
       index: true,
     },

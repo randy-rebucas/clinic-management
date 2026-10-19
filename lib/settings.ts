@@ -1,5 +1,7 @@
 import connectDB from './mongodb';
 import Settings from '@/models/Settings';
+import { BIR_DEFAULTS } from './bir';
+import { PHILHEALTH_DEFAULTS } from './philhealth';
 
 // Per-tenant cache. Kept short because other serverless instances can't be invalidated.
 const settingsCache = new Map<string, { value: any; at: number }>();
@@ -97,6 +99,7 @@ export function getDefaultSettings() {
       defaultDuration: 30,
       reminderHoursBefore: [24, 2],
       allowOnlineBooking: true,
+      teleconsultBooking: false,
       requireConfirmation: false,
       maxAdvanceBookingDays: 90,
       minAdvanceBookingHours: 2,
@@ -141,6 +144,8 @@ export function getDefaultSettings() {
       showNotifications: true,
     },
     prescriptionPaperSize: 'A4' as 'A4' | 'A5',
+    birSettings: { ...BIR_DEFAULTS },
+    philhealthSettings: { ...PHILHEALTH_DEFAULTS },
   };
 }
 

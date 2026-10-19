@@ -26,13 +26,13 @@ const formatDay = (value: string) =>
  * and finishing an earlier payment from the subscription page are safe), and says plainly
  * whether money was taken.
  */
-export default function SubscriptionReturnClient({ orderId }: { orderId: string | null }) {
+export default function SubscriptionReturnClient({ orderId, gateway = 'PayPal' }: { orderId: string | null; gateway?: 'PayPal' | 'PayMongo' }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'confirming' });
   const started = useRef<string | null>(null);
 
   const capture = useCallback(async (id: string) => {
     try {
-      const res = await fetch('/api/subscription/capture-order', {
+      const res = await fetch(gateway === 'PayMongo' ? '/api/subscription/paymongo-confirm' : '/api/subscription/capture-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId: id }),
@@ -46,12 +46,12 @@ export default function SubscriptionReturnClient({ orderId }: { orderId: string 
       } else if (body.code === 'problem') {
         setPhase({ kind: 'problem', message: body.error || 'This payment couldn’t be applied.' });
       } else {
-        setPhase({ kind: 'retry', message: body.error || 'PayPal didn’t answer in time.' });
+        setPhase({ kind: 'retry', message: body.error || `${gateway} didn’t answer in time.` });
       }
     } catch {
-      setPhase({ kind: 'retry', message: 'The connection dropped before PayPal answered.' });
+      setPhase({ kind: 'retry', message: `The connection dropped before ${gateway} answered.` });
     }
-  }, []);
+  }, [gateway]);
 
   useEffect(() => {
     // Once per order id, also under StrictMode's double effect run.
@@ -69,7 +69,7 @@ export default function SubscriptionReturnClient({ orderId }: { orderId: string 
   if (!orderId) {
     return (
       <Shell icon="document" tone="gray" title="There’s no payment to confirm">
-        <p>This page is where PayPal sends you back after paying. Open it from PayPal, or choose a plan on the subscription page.</p>
+        <p>This page is where {gateway} sends you back after paying. Open it from {gateway}, or choose a plan on the subscription page.</p>
         <Actions>
           <Link href="/admin/subscription" className={PRIMARY}>
             Back to subscription
@@ -82,7 +82,7 @@ export default function SubscriptionReturnClient({ orderId }: { orderId: string 
   switch (phase.kind) {
     case 'confirming':
       return (
-        <Shell icon="refresh" tone="teal" title="Confirming your payment with PayPal" busy>
+        <Shell icon="refresh" tone="teal" title={`Confirming your payment with ${gateway}`} busy>
           <p>This usually takes a few seconds. Please keep this page open.</p>
         </Shell>
       );
@@ -97,7 +97,7 @@ export default function SubscriptionReturnClient({ orderId }: { orderId: string 
             ) : (
               'The payment has been applied to the clinic’s plan.'
             )}{' '}
-            The payment is listed on the subscription page with its PayPal reference.
+            The payment is listed on the subscription page with its {gateway} reference.
           </p>
           <Actions>
             <Link href="/admin/subscription" className={PRIMARY}>
@@ -114,7 +114,7 @@ export default function SubscriptionReturnClient({ orderId }: { orderId: string 
         <Shell icon="refresh" tone="amber" title="The payment isn’t confirmed yet">
           <p>{phase.message}</p>
           <p className="mt-2 font-medium text-gray-900">
-            Don’t pay again: PayPal may already have taken this payment. Trying again finishes this same payment and can’t charge twice.
+            Don’t pay again: {gateway} may already have taken this payment. Trying again finishes this same payment and can’t charge twice.
           </p>
           <Actions>
             <button type="button" onClick={tryAgain} className={PRIMARY}>
@@ -124,32 +124,32 @@ export default function SubscriptionReturnClient({ orderId }: { orderId: string 
               Back to subscription
             </Link>
           </Actions>
-          <Reference orderId={orderId} />
+          <Reference orderId={orderId} gateway={gateway} />
         </Shell>
       );
     case 'declined':
       return (
-        <Shell icon="alert" tone="red" title="PayPal didn’t take this payment">
+        <Shell icon="alert" tone="red" title={`${gateway} didn’t take this payment`}>
           <p>Nothing was charged for it, and the plan hasn’t changed. You can choose a plan and pay again.</p>
           <Actions>
             <Link href="/admin/subscription" className={PRIMARY}>
               Back to plans
             </Link>
           </Actions>
-          <Reference orderId={orderId} />
+          <Reference orderId={orderId} gateway={gateway} />
         </Shell>
       );
     case 'problem':
       return (
         <Shell icon="alert" tone="red" title="This payment needs a person to look at it">
           <p>{phase.message}</p>
-          <p className="mt-2">Don’t pay again. Contact support with the PayPal reference below.</p>
+          <p className="mt-2">Don’t pay again. Contact support with the {gateway} reference below.</p>
           <Actions>
             <Link href="/admin/subscription" className={SECONDARY}>
               Back to subscription
             </Link>
           </Actions>
-          <Reference orderId={orderId} />
+          <Reference orderId={orderId} gateway={gateway} />
         </Shell>
       );
   }
@@ -196,10 +196,10 @@ function Actions({ children }: { children: React.ReactNode }) {
   return <div className="mt-6 flex flex-wrap gap-3">{children}</div>;
 }
 
-function Reference({ orderId }: { orderId: string }) {
+function Reference({ orderId, gateway }: { orderId: string; gateway: string }) {
   return (
     <p className="mt-5 border-t border-gray-100 pt-4 text-xs text-gray-500">
-      PayPal reference <span className="font-mono text-gray-700">{orderId}</span>
+      {gateway} reference <span className="font-mono text-gray-700">{orderId}</span>
     </p>
   );
 }

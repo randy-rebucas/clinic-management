@@ -11,7 +11,9 @@ import { requireTenantSession, isTenantSessionError, tenantFilter, patientTenant
 import { parseBody, isValidationError, zObjectId, asString, escapeRegex } from '@/lib/api/validate';
 import { nextSequence, formatCode, maxCodeSeed } from '@/lib/counters';
 import { INVOICE_STATUSES, OPEN_STATUSES, agingRange, isAgingKey } from '@/lib/invoices';
-import { invoiceEditableSchema, computeInvoiceTotals } from './_lib/totals';
+import { invoiceEditableSchema, computeInvoiceTotals, statutoryDiscountProblem, taxProfileOf } from './_lib/totals';
+import { resolveInsurance } from './_lib/insurance';
+import { resolvePhilhealth, capBenefit, grossOf } from './_lib/philhealth';
 
 const MAX_RESULTS = 1000;
 
@@ -164,8 +166,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid doctor selected' }, { status: 400 });
     }
 
+    const insurance = await resolveInsurance(tenantId, body.insurance);
+    if (!insurance.ok) return NextResponse.json({ success: false, error: insurance.error }, { status: 400 });
+
     const settings = await getSettings(tenantId);
     const invoicePrefix = String(settings.billingSettings?.invoicePrefix || 'INV').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 10) || 'INV';
+
+    const taxProfile = taxProfileOf(settings.birSettings);
+    const discountProblem = taxProfile ? statutoryDiscountProblem(body.discounts) : null;
+    if (discountProblem) return NextResponse.json({ success: false, error: discountProblem }, { status: 400 });
+
+    const philhealth = body.philhealth ? await resolvePhilhealth(tenantId, body.philhealth, grossOf(body.items, body.professionalFee)) : null;
+    if (philhealth && !philhealth.ok) return NextResponse.json({ success: false, error: philhealth.error }, { status: 400 });
 
     const totals = computeInvoiceTotals({
       items: body.items,
@@ -174,6 +186,8 @@ export async function POST(request: NextRequest) {
       tax: body.tax,
       taxRate: settings.billingSettings?.taxRate,
       appliedBy: session.userId,
+      taxProfile,
+      payerDeduction: philhealth?.ok ? philhealth.benefit : 0,
     });
 
     const seq = await nextSequence(
@@ -196,7 +210,9 @@ export async function POST(request: NextRequest) {
       discounts: totals.discounts,
       tax: totals.tax,
       total: totals.total,
-      insurance: body.insurance,
+      ...(totals.breakdown ? { taxBreakdown: totals.breakdown } : {}),
+      insurance: insurance.value,
+      ...(philhealth?.ok ? { philhealth: capBenefit(philhealth.value, totals.total) } : {}),
       payments: [],
       totalPaid: 0,
       outstandingBalance: totals.total,

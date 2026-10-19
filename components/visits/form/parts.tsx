@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { FIELD, FOCUS_RING, ICON, Svg } from '../../appointments/shared';
+import { expandMacro } from '@/lib/clinical-templates';
+import { usePhrases } from '../../templates/phrases';
 
 // ---------------------------------------------------------------------------
 // Frame
@@ -64,11 +66,35 @@ export function NoteArea({
   invalid?: boolean;
   maxLength?: number;
 }) {
+  const macros = usePhrases();
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const caretAfter = useRef<number | null>(null);
+
+  // Put the caret after an expanded phrase once React has rendered the new value.
+  useLayoutEffect(() => {
+    if (caretAfter.current === null || !ref.current) return;
+    ref.current.setSelectionRange(caretAfter.current, caretAfter.current);
+    caretAfter.current = null;
+  }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const next = e.target.value;
+    const expanded = macros ? expandMacro(next, e.target.selectionStart ?? next.length, macros.phrases) : null;
+    if (expanded && (!maxLength || expanded.value.length <= maxLength)) {
+      caretAfter.current = expanded.caret;
+      macros!.markUsed(expanded.shortcut);
+      onChange(expanded.value);
+      return;
+    }
+    onChange(next);
+  };
+
   return (
     <textarea
+      ref={ref}
       id={id}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={handleChange}
       rows={rows}
       placeholder={placeholder}
       aria-describedby={describedBy}
