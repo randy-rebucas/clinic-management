@@ -7,6 +7,9 @@ const SignaturePad = dynamic(() => import('./SignaturePad'), { ssr: false });
 import { calculateDosage, calculateQuantity, formatDosageInstructions } from '@/lib/dosage-calculator';
 import { AlertDialog } from './ui/Modal';
 import { useModalA11y } from './hooks/useModalA11y';
+import { useTemplates } from './templates/useTemplates';
+import { SaveTemplateDialog, TemplatePickerDialog } from './templates/TemplateDialogs';
+import { durationToDays, mergeMedications, type ClinicalTemplateDTO, type TemplateMedication } from '@/lib/clinical-templates';
 
 interface Medicine {
   _id: string;
@@ -43,6 +46,32 @@ interface Medication {
   quantity?: number;
   instructions?: string;
 }
+
+const medicationFromTemplate = (m: TemplateMedication): Medication => ({
+  name: m.name,
+  genericName: m.genericName,
+  form: m.form ?? '',
+  strength: m.strength ?? '',
+  dose: m.dosage ?? '',
+  route: m.route ?? '',
+  frequency: m.frequency ?? '',
+  durationDays: durationToDays(m.duration) ?? 7,
+  quantity: m.quantity ?? 0,
+  instructions: m.instructions,
+});
+
+const medicationToTemplate = (m: Medication): TemplateMedication => ({
+  name: m.name.trim(),
+  ...(m.genericName ? { genericName: m.genericName } : {}),
+  ...(m.form ? { form: m.form } : {}),
+  ...(m.strength ? { strength: m.strength } : {}),
+  ...(m.dose ? { dosage: m.dose } : {}),
+  ...(m.route ? { route: m.route } : {}),
+  ...(m.frequency ? { frequency: m.frequency } : {}),
+  ...(m.durationDays ? { duration: `${m.durationDays} days` } : {}),
+  ...(m.quantity ? { quantity: m.quantity } : {}),
+  ...(m.instructions ? { instructions: m.instructions } : {}),
+});
 
 interface Patient {
   _id: string;
@@ -103,6 +132,9 @@ export default function PrescriptionForm({
   const [checkingInteractions, setCheckingInteractions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const signaturePadRef = useModalA11y<HTMLDivElement>(showSignaturePad, () => setShowSignaturePad(false));
+  const tpl = useTemplates('prescription');
+  const [picker, setPicker] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // A preset patient (initialData) is resolved once it shows up in `patients`; an explicit pick wins.
   const selectedPatient =
@@ -210,6 +242,23 @@ export default function PrescriptionForm({
           quantity: 0,
         },
       ],
+    });
+  };
+
+  // --- Saved prescriptions ("my usual") ------------------------------------------
+  const applySaved = (t: ClinicalTemplateDTO) => {
+    const updated = mergeMedications(formData.medications, t.medications, medicationFromTemplate);
+    setFormData({ ...formData, medications: updated });
+    setPicker(false);
+    tpl.markUsed(t._id);
+    if (updated.length >= 2) checkInteractions(updated);
+  };
+
+  const saveCurrent = async (input: { name: string; specialty?: string; shared: boolean }) => {
+    await tpl.create({
+      kind: 'prescription',
+      ...input,
+      medications: formData.medications.filter((m) => m.name.trim()).map(medicationToTemplate),
     });
   };
 
@@ -506,6 +555,22 @@ export default function PrescriptionForm({
                 >
                   🔍 Check Interactions
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setPicker(true)}
+                  className="px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200 font-semibold"
+                >
+                  ★ My usual
+                </button>
+                {formData.medications.some((m) => m.name.trim()) && (
+                  <button
+                    type="button"
+                    onClick={() => setSaving(true)}
+                    className="px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200 font-semibold"
+                  >
+                    Save these
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={addMedication}
@@ -810,6 +875,28 @@ export default function PrescriptionForm({
             </div>
           </div>
         </div>
+      )}
+
+      {picker && (
+        <TemplatePickerDialog
+          open
+          onClose={() => setPicker(false)}
+          title="Add a saved prescription"
+          templates={tpl.templates}
+          loading={tpl.loading}
+          error={tpl.error}
+          onPick={applySaved}
+          emptyHint="No saved prescriptions yet. Add the medicines you usually give and choose “Save these”."
+        />
+      )}
+      {saving && (
+        <SaveTemplateDialog
+          open
+          onClose={() => setSaving(false)}
+          title="Save these medicines"
+          description="Saves the medicines with their doses, so you can add them in one step next time."
+          onSave={saveCurrent}
+        />
       )}
 
       {/* Drug Interaction Alert Dialog */}
