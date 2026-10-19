@@ -86,7 +86,7 @@ function StateBanner({ plan }: { plan: SubscriptionPageData['plan'] }) {
     case 'cancelled':
       return (
         <Banner tone="red" title={`The ${plan.label} plan was cancelled`}>
-          Its payment was refunded or declined at PayPal. {unpaid}
+          Its payment was refunded or declined. {unpaid}
         </Banner>
       );
     case 'ended':
@@ -177,7 +177,7 @@ function PeriodPanel({ data }: { data: SubscriptionPageData }) {
     },
   ];
   return (
-    <Panel title="This period" subtitle="Payments are one-off through PayPal and don’t renew on their own.">
+    <Panel title="This period" subtitle="Payments are one-off and don’t renew on their own.">
       <FigureRow figures={figures} />
       <PeriodBar plan={plan} />
     </Panel>
@@ -201,7 +201,7 @@ function UsagePanel({ data }: { data: SubscriptionPageData }) {
 }
 
 // ---------------------------------------------------------------------------
-// Payments started at PayPal but not finished
+// Payments started but not finished
 // ---------------------------------------------------------------------------
 
 function Unfinished({ items }: { items: UnfinishedPayment[] }) {
@@ -224,8 +224,8 @@ function Unfinished({ items }: { items: UnfinishedPayment[] }) {
               </p>
               <p className="mt-0.5 text-sm text-gray-600">
                 {o.status === 'processing'
-                  ? 'PayPal may already have taken this payment; it hasn’t been applied to the plan yet.'
-                  : 'If you approved it at PayPal, finish it here. If you didn’t, it lapses on its own and nothing is charged.'}
+                  ? 'The payment may already have been taken; it hasn’t been applied to the plan yet.'
+                  : 'If you paid, finish it here. If you didn’t, it lapses on its own and nothing is charged.'}
               </p>
             </div>
             <Link
@@ -379,7 +379,7 @@ function CycleSwitch({ value, onChange, saved }: { value: BillingCycle; onChange
 }
 
 // ---------------------------------------------------------------------------
-// Confirm, then go to PayPal
+// Confirm, then go to the payment page
 // ---------------------------------------------------------------------------
 
 function ConfirmDialog({ choice, data, onClose }: { choice: Choice | null; data: SubscriptionPageData; onClose: () => void }) {
@@ -397,12 +397,12 @@ function ConfirmDialog({ choice, data, onClose }: { choice: Choice | null; data:
   const notes: string[] = [];
   if (switching && plan.daysLeft) {
     notes.push(
-      `${offer.label} applies as soon as PayPal confirms the payment, including the ${plural(plan.daysLeft, 'day')} left on ${plan.label}. The new ${CYCLE_WORD[cycle]} is added after ${plan.endsOn}.`
+      `${offer.label} applies as soon as ${data.gatewayName} confirms the payment, including the ${plural(plan.daysLeft, 'day')} left on ${plan.label}. The new ${CYCLE_WORD[cycle]} is added after ${plan.endsOn}.`
     );
   } else if (inDate && plan.endsOn) {
     notes.push(`Days already ${plan.state === 'trial' ? 'left on the trial' : 'paid for'} are kept: the new ${CYCLE_WORD[cycle]} starts after ${plan.endsOn}.`);
   } else {
-    notes.push(`${offer.label} starts as soon as PayPal confirms the payment.`);
+    notes.push(`${offer.label} starts as soon as ${data.gatewayName} confirms the payment.`);
   }
   for (const row of short) {
     const limit = offer.limits[row.key] as number;
@@ -427,10 +427,10 @@ function ConfirmDialog({ choice, data, onClose }: { choice: Choice | null; data:
         body: JSON.stringify({ plan: offer.plan, billingCycle: cycle }),
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok || !body.approvalUrl) throw new Error(body.error || 'PayPal couldn’t start the payment. Nothing was charged.');
+      if (!res.ok || !body.approvalUrl) throw new Error(body.error || `${data.gatewayName} couldn’t start the payment. Nothing was charged.`);
       window.location.assign(body.approvalUrl);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'PayPal couldn’t start the payment. Nothing was charged.');
+      setError(e instanceof Error ? e.message : `${data.gatewayName} couldn’t start the payment. Nothing was charged.`);
       setSending(false);
     }
   }
@@ -461,7 +461,7 @@ function ConfirmDialog({ choice, data, onClose }: { choice: Choice | null; data:
             </li>
           ))}
         </ul>
-        <p className="mt-4 text-sm text-gray-600">You’ll pay on PayPal’s page, then come back here while the payment is confirmed.</p>
+        <p className="mt-4 text-sm text-gray-600">You’ll pay on {data.gatewayName}’s page{data.gatewayName === 'PayMongo' ? ' (GCash, Maya, card or QR Ph)' : ''}, then come back here while the payment is confirmed.</p>
         {error && (
           <p role="alert" className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
             {error}
@@ -472,7 +472,7 @@ function ConfirmDialog({ choice, data, onClose }: { choice: Choice | null; data:
             Not now
           </button>
           <button type="button" onClick={pay} disabled={sending} className={PRIMARY} aria-busy={sending}>
-            {sending ? 'Opening PayPal…' : 'Continue to PayPal'}
+            {sending ? `Opening ${data.gatewayName}…` : `Continue to ${data.gatewayName}`}
           </button>
         </div>
       </div>
@@ -495,7 +495,7 @@ function Payments({ payments }: { payments: SubscriptionPageData['payments'] }) 
     <Panel title="Payments" subtitle={payments.length ? `${plural(payments.length, 'payment')}, newest first` : undefined}>
       {payments.length === 0 ? (
         <p className="px-5 py-10 text-center text-sm text-gray-500">
-          No payments yet. Each payment made through PayPal is listed here with its PayPal reference.
+          No payments yet. Each payment is listed here with its payment reference.
         </p>
       ) : (
         <ul className="divide-y divide-gray-100">
@@ -546,7 +546,7 @@ export default function SubscriptionClient({ data, canceled }: { data: Subscript
       </div>
 
       {canceled && (
-        <Banner tone="info" title="You left PayPal before paying">
+        <Banner tone="info" title="You left the payment page before paying">
           Nothing was charged. Choose a plan again whenever you’re ready.
         </Banner>
       )}

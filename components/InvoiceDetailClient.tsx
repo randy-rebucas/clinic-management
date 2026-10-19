@@ -147,6 +147,35 @@ export default function InvoiceDetailClient({
     return () => clearTimeout(t);
   }, [notice]);
 
+  const [payLink, setPayLink] = useState<string | null>(null);
+  const sendPayLink = async () => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}/pay-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sms: permissions.canText }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        setActionError(formatApiError(json, 'The payment link couldn’t be made'));
+        return;
+      }
+      setPayLink(json.data.url);
+      setNotice({
+        text: json.data.texted
+          ? 'Payment link texted to the patient. The payment shows here by itself once they pay.'
+          : 'Payment link made. Send it to the patient; the payment shows here by itself once they pay.',
+        receipt: false,
+      });
+    } catch {
+      setActionError('The server couldn’t be reached. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const markRefunded = async () => {
     setConfirmRefund(false);
     setBusy(true);
@@ -310,6 +339,16 @@ export default function InvoiceDetailClient({
               Record payment
             </button>
           )}
+          {permissions.canSendPayLink && open && (
+            <button
+              type="button"
+              onClick={sendPayLink}
+              disabled={busy}
+              className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 disabled:cursor-wait ${FOCUS_RING}`}
+            >
+              {permissions.canText && p.patient?.phone ? 'Text a payment link' : 'Make a payment link'}
+            </button>
+          )}
           {permissions.canRefund && !refunded && (
             <button
               type="button"
@@ -341,6 +380,19 @@ export default function InvoiceDetailClient({
           <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className={`shrink-0 rounded p-0.5 opacity-80 hover:opacity-100 ${FOCUS_RING}`}>
             <Svg d={ICONS.x} />
           </button>
+        </div>
+      )}
+      {payLink && (
+        <div className="motion-chip-in flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm">
+          <span className="min-w-0 truncate font-mono text-xs text-gray-700">{payLink}</span>
+          <span className="flex shrink-0 gap-3">
+            <button type="button" onClick={() => navigator.clipboard?.writeText(payLink)} className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+              Copy link
+            </button>
+            <button type="button" onClick={() => setPayLink(null)} aria-label="Hide the payment link" className={`rounded p-0.5 text-gray-500 hover:text-gray-900 ${FOCUS_RING}`}>
+              <Svg d={ICONS.x} />
+            </button>
+          </span>
         </div>
       )}
       {actionError && (
