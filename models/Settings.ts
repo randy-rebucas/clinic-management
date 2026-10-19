@@ -61,6 +61,8 @@ export interface ISettings extends Document {
     autoAssignRooms: boolean;
     estimatedWaitTimeMinutes: number;
     displayQueuePublicly: boolean;
+    /** Patients may check themselves in from the eMCR app by scanning the clinic check-in QR. */
+    patientSelfCheckIn: boolean;
   };
 
   // General Settings
@@ -224,6 +226,7 @@ const SettingsSchema = new Schema<ISettings>(
       autoAssignRooms: { type: Boolean, default: false },
       estimatedWaitTimeMinutes: { type: Number, default: 15 },
       displayQueuePublicly: { type: Boolean, default: false },
+      patientSelfCheckIn: { type: Boolean, default: false },
     },
 
     generalSettings: {

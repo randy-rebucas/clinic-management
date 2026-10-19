@@ -4,7 +4,7 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import LabResult from '@/models/LabResult';
 import logger from '@/lib/logger';
-import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { parsePagination, resolveTenantFilter } from '../_lib/patient-scope';
 import { linkedRecords } from '../_lib/linked-records';
 import { PATIENT_LAB_RESULT_HIDDEN } from '../_lib/lab-result-fields';
@@ -17,12 +17,7 @@ import { PATIENT_LAB_RESULT_HIDDEN } from '../_lib/lab-result-fields';
 export async function GET(request: NextRequest) {
   const session = await verifyPatientAuth(request);
 
-  if (!session) {
-    return NextResponse.json(
-      { success: false, error: 'Not authenticated. Please login.' },
-      { status: 401 }
-    );
-  }
+  if (!session) return patientAuthError(request);
 
   try {
     await connectDB();

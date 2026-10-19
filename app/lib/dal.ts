@@ -64,6 +64,11 @@ export interface SessionPayload extends JWTPayload {
   expiresAt: number | Date;
   typ?: 'session';
   sv?: number; // User.sessionVersion at issue time
+  /**
+   * Set when a platform admin is viewing this clinic ("view as clinic"): their email.
+   * Such sessions are read-only (proxy.ts refuses every write) and last VIEW_AS_TTL_MS.
+   */
+  imp?: string;
 }
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -129,6 +134,7 @@ export async function decrypt(session: string | undefined = ''): Promise<Session
     // Tokens issued before `typ` existed are accepted only if they are full sessions
     // (they always had expiresAt; socket tokens never did).
     if (p.typ !== undefined && p.typ !== 'session') return null;
+    if (p.imp !== undefined && typeof p.imp !== 'string') return null;
 
     const expiresAt = expiresAtToDate(p.expiresAt);
     if (!expiresAt || expiresAt < new Date()) {
@@ -271,6 +277,43 @@ export async function createSession(
   }
 }
 
+export const VIEW_AS_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * A read-only session for a platform admin viewing a clinic as its own admin user.
+ * It names the platform admin in `imp`, runs out after 30 minutes and is never extended.
+ */
+export async function createViewAsSession(opts: {
+  userId: string;
+  email: string;
+  role: StaffRole;
+  roleId?: string;
+  tenantId: string;
+  sessionVersion: number;
+  platformEmail: string;
+}): Promise<void> {
+  validateSecret();
+  const expiresAt = new Date(Date.now() + VIEW_AS_TTL_MS);
+  const token = await new SignJWT({
+    userId: opts.userId,
+    email: opts.email,
+    role: opts.role,
+    roleId: opts.roleId,
+    tenantId: opts.tenantId,
+    typ: 'session',
+    sv: opts.sessionVersion,
+    imp: opts.platformEmail,
+    expiresAt: expiresAt.getTime() / 1000,
+  })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime(`${VIEW_AS_TTL_MS / 1000}s`)
+    .sign(encodedKey);
+  userStateCache.delete(opts.userId);
+  const cookieStore = await cookies();
+  cookieStore.set('session', token, cookieOptions(expiresAt));
+}
+
 export async function updateSession() {
   try {
     const cookieStore = await cookies();
@@ -280,6 +323,8 @@ export async function updateSession() {
     if (!session || !payload) {
       return null;
     }
+    // A view-as session keeps its 30-minute limit.
+    if (payload.imp) return null;
 
     const expires = new Date(Date.now() + SESSION_TTL_MS);
     const res = await encrypt({ ...payload, expiresAt: expires });
@@ -505,6 +550,11 @@ export interface PatientSessionPayload {
   /** How this token's sign-in was proven. Not carried through refresh (refreshed tokens have none). */
   amr?: PatientAuthMethod;
   iat?: number;
+  /**
+   * Set (never signed into a token) when the request acts for a family member: `patientId` is the
+   * family member and this is the signed-in record (app/lib/patient-auth.ts).
+   */
+  guardianId?: string;
 }
 
 export interface PatientTokenClaims {

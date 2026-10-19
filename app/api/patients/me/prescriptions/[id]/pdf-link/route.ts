@@ -3,13 +3,7 @@ import Prescription from '@/models/Prescription';
 import logger from '@/lib/logger';
 import { ownedRecordContext, isOwnedRecordError, recordNotFound } from '../../../_lib/owned-record';
 import { createPrescriptionLinkToken } from '@/lib/prescription-link';
-
-/** This app's public origin as the caller reached it (behind Vercel's proxy too). */
-function originOf(request: NextRequest): string {
-  const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
-  const proto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() || request.nextUrl.protocol.replace(':', '');
-  return host ? `${proto}://${host}` : request.nextUrl.origin;
-}
+import { requestOrigin } from '@/lib/signed-link';
 
 /**
  * POST /api/patients/me/prescriptions/[id]/pdf-link
@@ -30,7 +24,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { token, expiresAt } = createPrescriptionLinkToken(String(prescription._id));
     return NextResponse.json({
       success: true,
-      data: { url: `${originOf(request)}/api/rx/${token}`, expiresAt: expiresAt.toISOString() },
+      data: { url: `${requestOrigin(request)}/api/rx/${token}`, expiresAt: expiresAt.toISOString() },
     });
   } catch (error) {
     logger.error('Error creating prescription PDF link', error as Error);

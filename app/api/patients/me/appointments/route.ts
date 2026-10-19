@@ -4,7 +4,7 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import Appointment from '@/models/Appointment';
 import logger from '@/lib/logger';
-import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { PATIENT_DOCTOR_POPULATE, withDoctorSummary } from '../../_lib/doctor-summary';
 import { parsePagination, resolveTenantFilter } from '../_lib/patient-scope';
 import { linkedRecords } from '../_lib/linked-records';
@@ -22,12 +22,7 @@ const APPOINTMENT_STATUSES = ['pending', 'scheduled', 'confirmed', 'rescheduled'
 export async function GET(request: NextRequest) {
   const session = await verifyPatientAuth(request);
 
-  if (!session) {
-    return NextResponse.json(
-      { success: false, error: 'Not authenticated. Please login.' },
-      { status: 401 }
-    );
-  }
+  if (!session) return patientAuthError(request);
 
   try {
     await connectDB();

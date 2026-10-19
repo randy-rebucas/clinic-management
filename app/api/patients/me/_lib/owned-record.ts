@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { recordPatientRefused } from '@/lib/audit';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
-import { verifyPatientAuth, type PatientSessionPayload } from '@/app/lib/patient-auth';
+import { patientAuthError, verifyPatientAuth, type PatientSessionPayload } from '@/app/lib/patient-auth';
 import { isValidId } from '@/lib/api/tenant-session';
 import { tenantScopeFilter } from './patient-scope';
 import { linkedRecords, type LinkedRecords } from './linked-records';
@@ -28,9 +28,7 @@ export async function ownedRecordContext(
   notFoundLabel: string
 ): Promise<OwnedRecordContext | NextResponse> {
   const session = await verifyPatientAuth(request);
-  if (!session) {
-    return NextResponse.json({ success: false, error: 'Not authenticated. Please login.' }, { status: 401 });
-  }
+  if (!session) return patientAuthError(request);
 
   await connectDB();
 

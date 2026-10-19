@@ -6,7 +6,7 @@ import Patient from '@/models/Patient';
 import Tenant from '@/models/Tenant';
 import Visit from '@/models/Visit';
 import logger from '@/lib/logger';
-import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { scopedTenantIds } from '../_lib/patient-scope';
 import { linkedRecords, recordAtClinic } from '../_lib/linked-records';
 
@@ -19,9 +19,7 @@ import { linkedRecords, recordAtClinic } from '../_lib/linked-records';
  */
 export async function GET(request: NextRequest) {
   const session = await verifyPatientAuth(request);
-  if (!session) {
-    return NextResponse.json({ success: false, error: 'Not authenticated. Please login.' }, { status: 401 });
-  }
+  if (!session) return patientAuthError(request);
 
   try {
     await connectDB();

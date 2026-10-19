@@ -77,6 +77,7 @@ export async function loadClinicSettingsPage(tenantIdInput: string): Promise<Cli
       allowPartialPayments: s.billingSettings?.allowPartialPayments !== false,
       autoAssignRooms: s.queueSettings?.autoAssignRooms === true,
       displayQueuePublicly: s.queueSettings?.displayQueuePublicly === true,
+      patientSelfCheckIn: s.queueSettings?.patientSelfCheckIn === true,
       prescriptionPaperSize: s.prescriptionPaperSize === 'A5' ? 'A5' : 'A4',
       prescriptionDigitalSignatureEnabled: s.prescriptionDigitalSignatureEnabled !== false,
       sidebarCollapsed: s.displaySettings?.sidebarCollapsed === true,

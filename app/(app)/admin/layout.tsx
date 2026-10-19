@@ -19,6 +19,8 @@ const SECTIONS = [
   { label: 'Subscription', href: '/admin/subscription' },
   { label: 'Backups', href: '/admin/backups' },
   { label: 'Audit log', href: '/admin/audit-logs' },
+  { label: 'Developers', href: '/admin/developers' },
+  { label: 'Support', href: '/admin/support' },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

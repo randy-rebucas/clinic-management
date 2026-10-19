@@ -11,6 +11,7 @@ import { SERIES, TableTwin, TipRow, useTooltip } from './dashboards/charts';
 import { FIELD, FOCUS_RING, ICON, Svg } from './appointments/shared';
 import type { DoctorOption } from './appointments/BookingModal';
 import AddToQueueModal from './queue/AddToQueueModal';
+import CheckInQrModal from './queue/CheckInQrModal';
 import VitalsModal, { hasVitals, vitalsSummary, type Vitals } from './queue/VitalsModal';
 import type { QueuePermissions } from '@/lib/queue-page';
 import { QUEUE_PRIORITY } from '@/lib/queue-order';
@@ -118,6 +119,7 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [showCheckInQr, setShowCheckInQr] = useState(false);
   const [vitalsFor, setVitalsFor] = useState<QueueEntry | null>(null);
   const [confirm, setConfirm] = useState<{ entry: QueueEntry; status: 'no-show' | 'cancelled' } | null>(null);
 
@@ -319,6 +321,14 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
             >
               <Svg d={ICONS.refresh} className={`h-4 w-4 ${queue.loading ? 'animate-spin motion-reduce:animate-none' : ''}`} />
             </button>
+            <button
+              type="button"
+              onClick={() => setShowCheckInQr(true)}
+              title="Show the QR patients scan in the eMCR app to check in"
+              className={`rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}
+            >
+              Check-in QR
+            </button>
             {permissions.canAdd && (
               <button
                 type="button"
@@ -518,6 +528,7 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
           }}
         />
       )}
+      {showCheckInQr && <CheckInQrModal onClose={() => setShowCheckInQr(false)} />}
       {vitalsFor && (
         <VitalsModal
           patientName={nameOf(vitalsFor)}

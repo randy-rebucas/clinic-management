@@ -60,7 +60,7 @@ export function StateBadge({ state }: { state: UserState }) {
   );
 }
 
-export type Send = (url: string, method: 'POST' | 'PUT' | 'DELETE', body?: unknown) => Promise<{ ok: true; data: unknown } | { ok: false; error: string }>;
+export type Send = (url: string, method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', body?: unknown) => Promise<{ ok: true; data: unknown } | { ok: false; error: string }>;
 
 /** One request helper: 401 goes to login, failures come back as words. */
 export function useSend(fallback: string): Send {

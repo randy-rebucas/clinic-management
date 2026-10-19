@@ -66,6 +66,8 @@ export interface ClinicSettingsForm {
   allowPartialPayments: boolean;
   autoAssignRooms: boolean;
   displayQueuePublicly: boolean;
+  /** Patients may check in from the app by scanning the clinic check-in QR. */
+  patientSelfCheckIn: boolean;
   prescriptionPaperSize: 'A4' | 'A5';
   prescriptionDigitalSignatureEnabled: boolean;
   sidebarCollapsed: boolean;

@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
-import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { isFreshOtpSession } from '@/app/lib/dal';
 import {
@@ -33,14 +33,9 @@ const MIN_PASSWORD_LENGTH = 8;
  * caller gets a new token pair (+ `expiresIn`). `deviceId` keeps this device's push registration.
  */
 export async function POST(request: NextRequest) {
-  const session = await verifyPatientAuth(request);
+  const session = await verifyPatientAuth(request, { profile: 'refuse' });
 
-  if (!session) {
-    return NextResponse.json(
-      { success: false, error: 'Not authenticated. Please login.' },
-      { status: 401 }
-    );
-  }
+  if (!session) return patientAuthError(request);
 
   const limited = await applyRateLimit(request, rateLimiters.authAccount, `patient-pw:${session.patientId}`);
   if (limited) return limited;

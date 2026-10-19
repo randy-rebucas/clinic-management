@@ -4,26 +4,21 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import Queue from '@/models/Queue';
 import logger from '@/lib/logger';
-import { verifyPatientAuth } from '@/app/lib/patient-auth';
-import { aheadOf } from '@/lib/queue-order';
+import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
+import { queuePosition } from '@/lib/queue-position';
 import { resolveTenantFilter } from '../_lib/patient-scope';
 import { linkedRecords } from '../_lib/linked-records';
 
 /**
  * GET /api/patients/me/queue
- * Returns the authenticated patient's current queue entry (if any) plus
- * their live position among patients still waiting ahead of them, mirroring
- * the position calculation in lib/automations/queue-notifications.ts.
+ * Returns the authenticated patient's current queue entry (if any) plus their live position in
+ * their doctor's line (lib/queue-position.ts, as on the staff queue screen). `checkedIn` says
+ * whether they still need to check in (POST /api/patients/me/check-in).
  */
 export async function GET(request: NextRequest) {
   const session = await verifyPatientAuth(request);
 
-  if (!session) {
-    return NextResponse.json(
-      { success: false, error: 'Not authenticated. Please login.' },
-      { status: 401 }
-    );
-  }
+  if (!session) return patientAuthError(request);
 
   try {
     await connectDB();
@@ -62,15 +57,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, data: null });
     }
 
-    let position: number | null = null;
-    if ((queueEntry as any).status === 'waiting') {
-      const waitingAhead = await Queue.countDocuments({
-        tenantId: (queueEntry as any).tenantId,
-        status: 'waiting',
-        ...aheadOf(queueEntry as any),
-      });
-      position = waitingAhead + 1;
-    }
+    const position =
+      (queueEntry as any).status === 'waiting'
+        ? await queuePosition((queueEntry as any).tenantId, queueEntry as any)
+        : null;
 
     return NextResponse.json({
       success: true,

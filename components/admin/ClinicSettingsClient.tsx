@@ -37,7 +37,7 @@ const SECTIONS = [
   { id: 'billing', title: 'Billing', keys: ['currency', 'taxRate', 'invoicePrefix', 'allowPartialPayments'] },
   { id: 'bir', title: 'BIR invoicing', keys: ['bir'] },
   { id: 'philhealth', title: 'PhilHealth', keys: ['philhealth'] },
-  { id: 'queue', title: 'Queue', keys: ['autoAssignRooms', 'displayQueuePublicly'] },
+  { id: 'queue', title: 'Queue', keys: ['autoAssignRooms', 'displayQueuePublicly', 'patientSelfCheckIn'] },
   { id: 'prescriptions', title: 'Prescriptions', keys: ['prescriptionPaperSize', 'prescriptionDigitalSignatureEnabled'] },
   { id: 'screens', title: 'Staff screens', keys: ['sidebarCollapsed'] },
   { id: 'automations', title: 'Automations', keys: ['automations'] },
@@ -89,6 +89,7 @@ function changesBody(f: ClinicSettingsForm, base: ClinicSettingsForm) {
   const queue: Record<string, unknown> = {};
   if (changed('autoAssignRooms')) queue.autoAssignRooms = f.autoAssignRooms;
   if (changed('displayQueuePublicly')) queue.displayQueuePublicly = f.displayQueuePublicly;
+  if (changed('patientSelfCheckIn')) queue.patientSelfCheckIn = f.patientSelfCheckIn;
   if (Object.keys(queue).length) body.queueSettings = queue;
   if (changed('prescriptionPaperSize')) body.prescriptionPaperSize = f.prescriptionPaperSize;
   if (changed('prescriptionDigitalSignatureEnabled')) body.prescriptionDigitalSignatureEnabled = f.prescriptionDigitalSignatureEnabled;
@@ -810,6 +811,21 @@ function QueueSection({ form, set, displayPath }: { form: ClinicSettingsForm; se
           }
           on={form.displayQueuePublicly}
           onChange={(v) => set('displayQueuePublicly', v)}
+        />
+        <SwitchRow
+          id="set-patientSelfCheckIn"
+          label="Let patients check themselves in from the app"
+          hint={
+            <>
+              Patients with an appointment today scan the clinic’s check-in QR when they arrive and join the queue. Show the QR from{' '}
+              <Link href="/queue" className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+                Queue
+              </Link>{' '}
+              on a reception tablet; it changes every few minutes, so a photo of it stops working.
+            </>
+          }
+          on={form.patientSelfCheckIn}
+          onChange={(v) => set('patientSelfCheckIn', v)}
         />
       </div>
     </Section>

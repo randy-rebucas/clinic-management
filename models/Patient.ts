@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 import { AttachmentSchema, IAttachment } from './Attachment';
+import { attachPatientWebhookHooks } from '@/lib/webhook-model-hooks';
 
 export interface IPatient extends Document {
   // Tenant references for multi-tenant support (can belong to multiple clinics)
@@ -120,6 +121,20 @@ export interface IPatient extends Document {
    * carries the same id; set on phone-OTP sign-in (app/api/patients/me/_lib/linked-records.ts).
    */
   accountId?: Types.ObjectId;
+  /**
+   * People who may manage this record from their own app login (family accounts). `patient` is
+   * the guardian's record. `source: 'phone'` was added by the guardian for a minor registered
+   * with the guardian's verified phone and lapses at 18; `source: 'clinic'` was added by staff
+   * (lib/patient-family.ts).
+   */
+  guardians?: Array<{
+    patient: Types.ObjectId;
+    relationship?: string;
+    source: 'phone' | 'clinic';
+    tenantId?: Types.ObjectId;
+    addedBy?: Types.ObjectId;
+    addedAt: Date;
+  }>;
 
   // Notification read-tracking (stores IDs of notifications the patient has dismissed)
   readNotificationIds?: string[];
@@ -383,6 +398,21 @@ const PatientSchema: Schema = new Schema(
       index: true,
       sparse: true,
     },
+    // Family accounts: who may manage this record from their own login.
+    guardians: {
+      type: [
+        {
+          _id: false,
+          patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true },
+          relationship: { type: String, trim: true, maxlength: 50 },
+          source: { type: String, enum: ['phone', 'clinic'], required: true },
+          tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant' },
+          addedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+          addedAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: undefined,
+    },
 
     // Notification read-tracking
     readNotificationIds: {
@@ -452,6 +482,7 @@ PatientSchema.index({ tenantIds: 1, dateOfBirth: 1 }); // Tenant-scoped age quer
 PatientSchema.index({ tenantIds: 1, sex: 1 }); // Tenant-scoped gender queries
 PatientSchema.index({ tenantIds: 1, active: 1 }); // Tenant-scoped active patient queries
 PatientSchema.index({ loginQrTokenHash: 1 }, { sparse: true });
+PatientSchema.index({ 'guardians.patient': 1 }, { sparse: true }); // Family accounts: a guardian's dependents
 PatientSchema.index({ tenantIds: 1, 'identifiers.philHealth': 1 }); // Tenant-scoped PhilHealth lookups
 PatientSchema.index({ tenantIds: 1, 'identifiers.govId': 1 }); // Tenant-scoped government ID lookups
 PatientSchema.index({ tenantIds: 1, createdAt: -1 }); // Tenant-scoped registration date queries
@@ -477,6 +508,9 @@ PatientSchema.virtual('fullName').get(function (this: IPatient) {
   if (this.suffix) parts.push(this.suffix);
   return parts.join(' ');
 });
+
+// patient.created webhook
+attachPatientWebhookHooks(PatientSchema);
 
 // Ensure virtuals are included in JSON output
 PatientSchema.set('toJSON', { virtuals: true });

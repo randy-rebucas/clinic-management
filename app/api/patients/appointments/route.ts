@@ -7,7 +7,7 @@ import Doctor from '@/models/Doctor';
 import Patient from '@/models/Patient';
 import { sendSMS } from '@/lib/sms';
 import logger from '@/lib/logger';
-import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { doctorSummary, PATIENT_DOCTOR_POPULATE } from '../_lib/doctor-summary';
 import { getTenantContext } from '@/lib/tenant';
 import { isValidId } from '@/lib/api/tenant-session';
@@ -84,12 +84,7 @@ async function teleconsultOffered(tenantId: Types.ObjectId): Promise<boolean> {
 export async function GET(request: NextRequest) {
   try {
     const sessionData = await verifyPatientAuth(request);
-    if (!sessionData) {
-      return NextResponse.json(
-        { success: false, error: 'Not authenticated. Please login.' },
-        { status: 401 }
-      );
-    }
+    if (!sessionData) return patientAuthError(request);
 
     await connectDB();
 
@@ -198,12 +193,7 @@ const portalBookingSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const sessionData = await verifyPatientAuth(request);
-    if (!sessionData) {
-      return NextResponse.json(
-        { success: false, error: 'Not authenticated. Please login.' },
-        { status: 401 }
-      );
-    }
+    if (!sessionData) return patientAuthError(request);
 
     await connectDB();
 

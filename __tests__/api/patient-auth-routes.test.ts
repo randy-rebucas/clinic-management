@@ -10,7 +10,13 @@ vi.mock('@/lib/middleware/rate-limit', () => ({
   applyAuthRateLimits: vi.fn().mockResolvedValue(null),
   rateLimiters: { api: {}, auth: {}, authAccount: {}, otpSend: {} },
 }));
-vi.mock('@/app/lib/patient-auth', () => ({ verifyPatientAuth: vi.fn() }));
+vi.mock('@/app/lib/patient-auth', async () => {
+  const { NextResponse } = await import('next/server');
+  return {
+    verifyPatientAuth: vi.fn(),
+    patientAuthError: () => NextResponse.json({ success: false, error: 'Not authenticated. Please login.' }, { status: 401 }),
+  };
+});
 vi.mock('@/models/Patient', () => ({ default: { findById: vi.fn(), updateOne: vi.fn() } }));
 vi.mock('@/models/MobileDevice', () => ({ default: { updateOne: vi.fn(), updateMany: vi.fn() } }));
 vi.mock('@/app/lib/refresh-tokens', () => ({

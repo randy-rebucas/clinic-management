@@ -47,6 +47,7 @@ export interface Settings {
     autoAssignRooms: boolean;
     estimatedWaitTimeMinutes: number;
     displayQueuePublicly: boolean;
+    patientSelfCheckIn: boolean;
   };
   generalSettings: {
     timezone: string;
@@ -123,6 +124,7 @@ const defaultSettings: Settings = {
     autoAssignRooms: false,
     estimatedWaitTimeMinutes: 15,
     displayQueuePublicly: false,
+    patientSelfCheckIn: false,
   },
   generalSettings: {
     timezone: 'UTC',

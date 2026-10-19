@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     const [requests, total] = await Promise.all([
       SupportRequestModel.find(rep.ownerFilter)
-        .select('email subject category message status createdAt updatedAt')
+        .select('email subject category message status replies createdAt updatedAt')
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -114,6 +114,9 @@ export async function POST(request: NextRequest) {
       category,
       message,
       status: 'open',
+      source: 'medical-rep',
+      lastActivityAt: new Date(),
+      lastReplyBy: 'requester',
     });
 
     // Send email notification to support team

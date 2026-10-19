@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 import { newRoomName } from '@/lib/teleconsult';
+import { attachAppointmentWebhookHooks } from '@/lib/webhook-model-hooks';
 
 export interface IAppointment extends Document {
   // Tenant reference for multi-tenant support
@@ -293,6 +294,9 @@ AppointmentSchema.pre('save', function (next) {
   
   next();
 });
+
+// appointment.created / appointment.status_changed webhooks
+attachAppointmentWebhookHooks(AppointmentSchema);
 
 // Ensure virtuals are included in JSON output
 AppointmentSchema.set('toJSON', { virtuals: true });

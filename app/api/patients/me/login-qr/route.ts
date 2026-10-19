@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import logger from '@/lib/logger';
 import { issuePatientLoginQr, rotatePatientSessionAfterPasswordChange } from '../../auth/shared';
 
@@ -11,10 +11,8 @@ import { issuePatientLoginQr, rotatePatientSessionAfterPasswordChange } from '..
  * Returns { qrData, expiresAt }; render `qrData` as the QR image content.
  */
 export async function POST(request: NextRequest) {
-  const session = await verifyPatientAuth(request);
-  if (!session) {
-    return NextResponse.json({ success: false, error: 'Not authenticated. Please login.' }, { status: 401 });
-  }
+  const session = await verifyPatientAuth(request, { profile: 'refuse' });
+  if (!session) return patientAuthError(request);
 
   try {
     const { qrData, expiresAt } = await issuePatientLoginQr(session.patientId, { tenantId: session.tid });
@@ -36,10 +34,8 @@ export async function POST(request: NextRequest) {
  * Optional body `{ deviceId }` keeps this device's push registration.
  */
 export async function DELETE(request: NextRequest) {
-  const session = await verifyPatientAuth(request);
-  if (!session) {
-    return NextResponse.json({ success: false, error: 'Not authenticated. Please login.' }, { status: 401 });
-  }
+  const session = await verifyPatientAuth(request, { profile: 'refuse' });
+  if (!session) return patientAuthError(request);
 
   let deviceId: string | undefined;
   try {

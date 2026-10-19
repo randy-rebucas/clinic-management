@@ -10,6 +10,8 @@ import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { formatInTz } from '@/lib/tz';
 import { escapeHtml as e } from '@/lib/document-protection';
 import { QUEUE_SORT } from '@/lib/queue-order';
+import QRCode from 'qrcode';
+import { checkInQr } from '@/lib/clinic-checkin';
 
 /** "Juan Dela Cruz" -> "J. D. C." so the public screen never shows full names. */
 function initials(name: unknown): string {
@@ -72,6 +74,11 @@ export async function GET(request: NextRequest) {
       .lean();
 
     const tz = await getTenantTimezone(tenantId);
+
+    // Self check-in: the rotating clinic QR patients scan in the app (the page reloads every 30s).
+    const checkInImage = settings?.queueSettings?.patientSelfCheckIn
+      ? await QRCode.toDataURL(checkInQr(tenantId).qrData, { errorCorrectionLevel: 'M', width: 360, margin: 1 })
+      : null;
 
     // Format for display (escaped at interpolation below)
     const displayData = queues.map((queue: any, index: number) => ({
@@ -183,6 +190,19 @@ export async function GET(request: NextRequest) {
           .current {
             animation: pulse 2s infinite;
           }
+          .checkin {
+            position: fixed;
+            right: 32px;
+            bottom: 32px;
+            background: white;
+            color: #1f2933;
+            border-radius: 20px;
+            padding: 18px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+          }
+          .checkin img { width: 220px; height: 220px; display: block; }
+          .checkin p { font-size: 1.1rem; font-weight: bold; margin-top: 8px; }
         </style>
       </head>
       <body>
@@ -210,6 +230,7 @@ export async function GET(request: NextRequest) {
               </div>`
           }
         </div>
+        ${checkInImage ? `<div class="checkin"><img src="${checkInImage}" alt="Check-in QR code"><p>Have an appointment?<br>Scan in the eMCR app to check in</p></div>` : ''}
       </body>
       </html>
     `;
@@ -219,7 +240,7 @@ export async function GET(request: NextRequest) {
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff',
-        'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'self'",
+        'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'self'",
         'X-Robots-Tag': 'noindex',
       },
     });
