@@ -4,6 +4,7 @@ import MedicalRepresentative from '@/models/MedicalRepresentative';
 import User from '@/models/User';
 import { sendEmail } from '@/lib/email';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
+import { createCheckoutSession, isPayMongoConfigured } from '@/lib/paymongo';
 
 interface OnboardingRequest {
     firstName: string;
@@ -146,10 +147,38 @@ export async function POST(request: NextRequest) {
                 // Don't fail the registration if email fails
             }
         }
+        // With PayMongo and a fee set, the rep pays online and is activated when PayMongo confirms it.
+        let checkoutUrl: string | undefined;
+        const fee = Number(process.env.MEDREP_ACTIVATION_FEE_PHP);
+        if (isPayMongoConfigured() && fee >= 20) {
+            try {
+                const origin = request.headers.get('origin') || (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
+                const checkout = await createCheckoutSession({
+                    name: 'MyClinicSoft medical representative activation',
+                    amount: fee,
+                    description: `Activation for ${medicalRep.firstName} ${medicalRep.lastName}, ${medicalRep.company}`,
+                    referenceNumber: `MR-${String(medicalRep._id).slice(-8).toUpperCase()}`,
+                    successUrl: `${origin}/medical-representatives/onboard/success?id=${medicalRep._id}&paid=1`,
+                    cancelUrl: `${origin}/medical-representatives/onboard/success?id=${medicalRep._id}`,
+                    email: medicalRep.email,
+                    metadata: { purpose: 'medrep', repId: String(medicalRep._id), amount: String(fee) },
+                });
+                checkoutUrl = checkout.checkoutUrl;
+                medicalRep.paymentAmount = fee;
+                await medicalRep.save();
+            } catch (err) {
+                // Registration stands; the rep can be activated by hand as before.
+                console.error('PayMongo activation checkout failed:', err);
+            }
+        }
+
         return NextResponse.json(
             {
                 success: true,
-                message: 'Medical representative registered. Awaiting payment verification and admin activation.',
+                checkoutUrl,
+                message: checkoutUrl
+                    ? 'Medical representative registered. Pay the activation fee to activate the account.'
+                    : 'Medical representative registered. Awaiting payment verification and admin activation.',
                 medicalRepresentative: {
                     id: medicalRep._id,
                     name: `${medicalRep.firstName} ${medicalRep.lastName}`,

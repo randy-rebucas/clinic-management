@@ -12,5 +12,7 @@ export default async function SubscriptionReturnPage({
 }) {
   await requireAdmin();
   const { token } = await searchParams;
-  return <SubscriptionReturnClient orderId={isValidPayPalOrderId(token) ? token : null} />;
+  // PayMongo checkouts come back with our own reference (pm_…); PayPal with its order id.
+  if (token && /^pm_[a-f0-9]{24}$/.test(token)) return <SubscriptionReturnClient orderId={token} gateway="PayMongo" />;
+  return <SubscriptionReturnClient orderId={isValidPayPalOrderId(token) ? token : null} gateway="PayPal" />;
 }

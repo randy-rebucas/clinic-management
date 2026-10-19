@@ -7,6 +7,7 @@ import connectDB from '@/lib/mongodb';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
 import AuditLog from '@/models/AuditLog';
 import { Types } from 'mongoose';
+import { isPayMongoConfigured, paidTotal, retrieveCheckoutSession } from '@/lib/paymongo';
 
 export interface PaymentVerificationRequest {
   paymentReference: string;
@@ -64,9 +65,7 @@ export async function verifyPayment(
       };
     }
 
-    // TODO: Integrate with actual payment gateway (Stripe, PayMongo, etc.)
-    // For now, we'll use basic validation
-    const isPaymentValid = await validatePaymentWithGateway(paymentReference, paymentMethod, paymentAmount);
+    const isPaymentValid = await validatePaymentWithGateway(paymentReference, paymentMethod, paymentAmount, medicalRep._id.toString());
 
     if (!isPaymentValid) {
       // Update payment status to failed
@@ -157,30 +156,21 @@ export async function verifyPayment(
 }
 
 /**
- * Validate payment with external gateway
- * This is a placeholder - integrate with actual payment provider
+ * Check a payment with PayMongo: the reference must be a checkout session that PayMongo says is
+ * paid, made for this rep's activation, for at least the amount claimed. Anything else (a typed
+ * receipt number, another gateway) is not proof of payment and is refused; an admin activates
+ * those by hand after checking.
  */
 async function validatePaymentWithGateway(
   paymentReference: string,
-  paymentMethod: string,
-  amount: number
+  _paymentMethod: string,
+  amount: number,
+  repId: string
 ): Promise<boolean> {
+  if (!isPayMongoConfigured() || !/^cs_[A-Za-z0-9]+$/.test(paymentReference)) return false;
   try {
-    // TODO: Integrate with actual payment gateway like:
-    // - Stripe: https://stripe.com/docs/api
-    // - PayMongo: https://developers.paymongo.com
-    // - GCash/PayMaya: Payment provider APIs
-    // - Bank transfer verification: Bank API integration
-
-    // For now, basic validation
-    // In production, this would call the actual payment provider's API
-    const isValid = !!(paymentReference && paymentReference.length > 3 && amount > 0);
-
-    if (!isValid) {
-      console.warn(`Invalid payment details: reference=${paymentReference}, amount=${amount}`);
-    }
-
-    return isValid;
+    const session = await retrieveCheckoutSession(paymentReference);
+    return session.metadata.purpose === 'medrep' && session.metadata.repId === repId && paidTotal(session) + 0.005 >= amount && amount > 0;
   } catch (error: any) {
     console.error('Payment gateway validation error:', error);
     return false;
