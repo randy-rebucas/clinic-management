@@ -16,7 +16,7 @@ export const INVOICE_STATE: Record<InvoiceStatus, { label: string; fill: string 
   refunded: { label: 'Refunded', fill: null, badge: 'bg-white text-gray-600 ring-gray-300' },
 };
 
-export type PaymentMethod = 'cash' | 'gcash' | 'card' | 'bank_transfer' | 'check' | 'hmo' | 'insurance' | 'other';
+export type PaymentMethod = 'cash' | 'gcash' | 'card' | 'bank_transfer' | 'check' | 'hmo' | 'philhealth' | 'insurance' | 'cwt' | 'online' | 'other';
 
 /** In the order a front desk reaches for them. */
 export const PAYMENT_METHODS: { value: PaymentMethod; label: string; reference: string | null }[] = [
@@ -26,11 +26,14 @@ export const PAYMENT_METHODS: { value: PaymentMethod; label: string; reference: 
   { value: 'bank_transfer', label: 'Bank transfer', reference: 'Transfer reference' },
   { value: 'check', label: 'Check', reference: 'Check number' },
   { value: 'hmo', label: 'HMO', reference: 'LOA or approval number' },
+  { value: 'philhealth', label: 'PhilHealth', reference: 'Claim series number' },
   { value: 'insurance', label: 'Insurance', reference: 'Claim number' },
+  // Tax a company payer (an HMO, an employer) withholds and certifies on BIR Form 2307; it settles that part of the bill.
+  { value: 'cwt', label: 'Withholding tax (2307)', reference: 'Form 2307 period or reference' },
   { value: 'other', label: 'Other', reference: 'Reference' },
 ];
 
-export const methodLabel = (m: string) => PAYMENT_METHODS.find((p) => p.value === m)?.label ?? m;
+export const methodLabel = (m: string) => (m === 'online' ? 'Online payment' : PAYMENT_METHODS.find((p) => p.value === m)?.label ?? m);
 
 export const DISCOUNT_LABEL: Record<string, string> = {
   pwd: 'PWD',

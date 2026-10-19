@@ -144,8 +144,20 @@ browser, because the browser won't send the token. Confidential and deleted docu
 |---|---|
 | `GET /api/patients/appointments` | `data.doctors` at the patient's clinic. Pass `?tenantId=` (from `/me/clinics`) for a clinic other than their first. Booking at a linked clinic is made on the patient's record there |
 | `GET /api/patients/appointments?date=YYYY-MM-DD&doctorId=…` | Adds `data.availableSlots: ["09:00", …]`: 30-minute slots inside that doctor's hours for the day (today's past slots dropped). `data.dayOff: true` with an empty list when the doctor doesn't work that date, or the date is past the 60-day booking horizon. Each doctor in `data.doctors` carries `hoursSummary` (weekly hours) and `bookableDates` (the dates they can be booked) |
-| `POST /api/patients/appointments` | `{ doctorId, appointmentDate: "YYYY-MM-DD", appointmentTime: "HH:mm", reason? }`. `409` = slot taken. **New** `400` codes: `SLOT_PAST` (time already passed), `SLOT_BEYOND_HORIZON` (more than 60 days ahead), `SLOT_NOT_WORKING` (outside the doctor's hours that day), `SLOT_OFF_GRID` (not on the 30-minute grid) |
+| `POST /api/patients/appointments` | `{ doctorId, appointmentDate: "YYYY-MM-DD", appointmentTime: "HH:mm", reason?, modality? }`. **New** `modality: "teleconsult"` books a video visit; allowed only when the options `GET` returned `data.teleconsultAvailable: true`, else `403`. `409` = slot taken. **New** `400` codes: `SLOT_PAST` (time already passed), `SLOT_BEYOND_HORIZON` (more than 60 days ahead), `SLOT_NOT_WORKING` (outside the doctor's hours that day), `SLOT_OFF_GRID` (not on the 30-minute grid) |
 | `DELETE /api/patients/appointments/[id]` | Cancel. Refused for past, completed or no-show appointments |
+
+**Video visits (new).** Appointments carry `modality` (`"in-person"` or `"teleconsult"`) and
+`teleconsult`, which is `null` for in-person visits or
+`{ joinUrl, opensAt, closesAt, joinable }`. `joinUrl` is only set while `joinable` is true: from
+15 minutes before the start until 2 hours after the end, and never for cancelled, missed or
+completed visits. Open it with `Linking.openURL`; the Jitsi app opens if installed, otherwise
+the browser. The raw room name is never returned.
+
+**E-prescription PDF (new).** `POST /api/patients/me/prescriptions/[id]/pdf-link` returns
+`{ url, expiresAt }`: a 10-minute link to the sealed patient copy (`GET /api/rx/[token]`). Hand
+that URL to the browser. Each open issues a new sealed, numbered copy. Cancelled prescriptions
+return `409`.
 
 ### Notifications
 

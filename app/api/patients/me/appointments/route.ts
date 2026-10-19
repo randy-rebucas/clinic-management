@@ -8,6 +8,8 @@ import { verifyPatientAuth } from '@/app/lib/patient-auth';
 import { PATIENT_DOCTOR_POPULATE, withDoctorSummary } from '../../_lib/doctor-summary';
 import { parsePagination, resolveTenantFilter } from '../_lib/patient-scope';
 import { linkedRecords } from '../_lib/linked-records';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { withPatientTeleconsult } from '@/lib/teleconsult';
 
 const APPOINTMENT_STATUSES = ['pending', 'scheduled', 'confirmed', 'rescheduled', 'no-show', 'completed', 'cancelled'];
 
@@ -30,7 +32,7 @@ export async function GET(request: NextRequest) {
   try {
     await connectDB();
 
-    const patient = await Patient.findById(session.patientId).select('active email tenantIds accountId').lean();
+    const patient = await Patient.findById(session.patientId).select('active email firstName tenantIds accountId').lean();
     if (!patient) {
       return NextResponse.json({ success: false, error: 'Patient not found.' }, { status: 404 });
     }
@@ -68,9 +70,16 @@ export async function GET(request: NextRequest) {
       Appointment.countDocuments(query),
     ]);
 
+    // Video join links are computed per clinic time zone; the raw room never leaves the server.
+    const zones = new Map<string, string>();
+    for (const t of new Set(appointments.filter((a) => a.modality === 'teleconsult').map((a) => String(a.tenantId)))) {
+      zones.set(t, await getTenantTimezone(t));
+    }
+    const displayName = (patient as { firstName?: string }).firstName;
+
     return NextResponse.json({
       success: true,
-      data: appointments.map(withDoctorSummary),
+      data: appointments.map((a) => withPatientTeleconsult(withDoctorSummary(a), { tz: zones.get(String(a.tenantId)), displayName })),
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (error) {

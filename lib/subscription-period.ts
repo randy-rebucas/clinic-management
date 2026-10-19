@@ -32,7 +32,18 @@ export function isPaidPlan(plan: unknown): plan is PaidPlan {
   return typeof plan === 'string' && (PAID_PLANS as readonly string[]).includes(plan);
 }
 
-export function planPrice(plan: PaidPlan, cycle: BillingCycle): { amount: number; currency: string } {
+/**
+ * Peso prices, charged through PayMongo for clinics in the Philippines. A year costs ten months.
+ * Set by the business; change them here.
+ */
+export const PHP_MONTHLY: Record<PaidPlan, number> = { basic: 1499, professional: 3999, enterprise: 9999 };
+
+/** The price of a plan, in pesos when `currency` is PHP (PayMongo), otherwise the package's own (PayPal). */
+export function planPrice(plan: PaidPlan, cycle: BillingCycle, currency?: 'PHP'): { amount: number; currency: string } {
+  if (currency === 'PHP') {
+    const monthly = PHP_MONTHLY[plan];
+    return { amount: cycle === 'yearly' ? monthly * 10 : monthly, currency: 'PHP' };
+  }
   const { price } = SUBSCRIPTION_PACKAGES[plan];
   return {
     amount: cycle === 'yearly' ? price.yearly ?? price.monthly * 12 : price.monthly,
@@ -41,7 +52,8 @@ export function planPrice(plan: PaidPlan, cycle: BillingCycle): { amount: number
 }
 
 /** Whole months a year's payment saves against twelve monthly ones (0 when it saves nothing). */
-export function monthsSavedYearly(plan: PaidPlan): number {
+export function monthsSavedYearly(plan: PaidPlan, currency?: 'PHP'): number {
+  if (currency === 'PHP') return 2;
   const { monthly, yearly } = SUBSCRIPTION_PACKAGES[plan].price;
   if (!yearly || monthly <= 0) return 0;
   return Math.max(0, Math.round((monthly * 12 - yearly) / monthly));

@@ -15,6 +15,7 @@ import {
   normalizeTime,
   isSlotDuplicateError,
 } from '@/lib/appointment-booking';
+import { newRoomName } from '@/lib/teleconsult';
 
 const STATUSES = ['pending', 'scheduled', 'confirmed', 'rescheduled', 'no-show', 'completed', 'cancelled'] as const;
 
@@ -29,6 +30,7 @@ const updateAppointmentSchema = z.object({
   reason: zShortText.optional(),
   notes: zLongText.optional(),
   estimatedWaitTime: z.coerce.number().int().min(0).max(1440).optional(),
+  modality: z.enum(['in-person', 'teleconsult']).optional(),
   _skipAutomation: z.boolean().optional(),
 });
 
@@ -137,6 +139,19 @@ export async function PUT(
         );
       }
       update.doctor = new Types.ObjectId(fields.doctor);
+    }
+
+    // Switching to video needs the plan, and a room (updates skip the model's validate hook).
+    if (fields.modality === 'teleconsult' && oldAppointment.modality !== 'teleconsult') {
+      if (oldAppointment.isWalkIn) {
+        return NextResponse.json({ success: false, error: 'A walk-in can’t be a video visit.' }, { status: 400 });
+      }
+      const { checkSubscriptionLimit } = await import('@/lib/subscription-limits');
+      const plan = await checkSubscriptionLimit(tenantId, 'useFeature', 'teleconsult');
+      if (!plan.allowed) {
+        return NextResponse.json({ success: false, error: 'Video visits are part of the Professional and Enterprise plans.' }, { status: 403 });
+      }
+      if (!oldAppointment.teleconsult?.roomName) update['teleconsult.roomName'] = newRoomName();
     }
 
     const next = { ...oldAppointment, ...update };

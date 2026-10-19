@@ -1,4 +1,6 @@
 import { redirect } from 'next/navigation';
+import { isPayMongoConfigured } from '@/lib/paymongo';
+import { isSMSConfigured } from '@/lib/sms';
 import { verifySession } from '@/app/lib/dal';
 import { denyPage, getPermissionChecker } from '@/app/lib/auth-helpers';
 
@@ -14,6 +16,10 @@ export interface InvoiceDetailPermissions {
   canRefund: boolean;
   canSeePatient: boolean;
   canSeeVisit: boolean;
+  /** Make a PayMongo payment link (invoices:write, and PayMongo set up on this server). */
+  canSendPayLink: boolean;
+  /** Texts can go out, so the link can be sent to the patient's phone. */
+  canText: boolean;
 }
 
 async function checker() {
@@ -36,6 +42,8 @@ export async function loadInvoiceDetailPermissions(): Promise<InvoiceDetailPermi
     canRefund: can('invoices', 'update'),
     canSeePatient: can('patients', 'read'),
     canSeeVisit: can('visits', 'read'),
+    canSendPayLink: can('invoices', 'write') && isPayMongoConfigured(),
+    canText: isSMSConfigured(),
   };
 }
 

@@ -20,6 +20,7 @@ const serviceFields = {
   unit: zShortText.optional(),
   duration: z.number().int().min(0).max(100_000).optional(),
   requiresDoctor: z.boolean().optional(),
+  vatClass: z.enum(['vatable', 'exempt', 'zero_rated']).optional(),
   active: z.boolean().optional(),
   notes: z.string().max(10000).optional(),
 };

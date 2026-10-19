@@ -109,6 +109,8 @@ export async function GET(request: NextRequest) {
       }
       
       const appointments = await Appointment.find(appointmentQuery)
+        // Staff notes are internal, and video rooms are only handed out inside their join window.
+        .select('-notes -createdBy -teleconsult')
         .populate(doctorPopulateOptions)
         .sort({ appointmentDate: -1 })
         .limit(10)

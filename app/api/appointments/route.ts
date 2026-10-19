@@ -38,6 +38,7 @@ const createAppointmentSchema = z.object({
   status: z.enum(STATUSES).optional(),
   isWalkIn: z.boolean().optional(),
   estimatedWaitTime: z.coerce.number().int().min(0).max(1440).optional(),
+  modality: z.enum(['in-person', 'teleconsult']).optional(),
 });
 
 function parseDateInput(value: string | null | undefined): Date | undefined {
@@ -180,6 +181,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (body.modality === 'teleconsult') {
+      if (body.isWalkIn) {
+        return NextResponse.json({ success: false, error: 'A walk-in can’t be a video visit.' }, { status: 400 });
+      }
+      const teleconsultCheck = await checkSubscriptionLimit(tenantId, 'useFeature', 'teleconsult');
+      if (!teleconsultCheck.allowed) {
+        return NextResponse.json({ success: false, error: 'Video visits are part of the Professional and Enterprise plans.' }, { status: 403 });
+      }
+    }
+
     if (body.doctor) {
       const doctor = await Doctor.findOne({ _id: body.doctor, tenantId: tenantObjectId }).select('_id').lean();
       if (!doctor) {
@@ -229,7 +240,8 @@ export async function POST(request: NextRequest) {
     const appointmentData: any = {
       patient: new Types.ObjectId(body.patient),
       doctor: body.doctor ? new Types.ObjectId(body.doctor) : undefined,
-      room: body.room,
+      room: body.modality === 'teleconsult' ? undefined : body.room,
+      modality: body.modality ?? 'in-person',
       appointmentDate,
       appointmentTime,
       scheduledAt,

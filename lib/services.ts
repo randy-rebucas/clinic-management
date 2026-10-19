@@ -62,6 +62,8 @@ export interface ServiceRow {
   unitPrice: number;
   unit: string;
   duration: number | null;
+  /** VAT treatment on BIR invoices. */
+  vatClass: 'vatable' | 'exempt' | 'zero_rated';
   active: boolean;
   notes: string | null;
   createdAt: string;

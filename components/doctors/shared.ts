@@ -12,6 +12,10 @@ export interface DoctorRow {
   specializationId?: { _id: string; name: string } | null;
   licenseNumber: string;
   ptr?: string;
+  /** PhilHealth accreditation number (PAN) of the doctor, for claims. */
+  philhealthPan?: string;
+  /** PDEA S2 licence number, printed on prescriptions. */
+  s2Number?: string;
   department?: string;
   status?: DoctorStatus;
   qualifications?: string[];

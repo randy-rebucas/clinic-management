@@ -12,7 +12,9 @@ import { useUnsavedChanges } from './hooks/useUnsavedChanges';
 import { useSetting } from './SettingsContext';
 import { formatApiError } from './utils/apiError';
 import { DISCOUNT_LABEL, PF_TYPES, shortDate, useMoney } from './invoices/shared';
-import { computeInvoiceTotals, roundMoney, type DiscountType } from '@/lib/invoice-totals';
+import { computeInvoiceTotals, isStatutoryDiscount, roundMoney, statutoryDiscountProblem, type DiscountType, type VatClass } from '@/lib/invoice-totals';
+import { VAT_CLASS_LABEL, taxProfileOf } from '@/lib/bir';
+import { formatPin, isPin, philhealthBenefit, philhealthSettingsOf, type CaseRateRow } from '@/lib/philhealth';
 import { TIER, type MembershipTier } from '@/lib/memberships';
 
 // ---------------------------------------------------------------------------
@@ -26,6 +28,13 @@ interface Service {
   category?: string;
   unitPrice: number;
   unit?: string;
+  vatClass?: VatClass;
+}
+
+interface HmoOption {
+  _id: string;
+  name: string;
+  requiresLoa: boolean;
 }
 
 interface FormContext {
@@ -40,6 +49,7 @@ interface PatientContext {
     lastName: string;
     patientCode?: string;
     dateOfBirth?: string;
+    identifiers?: { philHealth?: string };
     discountEligibility?: {
       pwd?: { eligible?: boolean; idNumber?: string };
       senior?: { eligible?: boolean; idNumber?: string };
@@ -50,6 +60,7 @@ interface PatientContext {
   membership: { _id: string; membershipNumber: string; tier: string; state: string; discountPercentage: number | null; points: number } | null;
   openInvoices: { _id: string; invoiceNumber: string; createdAt: string; outstandingBalance?: number }[];
   openBalance: number;
+  lastInsurance: { hmo: string | null; provider: string; memberId: string; policyNumber: string } | null;
   visits: { _id: string; visitCode: string; date: string; visitType?: string; status?: string; doctor: string | null; invoice: { _id: string; invoiceNumber: string } | null }[];
 }
 
@@ -61,6 +72,7 @@ interface ItemRow {
   description: string;
   quantity: string;
   unitPrice: string;
+  vatClass: VatClass;
 }
 
 interface DiscountRow {
@@ -69,6 +81,8 @@ interface DiscountRow {
   mode: 'percent' | 'amount';
   value: string;
   reason: string;
+  /** OSCA or PWD ID, for senior citizen and PWD discounts. */
+  idNumber: string;
 }
 
 type PfType = '' | 'consultation' | 'procedure' | 'reading' | 'other';
@@ -105,7 +119,11 @@ export default function InvoiceForm({
   const ids = useId();
   const router = useRouter();
   const { money } = useMoney();
-  const taxRate = Number(useSetting('billingSettings.taxRate', 0)) || 0;
+  const birSettings = useSetting<unknown>('birSettings', null);
+  const taxProfile = useMemo(() => taxProfileOf(birSettings), [birSettings]);
+  // Under BIR invoicing VAT replaces the flat tax rate, and no tax is typed by hand.
+  const flatRate = Number(useSetting('billingSettings.taxRate', 0)) || 0;
+  const taxRate = taxProfile ? 0 : flatRate;
 
   const [patient, setPatient] = useState<PatientOption | null>(initialPatient);
   const [visitId, setVisitId] = useState(initialVisitId ?? '');
@@ -117,7 +135,15 @@ export default function InvoiceForm({
   const [pfNotes, setPfNotes] = useState('');
   const [tax, setTax] = useState('');
   const [insuranceOn, setInsuranceOn] = useState(false);
-  const [insurance, setInsurance] = useState({ provider: '', memberId: '', policyNumber: '', coverageType: '' as '' | 'full' | 'partial' | 'co-pay', coverageAmount: '' });
+  const blankInsurance = { hmoId: '', provider: '', memberId: '', policyNumber: '', coverageType: '' as '' | 'full' | 'partial' | 'co-pay', coverageAmount: '', loaNumber: '', loaDate: '' };
+  const [insurance, setInsurance] = useState(blankInsurance);
+  const hmoList = useKeyedFetch<HmoOption[]>('/api/hmos?active=true');
+  const hmos = hmoList.value ?? [];
+  const chosenHmo = hmos.find((h) => h._id === insurance.hmoId) ?? null;
+  const phSettings = philhealthSettingsOf(useSetting<unknown>('philhealthSettings', null));
+  const [phOn, setPhOn] = useState(false);
+  const [ph, setPh] = useState({ pin: '', relationship: 'member' as 'member' | 'dependent', memberName: '', caseRate: '', servedOn: '' });
+  const caseRates = useKeyedFetch<CaseRateRow[]>(phSettings.enabled ? '/api/philhealth/case-rates?active=true' : null);
   const [attempted, setAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -129,7 +155,7 @@ export default function InvoiceForm({
   const services = ctx.value?.services ?? [];
   const doctors = ctx.value?.doctors ?? [];
 
-  const dirty = Boolean(patient && patient._id !== initialPatient?._id) || items.length > 0 || discounts.length > 0 || pfAmount !== '' || insurance.provider !== '';
+  const dirty = Boolean(patient && patient._id !== initialPatient?._id) || items.length > 0 || discounts.length > 0 || pfAmount !== '' || insuranceOn || phOn;
   useUnsavedChanges(dirty && !busy, 'This invoice is not saved yet. Leave anyway?');
 
   // --- Problems --------------------------------------------------------------
@@ -152,18 +178,36 @@ export default function InvoiceForm({
       const v = num(d.value);
       if (!Number.isFinite(v) || v <= 0) out[d._key] = d.mode === 'percent' ? 'Enter the percentage.' : 'Enter the amount.';
       else if (d.mode === 'percent' && v > 100) out[d._key] = 'A percentage can’t be over 100.';
+      else if (taxProfile && isStatutoryDiscount(d.type) && !d.idNumber.trim()) out[d._key] = `Enter the ${d.type === 'senior' ? 'OSCA' : 'PWD'} ID number; BIR invoices need it.`;
     }
+    const combined = taxProfile ? statutoryDiscountProblem(discounts) : null;
+    const first = discounts.find((d) => isStatutoryDiscount(d.type));
+    if (combined && first && !out[first._key]) out[first._key] = combined;
     return out;
-  }, [discounts]);
+  }, [discounts, taxProfile]);
 
   const pfValue = pfAmount.trim() === '' ? 0 : num(pfAmount);
   const pfProblem = !Number.isFinite(pfValue) || pfValue < 0 ? 'Enter an amount of 0 or more.' : null;
-  const taxValue = taxRate > 0 || tax.trim() === '' ? 0 : num(tax);
+  const taxValue = taxRate > 0 || taxProfile || tax.trim() === '' ? 0 : num(tax);
   const taxProblem = !Number.isFinite(taxValue) || taxValue < 0 ? 'Enter an amount of 0 or more.' : null;
   const coverValue = insurance.coverageAmount.trim() === '' ? 0 : num(insurance.coverageAmount);
-  const insuranceProblem = insuranceOn && !insurance.provider.trim() ? 'Name the insurer or HMO, or remove it.' : insuranceOn && (!Number.isFinite(coverValue) || coverValue < 0) ? 'Enter a covered amount of 0 or more.' : null;
+  const insuranceProblem = insuranceOn && !insurance.hmoId && !insurance.provider.trim() ? 'Name the insurer or HMO, or remove it.' : insuranceOn && (!Number.isFinite(coverValue) || coverValue < 0) ? 'Enter a covered amount of 0 or more.' : null;
   const patientProblem = patient ? null : 'Choose the patient to bill.';
   const noCharges = items.length === 0 && !(pfValue > 0);
+  const phRate = (caseRates.value ?? []).find((r) => r._id === ph.caseRate) ?? null;
+  const phProblem = !phOn
+    ? null
+    : !isPin(ph.pin)
+      ? 'Enter the 12-digit PhilHealth number.'
+      : !phRate
+        ? 'Choose the case rate.'
+        : !ph.servedOn
+          ? 'Enter the day the patient was seen.'
+          : ph.relationship === 'dependent' && !ph.memberName.trim()
+            ? 'Enter the member’s name for a dependent.'
+            : null;
+  const grossServices = roundMoney(items.reduce((s, r) => s + Math.max(0, num(r.quantity) || 0) * Math.max(0, num(r.unitPrice) || 0), 0));
+  const phBenefit = phOn && phRate ? philhealthBenefit(phRate, { services: grossServices, professionalFee: pfProblem ? 0 : pfValue }).total : 0;
 
   const problemCount =
     (patientProblem ? 1 : 0) +
@@ -172,12 +216,13 @@ export default function InvoiceForm({
     Object.keys(discountProblems).length +
     (pfProblem ? 1 : 0) +
     (taxProblem ? 1 : 0) +
-    (insuranceProblem ? 1 : 0);
+    (insuranceProblem ? 1 : 0) +
+    (phProblem ? 1 : 0);
 
   // --- Totals (same function as the API) -----------------------------------------
 
   const totals = computeInvoiceTotals({
-    items: items.map((r) => ({ quantity: Math.max(0, num(r.quantity) || 0), unitPrice: Math.max(0, num(r.unitPrice) || 0) })),
+    items: items.map((r) => ({ quantity: Math.max(0, num(r.quantity) || 0), unitPrice: Math.max(0, num(r.unitPrice) || 0), vatClass: r.vatClass })),
     discounts: discounts.map((d) => {
       const v = Math.max(0, num(d.value) || 0);
       return d.mode === 'percent' ? { type: d.type, percentage: Math.min(100, v) } : { type: d.type, amount: v };
@@ -185,7 +230,12 @@ export default function InvoiceForm({
     professionalFee: pfProblem ? 0 : pfValue,
     tax: taxProblem ? 0 : taxValue,
     taxRate,
+    taxProfile,
+    payerDeduction: phBenefit,
   });
+  const breakdown = totals.breakdown;
+  const phPays = Math.min(phBenefit, totals.total);
+  const statutoryOn = discounts.some((d) => isStatutoryDiscount(d.type));
 
   // --- Rows ---------------------------------------------------------------------
 
@@ -197,19 +247,19 @@ export default function InvoiceForm({
       updateItem(existing._key, { quantity: String((num(existing.quantity) || 0) + 1) });
       return;
     }
-    setItems((rs) => [...rs, { _key: key(), serviceId: s._id, code: s.code ?? '', category: s.category ?? '', description: s.name, quantity: '1', unitPrice: String(s.unitPrice ?? 0) }]);
+    setItems((rs) => [...rs, { _key: key(), serviceId: s._id, code: s.code ?? '', category: s.category ?? '', description: s.name, quantity: '1', unitPrice: String(s.unitPrice ?? 0), vatClass: s.vatClass ?? 'vatable' }]);
   };
   const addCustom = () => {
-    const row: ItemRow = { _key: key(), code: '', category: '', description: '', quantity: '1', unitPrice: '' };
+    const row: ItemRow = { _key: key(), code: '', category: '', description: '', quantity: '1', unitPrice: '', vatClass: 'vatable' };
     focusRow.current = row._key;
     setItems((rs) => [...rs, row]);
   };
 
   const elig = pc?.patient.discountEligibility;
   const seniorAge = isSixty(pc?.patient.dateOfBirth);
-  const quick: { type: DiscountType; label: string; percent: number; reason: string }[] = [];
-  if (elig?.senior?.eligible || seniorAge) quick.push({ type: 'senior', label: 'Senior citizen 20%', percent: 20, reason: elig?.senior?.idNumber ? `Senior citizen ID ${elig.senior.idNumber}` : 'Senior citizen' });
-  if (elig?.pwd?.eligible) quick.push({ type: 'pwd', label: 'PWD 20%', percent: 20, reason: elig.pwd.idNumber ? `PWD ID ${elig.pwd.idNumber}` : 'PWD' });
+  const quick: { type: DiscountType; label: string; percent: number; reason: string; idNumber?: string }[] = [];
+  if (elig?.senior?.eligible || seniorAge) quick.push({ type: 'senior', label: 'Senior citizen 20%', percent: 20, reason: elig?.senior?.idNumber ? `Senior citizen ID ${elig.senior.idNumber}` : 'Senior citizen', idNumber: elig?.senior?.idNumber });
+  if (elig?.pwd?.eligible) quick.push({ type: 'pwd', label: 'PWD 20%', percent: 20, reason: elig.pwd.idNumber ? `PWD ID ${elig.pwd.idNumber}` : 'PWD', idNumber: elig.pwd.idNumber });
   const member = pc?.membership;
   if (member?.discountPercentage) {
     const tier = TIER[member.tier as MembershipTier]?.label ?? 'Member';
@@ -251,6 +301,7 @@ export default function InvoiceForm({
             ...(r.serviceId ? { serviceId: r.serviceId } : {}),
             ...(r.code.trim() ? { code: r.code.trim() } : {}),
             ...(r.category.trim() ? { category: r.category.trim() } : {}),
+            ...(taxProfile ? { vatClass: r.vatClass } : {}),
             description: r.description.trim(),
             quantity: num(r.quantity),
             unitPrice: roundMoney(num(r.unitPrice)),
@@ -266,13 +317,28 @@ export default function InvoiceForm({
           discounts: discounts.map((d) => ({
             type: d.type,
             ...(d.reason.trim() ? { reason: d.reason.trim() } : {}),
+            ...(isStatutoryDiscount(d.type) && d.idNumber.trim() ? { idNumber: d.idNumber.trim() } : {}),
             ...(d.mode === 'percent' ? { percentage: num(d.value) } : { amount: roundMoney(num(d.value)) }),
           })),
-          ...(taxRate > 0 ? {} : { tax: roundMoney(taxValue) }),
+          ...(taxRate > 0 || taxProfile ? {} : { tax: roundMoney(taxValue) }),
+          ...(phOn && phRate
+            ? {
+                philhealth: {
+                  pin: ph.pin.trim(),
+                  relationship: ph.relationship,
+                  ...(ph.relationship === 'dependent' ? { memberName: ph.memberName.trim() } : {}),
+                  caseRate: phRate._id,
+                  servedOn: ph.servedOn,
+                },
+              }
+            : {}),
           ...(insuranceOn
             ? {
                 insurance: {
-                  provider: insurance.provider.trim(),
+                  provider: chosenHmo ? chosenHmo.name : insurance.provider.trim(),
+                  ...(chosenHmo ? { hmo: chosenHmo._id } : {}),
+                  ...(insurance.loaNumber.trim() ? { loaNumber: insurance.loaNumber.trim() } : {}),
+                  ...(insurance.loaDate ? { loaDate: insurance.loaDate } : {}),
                   ...(insurance.memberId.trim() ? { memberId: insurance.memberId.trim() } : {}),
                   ...(insurance.policyNumber.trim() ? { policyNumber: insurance.policyNumber.trim() } : {}),
                   ...(insurance.coverageType ? { coverageType: insurance.coverageType } : {}),
@@ -421,11 +487,31 @@ export default function InvoiceForm({
                       aria-describedby={bad('d') ? `${rid}-err` : undefined}
                       className={`${FIELD} ${bad('d') ? 'border-red-400' : ''}`}
                     />
-                    {(r.code || r.category) && (
-                      <p className="mt-1 text-xs text-gray-500">
+                    {(r.code || r.category || taxProfile?.regime === 'vat') && (
+                      <p className="mt-1 flex flex-wrap items-center gap-x-1 text-xs text-gray-500">
                         {r.code && <span className="font-mono">{r.code}</span>}
                         {r.code && r.category && ' · '}
                         {r.category}
+                        {taxProfile?.regime === 'vat' && (
+                          <>
+                            {(r.code || r.category) && ' · '}
+                            <label htmlFor={`${rid}-vat`} className="sr-only">
+                              VAT treatment
+                            </label>
+                            <select
+                              id={`${rid}-vat`}
+                              value={r.vatClass}
+                              onChange={(e) => updateItem(r._key, { vatClass: e.target.value as VatClass })}
+                              className={`rounded border-0 bg-transparent py-0 pl-0 pr-5 text-xs text-gray-600 ${FOCUS_RING}`}
+                            >
+                              {(Object.keys(VAT_CLASS_LABEL) as VatClass[]).map((c) => (
+                                <option key={c} value={c}>
+                                  {VAT_CLASS_LABEL[c]}
+                                </option>
+                              ))}
+                            </select>
+                          </>
+                        )}
                       </p>
                     )}
                   </div>
@@ -486,7 +572,15 @@ export default function InvoiceForm({
         </Section>
 
         {/* Professional fee */}
-        <Section id={`${ids}-pf`} title="Professional fee" hint="The doctor’s own fee, billed apart from the clinic’s services. Discounts don’t reduce it.">
+        <Section
+          id={`${ids}-pf`}
+          title="Professional fee"
+          hint={
+            taxProfile
+              ? 'The doctor’s own fee, billed apart from the clinic’s services. Only a senior citizen or PWD discount reduces it, as the law requires.'
+              : 'The doctor’s own fee, billed apart from the clinic’s services. Discounts don’t reduce it.'
+          }
+        >
           <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
             <div>
               <Label htmlFor={`${ids}-pf-amount`} optional>
@@ -575,7 +669,7 @@ export default function InvoiceForm({
                         key={q.type}
                         type="button"
                         disabled={on}
-                        onClick={() => setDiscounts((ds) => [...ds, { _key: key(), type: q.type, mode: 'percent', value: String(q.percent), reason: q.reason }])}
+                        onClick={() => setDiscounts((ds) => [...ds, { _key: key(), type: q.type, mode: 'percent', value: String(q.percent), reason: q.reason, idNumber: q.idNumber ?? '' }])}
                         aria-label={on ? `${q.label} is applied` : `Apply ${q.label}`}
                         className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-sm font-medium transition-colors ${on ? 'cursor-default border-brand-teal/30 bg-brand-teal-light text-brand-teal-deep' : `border-gray-300 bg-white text-gray-700 hover:border-brand-teal-dark hover:bg-brand-teal-light/50 hover:text-brand-teal-deep ${FOCUS_RING}`}`}
                       >
@@ -649,8 +743,25 @@ export default function InvoiceForm({
                     />
                   </div>
                   <div>
-                    <RowLabel htmlFor={`${rid}-r`}>Reason or ID</RowLabel>
-                    <input id={`${rid}-r`} value={d.reason} onChange={(e) => update({ reason: e.target.value })} maxLength={200} placeholder={d.type === 'promotional' ? 'e.g. October check-up promo' : 'Optional'} className={FIELD} />
+                    {isStatutoryDiscount(d.type) && taxProfile ? (
+                      <>
+                        <RowLabel htmlFor={`${rid}-id`}>{d.type === 'senior' ? 'OSCA ID' : 'PWD ID'}</RowLabel>
+                        <input
+                          id={`${rid}-id`}
+                          value={d.idNumber}
+                          onChange={(e) => update({ idNumber: e.target.value })}
+                          maxLength={200}
+                          placeholder={d.type === 'senior' ? 'OSCA ID number' : 'PWD ID number'}
+                          aria-label={d.type === 'senior' ? 'OSCA ID number' : 'PWD ID number'}
+                          className={`${FIELD} font-mono`}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <RowLabel htmlFor={`${rid}-r`}>Reason or ID</RowLabel>
+                        <input id={`${rid}-r`} value={d.reason} onChange={(e) => update({ reason: e.target.value })} maxLength={200} placeholder={d.type === 'promotional' ? 'e.g. October check-up promo' : 'Optional'} className={FIELD} />
+                      </>
+                    )}
                   </div>
                   <button type="button" onClick={() => setDiscounts((ds) => ds.filter((x) => x._key !== d._key))} aria-label={`Remove ${DISCOUNT_LABEL[d.type]} discount`} title="Remove discount" className={`${REMOVE_BUTTON} justify-self-end sm:mt-0.5 sm:justify-self-auto`}>
                     <Svg d={ICON.x} />
@@ -661,7 +772,12 @@ export default function InvoiceForm({
                     ) : (
                       <p id={`${rid}-hint`} className="text-xs text-gray-500">
                         Takes <span className="font-mono text-gray-900">{money(applied)}</span> off
-                        {d.mode === 'amount' && num(d.value) > applied + 0.005 && ' (all that is left of the services)'}.
+                        {taxProfile && isStatutoryDiscount(d.type)
+                          ? taxProfile.regime === 'vat'
+                            ? ' the services and professional fee net of VAT; the sale is VAT-exempt'
+                            : ' the services and professional fee'
+                          : d.mode === 'amount' && num(d.value) > applied + 0.005 && ' (all that is left of the services)'}
+                        .
                       </p>
                     )}
                   </div>
@@ -670,17 +786,118 @@ export default function InvoiceForm({
             })}
           </ul>
           <div className="px-5 py-4">
-            <button type="button" onClick={() => setDiscounts((ds) => [...ds, { _key: key(), type: 'promotional', mode: 'percent', value: '', reason: '' }])} className={ADD_BUTTON}>
+            <button type="button" onClick={() => setDiscounts((ds) => [...ds, { _key: key(), type: 'promotional', mode: 'percent', value: '', reason: '', idNumber: '' }])} className={ADD_BUTTON}>
               <Svg d="M12 4v16m8-8H4" />
               Add a discount
             </button>
           </div>
         </Section>
 
+        {/* PhilHealth */}
+        {phSettings.enabled && (
+          <Section
+            id={`${ids}-ph`}
+            title="PhilHealth"
+            hint="PhilHealth’s benefit comes off what the patient pays; the clinic files the claim and is paid later."
+            aside={phPays > 0 ? <span className="font-mono text-sm tabular-nums text-gray-900">−{money(phPays)}</span> : null}
+          >
+            <div className="px-5 py-4" data-invalid={attempted && phProblem ? 'true' : undefined}>
+              {!phOn ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhOn(true);
+                    const visitDay = visits.find((v) => v._id === visitId)?.date;
+                    const today = new Date();
+                    const local = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                    setPh((s) => ({ ...s, pin: s.pin || formatPin(pc?.patient.identifiers?.philHealth ?? ''), servedOn: s.servedOn || (visitDay ? visitDay.slice(0, 10) : local) }));
+                  }}
+                  className={ADD_BUTTON}
+                >
+                  <Svg d="M12 4v16m8-8H4" />
+                  Claim from PhilHealth
+                </button>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex items-start justify-between gap-3 sm:col-span-2">
+                    <p className="text-sm text-gray-600">
+                      {phRate ? (
+                        <>
+                          PhilHealth pays <span className="font-mono font-semibold text-gray-900">{money(phPays)}</span> of this bill under {phRate.code}.
+                        </>
+                      ) : (
+                        'Choose the case rate to see the benefit.'
+                      )}
+                    </p>
+                    <button type="button" onClick={() => setPhOn(false)} className={`rounded text-sm font-semibold text-gray-600 hover:text-red-700 ${FOCUS_RING}`}>
+                      Remove
+                    </button>
+                  </div>
+                  <div>
+                    <Label htmlFor={`${ids}-ph-pin`}>PhilHealth number</Label>
+                    <input
+                      id={`${ids}-ph-pin`}
+                      value={ph.pin}
+                      onChange={(e) => setPh((s) => ({ ...s, pin: e.target.value }))}
+                      onBlur={() => setPh((s) => ({ ...s, pin: formatPin(s.pin) }))}
+                      placeholder="12-345678901-2"
+                      maxLength={20}
+                      className={`${FIELD} font-mono`}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor={`${ids}-ph-day`}>Seen on</Label>
+                    <input id={`${ids}-ph-day`} type="date" value={ph.servedOn} onChange={(e) => setPh((s) => ({ ...s, servedOn: e.target.value }))} className={`${FIELD} font-mono`} />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Label htmlFor={`${ids}-ph-rate`}>Case rate</Label>
+                    <select id={`${ids}-ph-rate`} value={ph.caseRate} onChange={(e) => setPh((s) => ({ ...s, caseRate: e.target.value }))} disabled={!caseRates.value} className={FIELD}>
+                      <option value="">{caseRates.value ? (caseRates.value.length ? 'Choose…' : 'No case rates yet; add them on the PhilHealth page') : 'Loading case rates…'}</option>
+                      {(caseRates.value ?? []).map((r) => (
+                        <option key={r._id} value={r._id}>
+                          {r.code} · {r.description} · {money(r.amount)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <fieldset className="sm:col-span-2">
+                    <legend className="mb-1.5 block text-sm font-medium text-gray-700">The patient is the</legend>
+                    <div className="inline-flex gap-1 rounded-md border border-gray-300 bg-white p-1">
+                      {(['member', 'dependent'] as const).map((r) => (
+                        <label
+                          key={r}
+                          className="cursor-pointer rounded px-3.5 py-1 text-sm font-medium text-gray-600 hover:bg-gray-100 has-[:checked]:bg-brand-teal-dark has-[:checked]:text-white has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-teal"
+                        >
+                          <input type="radio" name={`${ids}-ph-rel`} checked={ph.relationship === r} onChange={() => setPh((s) => ({ ...s, relationship: r }))} className="sr-only" />
+                          {r === 'member' ? 'Member' : 'Dependent'}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  {ph.relationship === 'dependent' && (
+                    <div className="sm:col-span-2">
+                      <Label htmlFor={`${ids}-ph-mem`}>Member’s name</Label>
+                      <input id={`${ids}-ph-mem`} value={ph.memberName} onChange={(e) => setPh((s) => ({ ...s, memberName: e.target.value }))} maxLength={200} className={FIELD} />
+                    </div>
+                  )}
+                  {statutoryOn && phPays > 0 && (
+                    <p className="text-xs text-gray-500 sm:col-span-2">The senior citizen or PWD discount is worked out after PhilHealth’s benefit, as the law sets.</p>
+                  )}
+                  {attempted && phProblem && (
+                    <div className="sm:col-span-2">
+                      <FieldError id={`${ids}-ph-err`}>{phProblem}</FieldError>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </Section>
+        )}
+
         {/* Tax and insurer */}
-        <Section id={`${ids}-more`} title={taxRate > 0 ? 'Insurance or HMO' : 'Tax, insurance or HMO'}>
+        <Section id={`${ids}-more`} title={taxRate > 0 || taxProfile ? 'Insurance or HMO' : 'Tax, insurance or HMO'}>
           <div className="grid gap-4 px-5 py-4">
-            {taxRate === 0 && (
+            {taxRate === 0 && !taxProfile && (
               <div className="sm:max-w-[12rem]">
                 <Label htmlFor={`${ids}-tax`} optional>
                   Tax
@@ -703,7 +920,19 @@ export default function InvoiceForm({
 
             {!insuranceOn ? (
               <div>
-                <button type="button" onClick={() => setInsuranceOn(true)} className={ADD_BUTTON}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInsuranceOn(true);
+                    // Start from the card the patient used last time.
+                    const last = pc?.lastInsurance;
+                    if (last) {
+                      const known = last.hmo && hmos.some((h) => h._id === last.hmo) ? last.hmo : '';
+                      setInsurance({ ...blankInsurance, hmoId: known, provider: known ? '' : last.provider, memberId: last.memberId, policyNumber: last.policyNumber });
+                    } else if (hmos.length) setInsurance({ ...blankInsurance, hmoId: hmos[0]._id });
+                  }}
+                  className={ADD_BUTTON}
+                >
                   <Svg d="M12 4v16m8-8H4" />
                   An insurer or HMO covers part of this
                 </button>
@@ -716,7 +945,7 @@ export default function InvoiceForm({
                     type="button"
                     onClick={() => {
                       setInsuranceOn(false);
-                      setInsurance({ provider: '', memberId: '', policyNumber: '', coverageType: '', coverageAmount: '' });
+                      setInsurance(blankInsurance);
                     }}
                     className={`rounded text-sm font-semibold text-gray-600 hover:text-red-700 ${FOCUS_RING}`}
                   >
@@ -724,16 +953,43 @@ export default function InvoiceForm({
                   </button>
                 </div>
                 <div>
-                  <Label htmlFor={`${ids}-ins-p`}>Name</Label>
-                  <input
-                    id={`${ids}-ins-p`}
-                    value={insurance.provider}
-                    onChange={(e) => setInsurance((s) => ({ ...s, provider: e.target.value }))}
-                    maxLength={200}
-                    placeholder="e.g. PhilHealth, Maxicare"
-                    aria-invalid={Boolean(attempted && insuranceProblem && !insurance.provider.trim())}
-                    className={`${FIELD} ${attempted && insuranceProblem && !insurance.provider.trim() ? 'border-red-400' : ''}`}
-                  />
+                  <Label htmlFor={`${ids}-ins-h`}>Name</Label>
+                  {hmos.length > 0 && (
+                    <select
+                      id={`${ids}-ins-h`}
+                      value={insurance.hmoId}
+                      onChange={(e) => setInsurance((s) => ({ ...s, hmoId: e.target.value }))}
+                      className={`${FIELD} ${insurance.hmoId ? '' : 'mb-2'}`}
+                    >
+                      {hmos.map((h) => (
+                        <option key={h._id} value={h._id}>
+                          {h.name}
+                        </option>
+                      ))}
+                      <option value="">Not on the list…</option>
+                    </select>
+                  )}
+                  {!insurance.hmoId && (
+                    <input
+                      id={hmos.length ? `${ids}-ins-p` : `${ids}-ins-h`}
+                      value={insurance.provider}
+                      onChange={(e) => setInsurance((s) => ({ ...s, provider: e.target.value }))}
+                      maxLength={200}
+                      placeholder="e.g. Maxicare, Intellicare"
+                      aria-label={hmos.length ? 'Insurer or HMO name' : undefined}
+                      aria-invalid={Boolean(attempted && insuranceProblem && !insurance.provider.trim())}
+                      className={`${FIELD} ${attempted && insuranceProblem && !insurance.provider.trim() ? 'border-red-400' : ''}`}
+                    />
+                  )}
+                  {!insurance.hmoId && (
+                    <p className="mt-1.5 text-xs text-gray-500">
+                      Only HMOs on the{' '}
+                      <Link href="/hmo-claims?tab=hmos" target="_blank" className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+                        HMO list
+                      </Link>{' '}
+                      can be sent in a transmittal.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor={`${ids}-ins-m`} optional>
@@ -768,6 +1024,28 @@ export default function InvoiceForm({
                     className={`${FIELD} text-right font-mono tabular-nums`}
                   />
                 </div>
+                <div>
+                  <Label htmlFor={`${ids}-ins-loa`} optional={!chosenHmo?.requiresLoa}>
+                    LOA number
+                  </Label>
+                  <input
+                    id={`${ids}-ins-loa`}
+                    value={insurance.loaNumber}
+                    onChange={(e) => setInsurance((s) => ({ ...s, loaNumber: e.target.value }))}
+                    maxLength={200}
+                    placeholder="Approval code"
+                    className={`${FIELD} font-mono`}
+                  />
+                  {chosenHmo?.requiresLoa && !insurance.loaNumber.trim() && (
+                    <p className="mt-1.5 text-xs text-amber-800">{chosenHmo.name} needs it before the claim can be sent. You can add it later.</p>
+                  )}
+                </div>
+                <div>
+                  <Label htmlFor={`${ids}-ins-load`} optional>
+                    LOA date
+                  </Label>
+                  <input id={`${ids}-ins-load`} type="date" value={insurance.loaDate} onChange={(e) => setInsurance((s) => ({ ...s, loaDate: e.target.value }))} className={`${FIELD} font-mono`} />
+                </div>
                 <div className="sm:col-span-2">
                   <Label htmlFor={`${ids}-ins-n`} optional>
                     Policy number
@@ -775,7 +1053,7 @@ export default function InvoiceForm({
                   <input id={`${ids}-ins-n`} value={insurance.policyNumber} onChange={(e) => setInsurance((s) => ({ ...s, policyNumber: e.target.value }))} maxLength={200} className={`${FIELD} font-mono sm:max-w-sm`} />
                 </div>
                 <p className="text-xs text-gray-500 sm:col-span-2">
-                  The claim starts as pending. When the insurer pays, record it as a payment by HMO or Insurance on the invoice.
+                  The claim starts as pending and waits under HMO claims to be sent in a transmittal; the HMO’s payment is recorded there.
                 </p>
                 {attempted && insuranceProblem && (
                   <div className="sm:col-span-2">
@@ -826,11 +1104,33 @@ export default function InvoiceForm({
           </div>
           <dl className="px-5 py-4 text-sm">
             <BillLine label="Services" value={money(totals.subtotal)} muted={items.length === 0} />
-            {totals.discounts.map((d, i) =>
-              d.amount > 0 ? <BillLine key={i} label={`${DISCOUNT_LABEL[d.type]} discount`} value={`−${money(d.amount)}`} /> : null
+            {breakdown && statutoryOn ? (
+              <>
+                {totals.professionalFee > 0 && <BillLine label="Professional fee" value={money(totals.professionalFee)} />}
+                {breakdown.lessVat > 0 && <BillLine label="Less VAT (VAT-exempt sale)" value={`−${money(breakdown.lessVat)}`} />}
+                {totals.discounts.map((d, i) =>
+                  d.amount > 0 ? <BillLine key={i} label={`${DISCOUNT_LABEL[d.type]} discount`} value={`−${money(d.amount)}`} /> : null
+                )}
+              </>
+            ) : (
+              <>
+                {totals.discounts.map((d, i) =>
+                  d.amount > 0 ? <BillLine key={i} label={`${DISCOUNT_LABEL[d.type]} discount`} value={`−${money(d.amount)}`} /> : null
+                )}
+                {totals.professionalFee > 0 && <BillLine label="Professional fee" value={money(totals.professionalFee)} />}
+              </>
             )}
-            {totals.professionalFee > 0 && <BillLine label="Professional fee" value={money(totals.professionalFee)} />}
-            {(taxRate > 0 || totals.tax > 0) && (
+            {breakdown?.regime === 'vat' && !taxProfile?.pricesIncludeVat && totals.tax > 0 && (
+              <BillLine
+                label={
+                  <>
+                    VAT<span className="font-mono text-gray-500"> {taxProfile?.vatRate}%</span>
+                  </>
+                }
+                value={money(totals.tax)}
+              />
+            )}
+            {!breakdown && (taxRate > 0 || totals.tax > 0) && (
               <BillLine
                 label={
                   <>
@@ -846,9 +1146,30 @@ export default function InvoiceForm({
                 {money(totals.total)}
               </dd>
             </div>
+            {breakdown?.regime === 'vat' && totals.total > 0 && (
+              <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-0.5 border-t border-dashed border-gray-200 pt-2 text-xs text-gray-500">
+                <span>VATable sales</span>
+                <span className="text-right font-mono tabular-nums">{money(breakdown.vatableSales)}</span>
+                <span>VAT{taxProfile?.pricesIncludeVat ? ' (included)' : ''}</span>
+                <span className="text-right font-mono tabular-nums">{money(breakdown.vatAmount)}</span>
+                <span>VAT-exempt sales</span>
+                <span className="text-right font-mono tabular-nums">{money(breakdown.vatExemptSales)}</span>
+                <span>Zero-rated sales</span>
+                <span className="text-right font-mono tabular-nums">{money(breakdown.zeroRatedSales)}</span>
+              </div>
+            )}
+            {phPays > 0 && (
+              <>
+                <BillLine label="PhilHealth pays" value={`−${money(phPays)}`} />
+                <div className="flex items-baseline justify-between gap-4 border-t border-dashed border-gray-200 pt-2">
+                  <dt className="font-semibold text-gray-900">Patient pays</dt>
+                  <dd className="font-mono text-lg font-semibold tabular-nums text-gray-900">{money(Math.max(0, totals.total - phPays))}</dd>
+                </div>
+              </>
+            )}
             {insuranceOn && coverValue > 0 && Number.isFinite(coverValue) && (
               <p className="mt-2 text-xs text-gray-500">
-                <span className="font-mono">{money(Math.min(coverValue, totals.total))}</span> expected from {insurance.provider.trim() || 'the insurer'}; the patient pays the rest.
+                <span className="font-mono">{money(Math.min(coverValue, totals.total))}</span> expected from {chosenHmo?.name || insurance.provider.trim() || 'the insurer'}; the patient pays the rest.
               </p>
             )}
           </dl>

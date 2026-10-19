@@ -10,6 +10,8 @@ import { isEmailConfigured } from '@/lib/email';
 import { isSMSConfigured } from '@/lib/sms';
 import { isCloudinaryConfigured } from '@/lib/cloudinary';
 import { AUTOMATIONS } from '@/lib/clinic-automations';
+import { birSettingsOf } from '@/lib/bir';
+import { philhealthSettingsOf } from '@/lib/philhealth';
 import { CURRENCIES, WEEKDAYS, type ClinicSettingsPageData, type DayHours } from '@/lib/clinic-settings';
 
 const FALLBACK_ZONES = ['Asia/Manila', 'Asia/Singapore', 'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Kolkata', 'Australia/Sydney', 'Europe/London', 'America/New_York', 'America/Los_Angeles'];
@@ -68,6 +70,7 @@ export async function loadClinicSettingsPage(tenantIdInput: string): Promise<Cli
       timezone: zone,
       defaultDuration: Number(s.appointmentSettings?.defaultDuration) || 30,
       appointmentReminders: s.communicationSettings?.appointmentReminders !== false,
+      teleconsultBooking: s.appointmentSettings?.teleconsultBooking === true,
       currency: CURRENCIES.some((c) => c.code === currency) ? currency : 'PHP',
       taxRate: Number(s.billingSettings?.taxRate) || 0,
       invoicePrefix: String(s.billingSettings?.invoicePrefix || 'INV').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 10) || 'INV',
@@ -77,6 +80,8 @@ export async function loadClinicSettingsPage(tenantIdInput: string): Promise<Cli
       prescriptionPaperSize: s.prescriptionPaperSize === 'A5' ? 'A5' : 'A4',
       prescriptionDigitalSignatureEnabled: s.prescriptionDigitalSignatureEnabled !== false,
       sidebarCollapsed: s.displaySettings?.sidebarCollapsed === true,
+      bir: birSettingsOf(s.birSettings),
+      philhealth: philhealthSettingsOf(s.philhealthSettings),
       // Each switch shows what the automation will actually do: unset keys read as their default.
       automations: Object.fromEntries(
         AUTOMATIONS.map((a) => [a.key, typeof automationsStored[a.key] === 'boolean' ? (automationsStored[a.key] as boolean) : a.defaultOn])

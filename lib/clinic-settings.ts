@@ -4,6 +4,9 @@
  * here is a switch that does nothing. Client-safe: no model imports.
  */
 
+import type { BirSettings } from './bir';
+import type { PhilhealthSettings } from './philhealth';
+
 export const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 export type Weekday = (typeof WEEKDAYS)[number];
 export const WEEKDAY_LABEL: Record<Weekday, string> = {
@@ -55,6 +58,8 @@ export interface ClinicSettingsForm {
   timezone: string;
   defaultDuration: number;
   appointmentReminders: boolean;
+  /** Patients may book video visits from the app. */
+  teleconsultBooking: boolean;
   currency: string;
   taxRate: number;
   invoicePrefix: string;
@@ -65,6 +70,8 @@ export interface ClinicSettingsForm {
   prescriptionDigitalSignatureEnabled: boolean;
   sidebarCollapsed: boolean;
   automations: Record<string, boolean>;
+  bir: BirSettings;
+  philhealth: PhilhealthSettings;
 }
 
 export interface ClinicSettingsPageData {

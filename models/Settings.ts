@@ -29,6 +29,8 @@ export interface ISettings extends Document {
     defaultDuration: number; // minutes
     reminderHoursBefore: number[]; // e.g., [24, 2] for 24 hours and 2 hours before
     allowOnlineBooking: boolean;
+    /** Patients may book video visits from the app (also needs the teleconsult plan feature). */
+    teleconsultBooking: boolean;
     requireConfirmation: boolean;
     maxAdvanceBookingDays: number;
     minAdvanceBookingHours: number;
@@ -122,6 +124,25 @@ export interface ISettings extends Document {
   prescriptionDigitalSignatureEnabled?: boolean;
   prescriptionPaperSize?: 'A5' | 'A4';
 
+  // PhilHealth claims (lib/philhealth.ts)
+  philhealthSettings?: { enabled: boolean; hciAccreditationNo: string; filingDays: number };
+
+  // BIR invoicing (lib/bir.ts)
+  birSettings?: {
+    enabled: boolean;
+    regime: 'vat' | 'non_vat';
+    vatRate: number;
+    pricesIncludeVat: boolean;
+    professionalFeeVatClass: 'vatable' | 'exempt' | 'zero_rated';
+    registeredName?: string;
+    branchCode: string;
+    permitNumber?: string;
+    permitIssuedOn?: string;
+    serialPrefix?: string;
+    serialStart: number;
+    serialEnd: number;
+  };
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -175,6 +196,7 @@ const SettingsSchema = new Schema<ISettings>(
       defaultDuration: { type: Number, default: 30 },
       reminderHoursBefore: { type: [Number], default: [24, 2] },
       allowOnlineBooking: { type: Boolean, default: true },
+      teleconsultBooking: { type: Boolean, default: false },
       requireConfirmation: { type: Boolean, default: false },
       maxAdvanceBookingDays: { type: Number, default: 90 },
       minAdvanceBookingHours: { type: Number, default: 2 },
@@ -260,6 +282,27 @@ const SettingsSchema = new Schema<ISettings>(
     // Prescription Settings
     prescriptionDigitalSignatureEnabled: { type: Boolean, default: true },
     prescriptionPaperSize: { type: String, enum: ['A5', 'A4'], default: 'A4' },
+
+    philhealthSettings: {
+      enabled: { type: Boolean, default: false },
+      hciAccreditationNo: { type: String, default: '' },
+      filingDays: { type: Number, default: 60, min: 1, max: 365 },
+    },
+
+    birSettings: {
+      enabled: { type: Boolean, default: false },
+      regime: { type: String, enum: ['vat', 'non_vat'], default: 'non_vat' },
+      vatRate: { type: Number, default: 12, min: 0, max: 100 },
+      pricesIncludeVat: { type: Boolean, default: true },
+      professionalFeeVatClass: { type: String, enum: ['vatable', 'exempt', 'zero_rated'], default: 'vatable' },
+      registeredName: { type: String, default: '' },
+      branchCode: { type: String, default: '00000' },
+      permitNumber: { type: String, default: '' },
+      permitIssuedOn: { type: String, default: '' },
+      serialPrefix: { type: String, default: '' },
+      serialStart: { type: Number, default: 1, min: 1 },
+      serialEnd: { type: Number, default: 0, min: 0 },
+    },
   },
   {
     timestamps: true,

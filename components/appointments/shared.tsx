@@ -29,6 +29,8 @@ export interface Appointment {
   isWalkIn?: boolean;
   queueNumber?: number;
   room?: string;
+  /** 'teleconsult' for a video visit. */
+  modality?: 'in-person' | 'teleconsult';
 }
 
 export interface AppointmentPermissions {

@@ -12,7 +12,7 @@ export interface AuditLogOptions {
   userRole?: string;
   tenantId?: string | Types.ObjectId; // Tenant ID for multi-tenant support
   action: 'create' | 'read' | 'update' | 'delete' | 'login' | 'logout' | 'export' | 'print' | 'download' | 'view' | 'access_denied' | 'password_change' | 'permission_change' | 'backup' | 'restore' | 'data_export' | 'data_deletion';
-  resource: 'patient' | 'visit' | 'appointment' | 'prescription' | 'lab_result' | 'invoice' | 'document' | 'user' | 'doctor' | 'room' | 'service' | 'notification' | 'referral' | 'membership' | 'staff' | 'medicine' | 'settings' | 'system';
+  resource: 'patient' | 'visit' | 'appointment' | 'prescription' | 'lab_result' | 'invoice' | 'document' | 'user' | 'doctor' | 'room' | 'service' | 'notification' | 'referral' | 'membership' | 'staff' | 'medicine' | 'settings' | 'system' | 'hmo' | 'hmo_claim' | 'philhealth';
   resourceId?: string | Types.ObjectId;
   ipAddress?: string;
   userAgent?: string;
