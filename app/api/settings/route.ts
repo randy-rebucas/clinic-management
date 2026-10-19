@@ -122,6 +122,14 @@ const settingsUpdateSchema = z.object({
     .optional(),
   prescriptionDigitalSignatureEnabled: z.boolean().optional(),
   prescriptionPaperSize: z.enum(['A5', 'A4']).optional(),
+  philhealthSettings: z
+    .object({
+      enabled: z.boolean(),
+      hciAccreditationNo: zStr(50),
+      filingDays: z.coerce.number().int().min(1).max(365),
+    })
+    .partial()
+    .optional(),
   birSettings: z
     .object({
       enabled: z.boolean(),

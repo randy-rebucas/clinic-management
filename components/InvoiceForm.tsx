@@ -14,6 +14,7 @@ import { formatApiError } from './utils/apiError';
 import { DISCOUNT_LABEL, PF_TYPES, shortDate, useMoney } from './invoices/shared';
 import { computeInvoiceTotals, isStatutoryDiscount, roundMoney, statutoryDiscountProblem, type DiscountType, type VatClass } from '@/lib/invoice-totals';
 import { VAT_CLASS_LABEL, taxProfileOf } from '@/lib/bir';
+import { formatPin, isPin, philhealthBenefit, philhealthSettingsOf, type CaseRateRow } from '@/lib/philhealth';
 import { TIER, type MembershipTier } from '@/lib/memberships';
 
 // ---------------------------------------------------------------------------
@@ -48,6 +49,7 @@ interface PatientContext {
     lastName: string;
     patientCode?: string;
     dateOfBirth?: string;
+    identifiers?: { philHealth?: string };
     discountEligibility?: {
       pwd?: { eligible?: boolean; idNumber?: string };
       senior?: { eligible?: boolean; idNumber?: string };
@@ -138,6 +140,10 @@ export default function InvoiceForm({
   const hmoList = useKeyedFetch<HmoOption[]>('/api/hmos?active=true');
   const hmos = hmoList.value ?? [];
   const chosenHmo = hmos.find((h) => h._id === insurance.hmoId) ?? null;
+  const phSettings = philhealthSettingsOf(useSetting<unknown>('philhealthSettings', null));
+  const [phOn, setPhOn] = useState(false);
+  const [ph, setPh] = useState({ pin: '', relationship: 'member' as 'member' | 'dependent', memberName: '', caseRate: '', servedOn: '' });
+  const caseRates = useKeyedFetch<CaseRateRow[]>(phSettings.enabled ? '/api/philhealth/case-rates?active=true' : null);
   const [attempted, setAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -149,7 +155,7 @@ export default function InvoiceForm({
   const services = ctx.value?.services ?? [];
   const doctors = ctx.value?.doctors ?? [];
 
-  const dirty = Boolean(patient && patient._id !== initialPatient?._id) || items.length > 0 || discounts.length > 0 || pfAmount !== '' || insuranceOn;
+  const dirty = Boolean(patient && patient._id !== initialPatient?._id) || items.length > 0 || discounts.length > 0 || pfAmount !== '' || insuranceOn || phOn;
   useUnsavedChanges(dirty && !busy, 'This invoice is not saved yet. Leave anyway?');
 
   // --- Problems --------------------------------------------------------------
@@ -188,6 +194,20 @@ export default function InvoiceForm({
   const insuranceProblem = insuranceOn && !insurance.hmoId && !insurance.provider.trim() ? 'Name the insurer or HMO, or remove it.' : insuranceOn && (!Number.isFinite(coverValue) || coverValue < 0) ? 'Enter a covered amount of 0 or more.' : null;
   const patientProblem = patient ? null : 'Choose the patient to bill.';
   const noCharges = items.length === 0 && !(pfValue > 0);
+  const phRate = (caseRates.value ?? []).find((r) => r._id === ph.caseRate) ?? null;
+  const phProblem = !phOn
+    ? null
+    : !isPin(ph.pin)
+      ? 'Enter the 12-digit PhilHealth number.'
+      : !phRate
+        ? 'Choose the case rate.'
+        : !ph.servedOn
+          ? 'Enter the day the patient was seen.'
+          : ph.relationship === 'dependent' && !ph.memberName.trim()
+            ? 'Enter the member’s name for a dependent.'
+            : null;
+  const grossServices = roundMoney(items.reduce((s, r) => s + Math.max(0, num(r.quantity) || 0) * Math.max(0, num(r.unitPrice) || 0), 0));
+  const phBenefit = phOn && phRate ? philhealthBenefit(phRate, { services: grossServices, professionalFee: pfProblem ? 0 : pfValue }).total : 0;
 
   const problemCount =
     (patientProblem ? 1 : 0) +
@@ -196,7 +216,8 @@ export default function InvoiceForm({
     Object.keys(discountProblems).length +
     (pfProblem ? 1 : 0) +
     (taxProblem ? 1 : 0) +
-    (insuranceProblem ? 1 : 0);
+    (insuranceProblem ? 1 : 0) +
+    (phProblem ? 1 : 0);
 
   // --- Totals (same function as the API) -----------------------------------------
 
@@ -210,8 +231,10 @@ export default function InvoiceForm({
     tax: taxProblem ? 0 : taxValue,
     taxRate,
     taxProfile,
+    payerDeduction: phBenefit,
   });
   const breakdown = totals.breakdown;
+  const phPays = Math.min(phBenefit, totals.total);
   const statutoryOn = discounts.some((d) => isStatutoryDiscount(d.type));
 
   // --- Rows ---------------------------------------------------------------------
@@ -298,6 +321,17 @@ export default function InvoiceForm({
             ...(d.mode === 'percent' ? { percentage: num(d.value) } : { amount: roundMoney(num(d.value)) }),
           })),
           ...(taxRate > 0 || taxProfile ? {} : { tax: roundMoney(taxValue) }),
+          ...(phOn && phRate
+            ? {
+                philhealth: {
+                  pin: ph.pin.trim(),
+                  relationship: ph.relationship,
+                  ...(ph.relationship === 'dependent' ? { memberName: ph.memberName.trim() } : {}),
+                  caseRate: phRate._id,
+                  servedOn: ph.servedOn,
+                },
+              }
+            : {}),
           ...(insuranceOn
             ? {
                 insurance: {
@@ -759,6 +793,107 @@ export default function InvoiceForm({
           </div>
         </Section>
 
+        {/* PhilHealth */}
+        {phSettings.enabled && (
+          <Section
+            id={`${ids}-ph`}
+            title="PhilHealth"
+            hint="PhilHealth’s benefit comes off what the patient pays; the clinic files the claim and is paid later."
+            aside={phPays > 0 ? <span className="font-mono text-sm tabular-nums text-gray-900">−{money(phPays)}</span> : null}
+          >
+            <div className="px-5 py-4" data-invalid={attempted && phProblem ? 'true' : undefined}>
+              {!phOn ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhOn(true);
+                    const visitDay = visits.find((v) => v._id === visitId)?.date;
+                    const today = new Date();
+                    const local = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                    setPh((s) => ({ ...s, pin: s.pin || formatPin(pc?.patient.identifiers?.philHealth ?? ''), servedOn: s.servedOn || (visitDay ? visitDay.slice(0, 10) : local) }));
+                  }}
+                  className={ADD_BUTTON}
+                >
+                  <Svg d="M12 4v16m8-8H4" />
+                  Claim from PhilHealth
+                </button>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex items-start justify-between gap-3 sm:col-span-2">
+                    <p className="text-sm text-gray-600">
+                      {phRate ? (
+                        <>
+                          PhilHealth pays <span className="font-mono font-semibold text-gray-900">{money(phPays)}</span> of this bill under {phRate.code}.
+                        </>
+                      ) : (
+                        'Choose the case rate to see the benefit.'
+                      )}
+                    </p>
+                    <button type="button" onClick={() => setPhOn(false)} className={`rounded text-sm font-semibold text-gray-600 hover:text-red-700 ${FOCUS_RING}`}>
+                      Remove
+                    </button>
+                  </div>
+                  <div>
+                    <Label htmlFor={`${ids}-ph-pin`}>PhilHealth number</Label>
+                    <input
+                      id={`${ids}-ph-pin`}
+                      value={ph.pin}
+                      onChange={(e) => setPh((s) => ({ ...s, pin: e.target.value }))}
+                      onBlur={() => setPh((s) => ({ ...s, pin: formatPin(s.pin) }))}
+                      placeholder="12-345678901-2"
+                      maxLength={20}
+                      className={`${FIELD} font-mono`}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor={`${ids}-ph-day`}>Seen on</Label>
+                    <input id={`${ids}-ph-day`} type="date" value={ph.servedOn} onChange={(e) => setPh((s) => ({ ...s, servedOn: e.target.value }))} className={`${FIELD} font-mono`} />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Label htmlFor={`${ids}-ph-rate`}>Case rate</Label>
+                    <select id={`${ids}-ph-rate`} value={ph.caseRate} onChange={(e) => setPh((s) => ({ ...s, caseRate: e.target.value }))} disabled={!caseRates.value} className={FIELD}>
+                      <option value="">{caseRates.value ? (caseRates.value.length ? 'Choose…' : 'No case rates yet; add them on the PhilHealth page') : 'Loading case rates…'}</option>
+                      {(caseRates.value ?? []).map((r) => (
+                        <option key={r._id} value={r._id}>
+                          {r.code} · {r.description} · {money(r.amount)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <fieldset className="sm:col-span-2">
+                    <legend className="mb-1.5 block text-sm font-medium text-gray-700">The patient is the</legend>
+                    <div className="inline-flex gap-1 rounded-md border border-gray-300 bg-white p-1">
+                      {(['member', 'dependent'] as const).map((r) => (
+                        <label
+                          key={r}
+                          className="cursor-pointer rounded px-3.5 py-1 text-sm font-medium text-gray-600 hover:bg-gray-100 has-[:checked]:bg-brand-teal-dark has-[:checked]:text-white has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-teal"
+                        >
+                          <input type="radio" name={`${ids}-ph-rel`} checked={ph.relationship === r} onChange={() => setPh((s) => ({ ...s, relationship: r }))} className="sr-only" />
+                          {r === 'member' ? 'Member' : 'Dependent'}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  {ph.relationship === 'dependent' && (
+                    <div className="sm:col-span-2">
+                      <Label htmlFor={`${ids}-ph-mem`}>Member’s name</Label>
+                      <input id={`${ids}-ph-mem`} value={ph.memberName} onChange={(e) => setPh((s) => ({ ...s, memberName: e.target.value }))} maxLength={200} className={FIELD} />
+                    </div>
+                  )}
+                  {statutoryOn && phPays > 0 && (
+                    <p className="text-xs text-gray-500 sm:col-span-2">The senior citizen or PWD discount is worked out after PhilHealth’s benefit, as the law sets.</p>
+                  )}
+                  {attempted && phProblem && (
+                    <div className="sm:col-span-2">
+                      <FieldError id={`${ids}-ph-err`}>{phProblem}</FieldError>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </Section>
+        )}
+
         {/* Tax and insurer */}
         <Section id={`${ids}-more`} title={taxRate > 0 || taxProfile ? 'Insurance or HMO' : 'Tax, insurance or HMO'}>
           <div className="grid gap-4 px-5 py-4">
@@ -1022,6 +1157,15 @@ export default function InvoiceForm({
                 <span>Zero-rated sales</span>
                 <span className="text-right font-mono tabular-nums">{money(breakdown.zeroRatedSales)}</span>
               </div>
+            )}
+            {phPays > 0 && (
+              <>
+                <BillLine label="PhilHealth pays" value={`−${money(phPays)}`} />
+                <div className="flex items-baseline justify-between gap-4 border-t border-dashed border-gray-200 pt-2">
+                  <dt className="font-semibold text-gray-900">Patient pays</dt>
+                  <dd className="font-mono text-lg font-semibold tabular-nums text-gray-900">{money(Math.max(0, totals.total - phPays))}</dd>
+                </div>
+              </>
             )}
             {insuranceOn && coverValue > 0 && Number.isFinite(coverValue) && (
               <p className="mt-2 text-xs text-gray-500">

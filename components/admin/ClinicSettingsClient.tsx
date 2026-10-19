@@ -36,6 +36,7 @@ const SECTIONS = [
   { id: 'appointments', title: 'Appointments', keys: ['defaultDuration', 'appointmentReminders'] },
   { id: 'billing', title: 'Billing', keys: ['currency', 'taxRate', 'invoicePrefix', 'allowPartialPayments'] },
   { id: 'bir', title: 'BIR invoicing', keys: ['bir'] },
+  { id: 'philhealth', title: 'PhilHealth', keys: ['philhealth'] },
   { id: 'queue', title: 'Queue', keys: ['autoAssignRooms', 'displayQueuePublicly'] },
   { id: 'prescriptions', title: 'Prescriptions', keys: ['prescriptionPaperSize', 'prescriptionDigitalSignatureEnabled'] },
   { id: 'screens', title: 'Staff screens', keys: ['sidebarCollapsed'] },
@@ -60,6 +61,8 @@ function problems(f: ClinicSettingsForm): Errors {
   if (!SERIAL_PREFIX.test(f.bir.serialPrefix.trim())) out.birSerialPrefix = ['Up to 6 letters, numbers or -.'];
   const bir = birSetupProblems(f.bir, f.taxId);
   if (bir.length) out.bir = bir;
+  if (f.philhealth.enabled && !f.philhealth.hciAccreditationNo.trim()) out.philhealth = ['Enter the clinic’s PhilHealth accreditation number.'];
+  if (!Number.isInteger(f.philhealth.filingDays) || f.philhealth.filingDays < 1 || f.philhealth.filingDays > 365) out.philhealth = [...(out.philhealth ?? []), 'Filing days are a whole number from 1 to 365.'];
   return out;
 }
 
@@ -87,6 +90,7 @@ function changesBody(f: ClinicSettingsForm, base: ClinicSettingsForm) {
   if (changed('prescriptionPaperSize')) body.prescriptionPaperSize = f.prescriptionPaperSize;
   if (changed('prescriptionDigitalSignatureEnabled')) body.prescriptionDigitalSignatureEnabled = f.prescriptionDigitalSignatureEnabled;
   if (changed('sidebarCollapsed')) body.displaySettings = { sidebarCollapsed: f.sidebarCollapsed };
+  if (changed('philhealth')) body.philhealthSettings = { ...f.philhealth, hciAccreditationNo: f.philhealth.hciAccreditationNo.trim() };
   if (changed('bir')) body.birSettings = { ...f.bir, registeredName: f.bir.registeredName.trim(), permitNumber: f.bir.permitNumber.trim(), serialPrefix: f.bir.serialPrefix.trim().toUpperCase() };
   const autos = Object.fromEntries(Object.entries(f.automations).filter(([k, v]) => base.automations[k] !== v));
   if (Object.keys(autos).length) body.automationSettings = autos;
@@ -137,7 +141,7 @@ export default function ClinicSettingsClient({ data }: { data: ClinicSettingsPag
     const found = problems(form);
     const first = Object.keys(found)[0];
     if (first) {
-      const id = first.startsWith('hours-') ? `set-${first}-close` : first === 'bir' ? 'set-bir-enabled' : `set-${first}`;
+      const id = first.startsWith('hours-') ? `set-${first}-close` : first === 'bir' ? 'set-bir-enabled' : first === 'philhealth' ? 'set-ph-enabled' : `set-${first}`;
       document.getElementById(id)?.focus();
       return;
     }
@@ -211,6 +215,7 @@ export default function ClinicSettingsClient({ data }: { data: ClinicSettingsPag
           <AppointmentsSection form={form} set={set} errors={errors} services={data.services} />
           <BillingSection form={form} set={set} errors={errors} />
           <BirSection form={form} set={set} errors={errors} />
+          <PhilhealthSection form={form} set={set} errors={errors} />
           <QueueSection form={form} set={set} displayPath={data.displayPath} />
           <PrescriptionsSection form={form} set={set} />
           <Section id="screens" title="Staff screens" description="What staff see the first time they sign in on a device.">
@@ -695,6 +700,53 @@ function BirSection({ form, set, errors }: { form: ClinicSettingsForm; set: SetF
             .
           </p>
         )}
+      </div>
+    </Section>
+  );
+}
+
+function PhilhealthSection({ form, set, errors }: { form: ClinicSettingsForm; set: SetFn; errors: Errors }) {
+  const ph = form.philhealth;
+  const put = (patch: Partial<typeof ph>) => set('philhealth', { ...ph, ...patch });
+  return (
+    <Section
+      id="philhealth"
+      title="PhilHealth"
+      description="For an accredited facility: put PhilHealth’s benefit on bills, track each claim to its filing deadline, and record PhilHealth’s payment. Claims are still filed through eClaims."
+    >
+      <SwitchRow
+        id="set-ph-enabled"
+        label="Bill PhilHealth"
+        hint={ph.enabled ? 'Invoices can carry a PhilHealth claim priced from the case rates on the PhilHealth page.' : 'Off, invoices have no PhilHealth section.'}
+        on={ph.enabled}
+        onChange={(v) => put({ enabled: v })}
+      >
+        {errors.philhealth && (
+          <ul className="mt-2 space-y-0.5 text-sm font-medium text-red-700" role="alert">
+            {errors.philhealth.map((m) => (
+              <li key={m}>{m}</li>
+            ))}
+          </ul>
+        )}
+      </SwitchRow>
+      <div className={`grid gap-4 border-t border-gray-100 p-5 sm:grid-cols-2 ${ph.enabled ? '' : 'opacity-70'}`}>
+        <Field id="set-ph-hci" label="Accreditation number" hint="The facility’s, as on its PhilHealth certificate.">
+          <input id="set-ph-hci" value={ph.hciAccreditationNo} onChange={(e) => put({ hciAccreditationNo: e.target.value })} maxLength={50} className={`${FIELD} font-mono`} />
+        </Field>
+        <Field id="set-ph-days" label="Claims must be filed within" hint="Days after the patient was seen. PhilHealth allows 60.">
+          <span className="flex items-center gap-2">
+            <input
+              id="set-ph-days"
+              type="number"
+              min={1}
+              max={365}
+              value={Number.isFinite(ph.filingDays) ? ph.filingDays : ''}
+              onChange={(e) => put({ filingDays: e.target.value === '' ? NaN : Number(e.target.value) })}
+              className={`${FIELD} w-24 font-mono tabular-nums`}
+            />
+            <span className="text-sm text-gray-600">days</span>
+          </span>
+        </Field>
       </div>
     </Section>
   );

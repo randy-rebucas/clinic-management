@@ -38,6 +38,7 @@ export default function DoctorForm({ doctor, self = false }: { doctor?: Omit<Doc
     department: doctor?.department && doctor.department !== 'No Department' ? doctor.department : '',
     licenseNumber: doctor?.licenseNumber ?? '',
     ptr: doctor?.ptr ?? '',
+    philhealthPan: doctor?.philhealthPan ?? '',
     status: (doctor?.status ?? 'active') as DoctorStatus,
     bio: doctor?.bio ?? '',
   };
@@ -113,6 +114,7 @@ export default function DoctorForm({ doctor, self = false }: { doctor?: Omit<Doc
       specialization: f.specialization.trim(),
       licenseNumber: f.licenseNumber.trim(),
       ptr: f.ptr.trim(),
+      philhealthPan: f.philhealthPan.trim(),
       department: f.department.trim(),
       status: f.status,
       bio: f.bio.trim(),
@@ -252,6 +254,12 @@ export default function DoctorForm({ doctor, self = false }: { doctor?: Omit<Doc
               PTR number
             </Label>
             <input id={`${ids}-ptr`} value={f.ptr} onChange={(e) => set('ptr', e.target.value)} maxLength={100} className={`${FIELD} font-mono`} />
+          </div>
+          <div>
+            <Label htmlFor={`${ids}-pan`} optional>
+              PhilHealth accreditation (PAN)
+            </Label>
+            <input id={`${ids}-pan`} value={f.philhealthPan} onChange={(e) => set('philhealthPan', e.target.value)} maxLength={50} className={`${FIELD} font-mono`} />
           </div>
         </div>
         <div className="border-t border-gray-100">

@@ -17,6 +17,7 @@ const METHOD: Record<string, string> = {
   check: 'Check',
   insurance: 'Insurance',
   hmo: 'HMO',
+  philhealth: 'PhilHealth',
   cwt: 'Creditable withholding tax (BIR 2307)',
   online: 'Online payment',
   other: 'Other',

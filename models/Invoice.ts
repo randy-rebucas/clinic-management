@@ -11,7 +11,7 @@ export interface IBillingItem {
   vatClass?: 'vatable' | 'exempt' | 'zero_rated';
 }
 
-export const PAYMENT_METHOD_VALUES = ['cash', 'gcash', 'bank_transfer', 'card', 'check', 'insurance', 'hmo', 'cwt', 'online', 'other'] as const;
+export const PAYMENT_METHOD_VALUES = ['cash', 'gcash', 'bank_transfer', 'card', 'check', 'insurance', 'hmo', 'philhealth', 'cwt', 'online', 'other'] as const;
 export type InvoicePaymentMethod = (typeof PAYMENT_METHOD_VALUES)[number];
 
 export interface IInvoice extends Document {
@@ -49,6 +49,27 @@ export interface IInvoice extends Document {
     zeroRatedSales: number;
     lessVat: number;
     statutoryDiscount: number;
+  };
+  /** A PhilHealth claim on this bill: the benefit comes off what the patient pays (lib/philhealth.ts). */
+  philhealth?: {
+    pin: string;
+    relationship: 'member' | 'dependent';
+    memberName?: string;
+    caseRate?: Types.ObjectId;
+    caseRateCode: string;
+    caseRateDescription?: string;
+    hciAmount: number;
+    pfAmount: number;
+    amount: number;
+    /** Day of the visit, or discharge; the filing deadline runs from it. */
+    servedOn: Date;
+    status: 'draft' | 'filed' | 'paid' | 'returned' | 'denied';
+    claimNumber?: string;
+    filedAt?: Date;
+    paidAt?: Date;
+    paidAmount?: number;
+    withheldAmount?: number;
+    note?: string;
   };
   /** The BIR sales invoice issued for this bill: serial from the registered range, set once. */
   bir?: {
@@ -174,6 +195,31 @@ const InvoiceSchema: Schema = new Schema(
       ),
       default: undefined,
     },
+    philhealth: {
+      type: new Schema(
+        {
+          pin: { type: String, required: true },
+          relationship: { type: String, enum: ['member', 'dependent'], default: 'member' },
+          memberName: String,
+          caseRate: { type: Schema.Types.ObjectId, ref: 'PhilhealthCaseRate' },
+          caseRateCode: { type: String, required: true },
+          caseRateDescription: String,
+          hciAmount: { type: Number, default: 0 },
+          pfAmount: { type: Number, default: 0 },
+          amount: { type: Number, default: 0 },
+          servedOn: { type: Date, required: true },
+          status: { type: String, enum: ['draft', 'filed', 'paid', 'returned', 'denied'], default: 'draft' },
+          claimNumber: String,
+          filedAt: Date,
+          paidAt: Date,
+          paidAmount: Number,
+          withheldAmount: Number,
+          note: String,
+        },
+        { _id: false }
+      ),
+      default: undefined,
+    },
     bir: {
       type: new Schema(
         {
@@ -263,6 +309,7 @@ InvoiceSchema.index(
   { unique: true, name: 'uniq_tenant_birSerial', partialFilterExpression: { 'bir.serialNo': { $type: 'string' } } }
 ); // A BIR serial is issued once per clinic
 InvoiceSchema.index({ tenantId: 1, 'bir.issuedAt': 1 }); // BIR sales books by issue date
+InvoiceSchema.index({ tenantId: 1, 'philhealth.status': 1, 'philhealth.servedOn': 1 }); // PhilHealth claims by state and deadline
 
 export default mongoose.models.Invoice || mongoose.model<IInvoice>('Invoice', InvoiceSchema);
 

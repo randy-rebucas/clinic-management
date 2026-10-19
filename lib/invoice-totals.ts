@@ -101,6 +101,11 @@ export function computeInvoiceTotals<I extends TotalsItem, D extends TotalsDisco
   taxRate?: number;
   appliedBy?: string;
   taxProfile?: TaxProfile | null;
+  /**
+   * What PhilHealth pays on this bill. A senior citizen or PWD discount is taken from what is
+   * left after it (RA 9994 IRR), so the benefit is deducted before the 20%.
+   */
+  payerDeduction?: number;
 }): InvoiceTotals<I, D> {
   if (input.taxProfile) return computeWithTaxProfile({ ...input, taxProfile: input.taxProfile });
 
@@ -111,8 +116,11 @@ export function computeInvoiceTotals<I extends TotalsItem, D extends TotalsDisco
   const subtotal = roundMoney(items.reduce((sum, i) => sum + i.total, 0));
 
   let remaining = subtotal;
+  const deduction = Math.max(0, Number(input.payerDeduction) || 0);
   const discounts = (input.discounts || []).map((d) => {
-    const raw = d.percentage !== undefined && d.percentage > 0 ? (subtotal * d.percentage) / 100 : d.amount ?? 0;
+    // With PhilHealth on the bill, the statutory 20% is of what PhilHealth leaves.
+    const base = isStatutoryDiscount(d.type) && deduction > 0 ? Math.max(0, subtotal - deduction) : subtotal;
+    const raw = d.percentage !== undefined && d.percentage > 0 ? (base * d.percentage) / 100 : d.amount ?? 0;
     const amount = roundMoney(Math.min(Math.max(raw, 0), remaining));
     remaining = roundMoney(remaining - amount);
     return { ...d, amount, ...(input.appliedBy ? { appliedBy: input.appliedBy } : {}) };
@@ -144,6 +152,7 @@ function computeWithTaxProfile<I extends TotalsItem, D extends TotalsDiscount>(i
   professionalFee?: number;
   appliedBy?: string;
   taxProfile: TaxProfile;
+  payerDeduction?: number;
 }): InvoiceTotals<I, D> {
   const p = input.taxProfile;
   const vat = p.regime === 'vat';
@@ -170,8 +179,10 @@ function computeWithTaxProfile<I extends TotalsItem, D extends TotalsDiscount>(i
     const netOf = (l: { amount: number; cls: VatClass }) => (inclusive && l.cls === 'vatable' ? l.amount / (1 + rate) : l.amount);
     const base = roundMoney(lines.reduce((s, l) => s + netOf(l), 0));
     const zeroRated = roundMoney(lines.filter((l) => l.cls === 'zero_rated').reduce((s, l) => s + l.amount, 0));
-    const raw = statutory.percentage !== undefined && statutory.percentage > 0 ? (base * Math.min(100, statutory.percentage)) / 100 : statutory.amount ?? 0;
-    const statutoryAmount = roundMoney(Math.min(Math.max(raw, 0), base));
+    // PhilHealth's benefit comes off first; the 20% is of the rest (RA 9994 IRR).
+    const discountBase = Math.max(0, base - Math.max(0, Number(input.payerDeduction) || 0));
+    const raw = statutory.percentage !== undefined && statutory.percentage > 0 ? (discountBase * Math.min(100, statutory.percentage)) / 100 : statutory.amount ?? 0;
+    const statutoryAmount = roundMoney(Math.min(Math.max(raw, 0), discountBase));
     const discounts = (input.discounts || []).map((d) => ({ ...d, amount: d === statutory ? statutoryAmount : 0, ...stamp }));
     return {
       items,

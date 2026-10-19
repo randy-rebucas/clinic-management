@@ -11,7 +11,7 @@ import { recordInvoicePayments, PAYMENT_EPSILON } from '@/lib/invoice-payments';
 
 const paymentSchema = z.object({
   // 'online' is only recorded by the payment-gateway webhook, never typed by staff.
-  method: z.enum(['cash', 'gcash', 'bank_transfer', 'card', 'check', 'insurance', 'hmo', 'cwt', 'other']).default('cash'),
+  method: z.enum(['cash', 'gcash', 'bank_transfer', 'card', 'check', 'insurance', 'hmo', 'philhealth', 'cwt', 'other']).default('cash'),
   amount: z.number().finite().positive().max(100_000_000),
   // A day of slack for clock and timezone differences; never a payment weeks ahead.
   date: z.coerce.date().refine((d) => d.getTime() <= Date.now() + 86_400_000, 'A payment can’t be dated in the future').optional(),
