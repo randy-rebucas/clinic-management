@@ -120,6 +120,7 @@ const storeBadges = [
   {
     store: 'App Store',
     caption: 'Download on the',
+    href: null as string | null,
     icon: (
       <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
         <path d="M16.37 12.6c-.02-2.2 1.8-3.26 1.88-3.31-1.03-1.5-2.62-1.7-3.18-1.73-1.35-.14-2.64.8-3.33.8-.69 0-1.74-.78-2.87-.76-1.47.02-2.83.86-3.59 2.18-1.53 2.66-.39 6.6 1.1 8.76.73 1.06 1.6 2.24 2.73 2.2 1.1-.05 1.51-.71 2.84-.71 1.32 0 1.7.71 2.86.69 1.18-.02 1.93-1.07 2.65-2.13.84-1.22 1.18-2.41 1.2-2.47-.03-.01-2.3-.88-2.32-3.5zM14.2 6.13c.6-.73 1.01-1.75.9-2.76-.87.04-1.92.58-2.54 1.31-.56.64-1.05 1.67-.92 2.66.97.08 1.96-.49 2.56-1.21z" />
@@ -129,6 +130,7 @@ const storeBadges = [
   {
     store: 'Google Play',
     caption: 'GET IT ON',
+    href: 'https://play.google.com/store/apps/details?id=solutions.myclinicsoft.emcr',
     icon: (
       <svg className="w-6 h-6" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M3.6 2.3 13.4 12l-9.8 9.7c-.35-.2-.6-.6-.6-1.1V3.4c0-.5.25-.9.6-1.1z" fill="#34A853" />
@@ -492,18 +494,35 @@ export default async function HomePage() {
                 ))}
               </ul>
 
-              {/* Store badges — blurred until the listings go live */}
+              {/* Store badges — live listings link out; others stay blurred until they go live */}
               <div>
                 <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-white mb-3">
                   <span className="relative flex h-2 w-2">
                     <span className="absolute inline-flex h-full w-full rounded-full bg-white opacity-70 motion-safe:animate-ping" />
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
                   </span>
-                  Coming soon on iOS &amp; Android
+                  Now on Android · iOS coming soon
                 </p>
-                <div className="flex flex-wrap justify-center md:justify-start gap-3" aria-hidden="true">
-                  {storeBadges.map((b) => (
+                <div className="flex flex-wrap justify-center md:justify-start gap-3">
+                  {storeBadges.map((b) =>
+                    b.href ? (
+                      <a
+                        key={b.store}
+                        href={b.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Get eMCR on ${b.store}`}
+                        className="flex items-center gap-2.5 rounded-xl border border-white/25 bg-black/85 pl-3.5 pr-5 py-2 text-white shadow-lg transition hover:bg-black hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-brand-teal-deep"
+                      >
+                        {b.icon}
+                        <span className="text-left leading-tight">
+                          <span className="block text-[10px]">{b.caption}</span>
+                          <span className="block text-base font-semibold -mt-0.5">{b.store}</span>
+                        </span>
+                      </a>
+                    ) : (
                     <div
+                      aria-hidden="true"
                       key={b.store}
                       className="relative overflow-hidden rounded-xl border border-white/25 select-none cursor-not-allowed"
                       title={`${b.store} — coming soon`}
@@ -521,7 +540,8 @@ export default async function HomePage() {
                         Soon
                       </span>
                     </div>
-                  ))}
+                    ),
+                  )}
                 </div>
               </div>
             </div>
