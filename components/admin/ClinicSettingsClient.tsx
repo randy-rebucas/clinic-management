@@ -20,7 +20,7 @@ import {
   type DayHours,
   type Weekday,
 } from '@/lib/clinic-settings';
-import { SERIAL_PREFIX, VAT_CLASS_LABEL, birSetupProblems, formatSerial, formatTin, type BirSettings } from '@/lib/bir';
+import { BRANCH_CODE, SERIAL_PREFIX, VAT_CLASS_LABEL, formatSerial, formatTin, type BirSettings } from '@/lib/bir';
 import { VAT_CLASSES } from '@/lib/invoice-totals';
 
 const PRIMARY = `inline-flex items-center justify-center gap-1.5 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`;
@@ -58,13 +58,24 @@ function problems(f: ClinicSettingsForm): Errors {
   if (!Number.isInteger(f.defaultDuration) || f.defaultDuration < 5 || f.defaultDuration > 480) out.defaultDuration = ['Whole minutes, from 5 to 480.'];
   if (!Number.isFinite(f.taxRate) || f.taxRate < 0 || f.taxRate > 100) out.taxRate = ['A percentage from 0 to 100.'];
   if (!INVOICE_PREFIX.test(f.invoicePrefix.trim())) out.invoicePrefix = ['Up to 10 letters, numbers, - or _.'];
-  if (!SERIAL_PREFIX.test(f.bir.serialPrefix.trim())) out.birSerialPrefix = ['Up to 6 letters, numbers or -.'];
-  const bir = birSetupProblems(f.bir, f.taxId);
-  if (bir.length) out.bir = bir;
-  if (f.philhealth.enabled && !f.philhealth.hciAccreditationNo.trim()) out.philhealth = ['Enter the clinic’s PhilHealth accreditation number.'];
-  if (!Number.isInteger(f.philhealth.filingDays) || f.philhealth.filingDays < 1 || f.philhealth.filingDays > 365) out.philhealth = [...(out.philhealth ?? []), 'Filing days are a whole number from 1 to 365.'];
+  // The BIR details are checked even while BIR invoicing is off: the server only stores them in this shape.
+  const b = f.bir;
+  if (!SERIAL_PREFIX.test(b.serialPrefix.trim())) out.birSerialPrefix = ['Up to 6 letters, numbers or -.'];
+  if (!BRANCH_CODE.test(b.branchCode)) out['bir-branchCode'] = ['3 to 5 digits; 00000 for the head office.'];
+  if (!Number.isInteger(b.serialStart) || b.serialStart < 1) out['bir-serialStart'] = ['A whole number from 1.'];
+  else if (b.serialEnd && b.serialEnd < b.serialStart) out['bir-serialEnd'] = ['Comes after the first number. Leave it blank if the permit sets no end.'];
+  if (b.regime === 'vat' && !(Number.isFinite(b.vatRate) && b.vatRate > 0 && b.vatRate <= 100)) out['bir-vatRate'] = ['A percentage above 0; 12 in the Philippines.'];
+  if (b.enabled) {
+    if (f.taxId.replace(/\D/g, '').length < 9) out.taxId = ['BIR invoicing needs the clinic’s TIN: 9 digits, or 12 with the branch.'];
+    if (!b.permitNumber.trim()) out['bir-permitNumber'] = ['Printed on every BIR sales invoice.'];
+  }
+  const ph = f.philhealth;
+  if (ph.enabled && !ph.hciAccreditationNo.trim()) out['ph-hci'] = ['Needed while PhilHealth billing is on.'];
+  if (!Number.isInteger(ph.filingDays) || ph.filingDays < 1 || ph.filingDays > 365) out['ph-days'] = ['A whole number of days from 1 to 365.'];
   return out;
 }
+
+const BIR_KEYS = ['taxId', 'bir-branchCode', 'bir-permitNumber', 'bir-serialStart', 'bir-serialEnd', 'bir-vatRate', 'birSerialPrefix'];
 
 /** The API body for what changed, grouped the way the Settings document stores it. */
 function changesBody(f: ClinicSettingsForm, base: ClinicSettingsForm) {
@@ -99,6 +110,16 @@ function changesBody(f: ClinicSettingsForm, base: ClinicSettingsForm) {
   const autos = Object.fromEntries(Object.entries(f.automations).filter(([k, v]) => base.automations[k] !== v));
   if (Object.keys(autos).length) body.automationSettings = autos;
   return body;
+}
+
+/** The form as the server stores it after a save: the same trimming `changesBody` applies. */
+function asStored(f: ClinicSettingsForm): ClinicSettingsForm {
+  const out = { ...f };
+  for (const k of ['clinicName', 'clinicAddress', 'clinicPhone', 'clinicEmail', 'clinicWebsite', 'taxId', 'licenseNumber', 'ptr'] as const) out[k] = f[k].trim();
+  out.invoicePrefix = f.invoicePrefix.trim();
+  out.philhealth = { ...f.philhealth, hciAccreditationNo: f.philhealth.hciAccreditationNo.trim() };
+  out.bir = { ...f.bir, registeredName: f.bir.registeredName.trim(), permitNumber: f.bir.permitNumber.trim(), serialPrefix: f.bir.serialPrefix.trim().toUpperCase() };
+  return out;
 }
 
 function ago(iso: string, now: number) {
@@ -145,8 +166,7 @@ export default function ClinicSettingsClient({ data }: { data: ClinicSettingsPag
     const found = problems(form);
     const first = Object.keys(found)[0];
     if (first) {
-      const id = first.startsWith('hours-') ? `set-${first}-close` : first === 'bir' ? 'set-bir-enabled' : first === 'philhealth' ? 'set-ph-enabled' : `set-${first}`;
-      document.getElementById(id)?.focus();
+      document.getElementById(first.startsWith('hours-') ? `set-${first}-close` : `set-${first}`)?.focus();
       return;
     }
     setBusy(true);
@@ -159,7 +179,9 @@ export default function ClinicSettingsClient({ data }: { data: ClinicSettingsPag
     }
     const next = (result.data as { version?: string } | null)?.version;
     if (next) setVersion(next);
-    setBase(form);
+    const stored = asStored(form);
+    setBase(stored);
+    setForm(stored);
     setTried(false);
     setSaved(`Saved ${changeCount} ${changeCount === 1 ? 'change' : 'changes'}. They apply from now on and are recorded in the audit log.`);
     router.refresh();
@@ -181,7 +203,7 @@ export default function ClinicSettingsClient({ data }: { data: ClinicSettingsPag
         {data.lastChange && (
           <p className="mt-2 text-sm text-gray-500">
             Last changed {ago(data.lastChange.at, now)} by {data.lastChange.who}
-            {data.lastChange.what ? <>: <span className="font-mono text-xs">{data.lastChange.what}</span></> : null}.{' '}
+            {data.lastChange.what ? `, in ${data.lastChange.what}` : null}.{' '}
             <Link href="/admin/audit-logs" className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
               See every change
             </Link>
@@ -216,9 +238,9 @@ export default function ClinicSettingsClient({ data }: { data: ClinicSettingsPag
         <div className="min-w-0">
           <ClinicSection form={form} set={set} errors={errors} />
           <HoursSection form={form} set={set} errors={errors} timezones={data.timezones} base={base} now={data.now} />
-          <AppointmentsSection form={form} set={set} errors={errors} services={data.services} />
+          <AppointmentsSection form={form} set={set} errors={errors} services={data.services} teleconsultInPlan={data.plan.teleconsult} />
           <BillingSection form={form} set={set} errors={errors} />
-          <BirSection form={form} set={set} errors={errors} />
+          <BirSection form={form} base={base} set={set} errors={errors} serials={data.serials} />
           <PhilhealthSection form={form} set={set} errors={errors} />
           <QueueSection form={form} set={set} displayPath={data.displayPath} />
           <PrescriptionsSection form={form} set={set} />
@@ -454,7 +476,19 @@ function HoursSection({ form, set, errors, timezones, base, now }: { form: Clini
   );
 }
 
-function AppointmentsSection({ form, set, errors, services }: { form: ClinicSettingsForm; set: SetFn; errors: Errors; services: ClinicSettingsPageData['services'] }) {
+function AppointmentsSection({
+  form,
+  set,
+  errors,
+  services,
+  teleconsultInPlan,
+}: {
+  form: ClinicSettingsForm;
+  set: SetFn;
+  errors: Errors;
+  services: ClinicSettingsPageData['services'];
+  teleconsultInPlan: boolean;
+}) {
   return (
     <Section id="appointments" title="Appointments">
       <div className="p-5">
@@ -492,10 +526,20 @@ function AppointmentsSection({ form, set, errors, services }: { form: ClinicSett
         <SwitchRow
           id="set-teleconsultBooking"
           label="Let patients book video visits"
-          hint="Patients can choose a video visit when booking in the eMCR app. Staff can always book one from the schedule. Part of the Professional and Enterprise plans."
+          hint="Patients can choose a video visit when booking in the eMCR app. Staff can always book one from the schedule."
           on={form.teleconsultBooking}
           onChange={(v) => set('teleconsultBooking', v)}
-        />
+        >
+          {form.teleconsultBooking && !teleconsultInPlan && (
+            <Warn>
+              The clinic’s plan doesn’t include video visits, so patients won’t be offered one. Plans that do are on{' '}
+              <Link href="/admin/subscription" className={`rounded font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+                Subscription
+              </Link>
+              .
+            </Warn>
+          )}
+        </SwitchRow>
       </div>
     </Section>
   );
@@ -531,9 +575,11 @@ function BillingSection({ form, set, errors }: { form: ClinicSettingsForm; set: 
             id="set-taxRate"
             label="Tax rate"
             hint={
-              form.taxRate > 0
-                ? `Every invoice is taxed at ${form.taxRate}%, and staff can’t type a tax amount of their own.`
-                : 'At 0, invoices carry no tax unless staff type an amount on the invoice.'
+              form.bir.enabled
+                ? 'Not used while BIR invoicing is on: tax on new invoices follows BIR invoicing below.'
+                : form.taxRate > 0
+                  ? `Every invoice is taxed at ${form.taxRate}%, and staff can’t type a tax amount of their own.`
+                  : 'At 0, invoices carry no tax unless staff type an amount on the invoice.'
             }
             errors={errors.taxRate}
           >
@@ -567,12 +613,26 @@ function BillingSection({ form, set, errors }: { form: ClinicSettingsForm; set: 
   );
 }
 
-function BirSection({ form, set, errors }: { form: ClinicSettingsForm; set: SetFn; errors: Errors }) {
+function BirSection({
+  form,
+  base,
+  set,
+  errors,
+  serials,
+}: {
+  form: ClinicSettingsForm;
+  base: ClinicSettingsForm;
+  set: SetFn;
+  errors: Errors;
+  serials: ClinicSettingsPageData['serials'];
+}) {
   const ids = useId();
   const b = form.bir;
   const put = (patch: Partial<BirSettings>) => set('bir', { ...b, ...patch });
   const num = (v: string) => (v === '' ? 0 : Math.max(0, Math.floor(Number(v)) || 0));
   const vat = b.regime === 'vat';
+  const blocked = b.enabled && BIR_KEYS.some((k) => errors[k]);
+  const invalid = (k: string) => (errors[k] ? 'border-red-400' : '');
   return (
     <Section
       id="bir"
@@ -590,12 +650,10 @@ function BirSection({ form, set, errors }: { form: ClinicSettingsForm; set: SetF
         on={b.enabled}
         onChange={(v) => put({ enabled: v })}
       >
-        {errors.bir && (
-          <ul className="mt-2 space-y-0.5 text-sm font-medium text-red-700" role="alert">
-            {errors.bir.map((m) => (
-              <li key={m}>{m}</li>
-            ))}
-          </ul>
+        {blocked && (
+          <p className="mt-2 text-sm font-medium text-red-700">
+            Can’t be turned on until the details marked below are filled in{errors.taxId ? ', and the TIN under Clinic details' : ''}.
+          </p>
         )}
       </SwitchRow>
 
@@ -623,7 +681,7 @@ function BirSection({ form, set, errors }: { form: ClinicSettingsForm; set: SetF
 
         {vat && (
           <>
-            <Field id="set-bir-vatRate" label="VAT rate">
+            <Field id="set-bir-vatRate" label="VAT rate" errors={errors['bir-vatRate']}>
               <span className="flex items-center gap-2">
                 <input
                   id="set-bir-vatRate"
@@ -633,7 +691,8 @@ function BirSection({ form, set, errors }: { form: ClinicSettingsForm; set: SetF
                   step={0.01}
                   value={b.vatRate}
                   onChange={(e) => put({ vatRate: e.target.value === '' ? 0 : Number(e.target.value) })}
-                  className={`${FIELD} w-28 font-mono tabular-nums`}
+                  className={`${FIELD} w-28 font-mono tabular-nums ${invalid('bir-vatRate')}`}
+                  {...describe('set-bir-vatRate', errors['bir-vatRate'])}
                 />
                 <span className="text-sm text-gray-600">%</span>
               </span>
@@ -661,17 +720,30 @@ function BirSection({ form, set, errors }: { form: ClinicSettingsForm; set: SetF
         <Field id="set-bir-registeredName" label="Registered name" hint="As on Form 2303, if it isn’t the clinic name above.">
           <input id="set-bir-registeredName" value={b.registeredName} onChange={(e) => put({ registeredName: e.target.value })} maxLength={200} placeholder={form.clinicName} className={FIELD} />
         </Field>
-        <Field id="set-bir-branchCode" label="Branch code" hint={<>TIN prints as <span className="font-mono">{formatTin(form.taxId, b.branchCode) || '000-000-000-00000'}</span>.</>}>
+        <Field
+          id="set-bir-branchCode"
+          label="Branch code"
+          hint={<>TIN prints as <span className="font-mono">{formatTin(form.taxId, b.branchCode) || '000-000-000-00000'}</span>.</>}
+          errors={errors['bir-branchCode']}
+        >
           <input
             id="set-bir-branchCode"
             value={b.branchCode}
             onChange={(e) => put({ branchCode: e.target.value.replace(/\D/g, '').slice(0, 5) })}
             inputMode="numeric"
-            className={`${FIELD} w-32 font-mono tabular-nums`}
+            className={`${FIELD} w-32 font-mono tabular-nums ${invalid('bir-branchCode')}`}
+            {...describe('set-bir-branchCode', errors['bir-branchCode'], true)}
           />
         </Field>
-        <Field id="set-bir-permitNumber" label="Permit or acknowledgment certificate no.">
-          <input id="set-bir-permitNumber" value={b.permitNumber} onChange={(e) => put({ permitNumber: e.target.value })} maxLength={100} className={`${FIELD} font-mono`} />
+        <Field id="set-bir-permitNumber" label="Permit or acknowledgment certificate no." errors={errors['bir-permitNumber']}>
+          <input
+            id="set-bir-permitNumber"
+            value={b.permitNumber}
+            onChange={(e) => put({ permitNumber: e.target.value })}
+            maxLength={100}
+            className={`${FIELD} font-mono ${invalid('bir-permitNumber')}`}
+            {...describe('set-bir-permitNumber', errors['bir-permitNumber'])}
+          />
         </Field>
         <Field id="set-bir-permitIssuedOn" label="Issued on">
           <input id="set-bir-permitIssuedOn" type="date" value={b.permitIssuedOn} onChange={(e) => put({ permitIssuedOn: e.target.value })} className={`${FIELD} w-auto font-mono`} />
@@ -691,30 +763,103 @@ function BirSection({ form, set, errors }: { form: ClinicSettingsForm; set: SetF
               onChange={(e) => put({ serialPrefix: e.target.value.toUpperCase() })}
               maxLength={6}
               placeholder="None"
-              className={`${FIELD} font-mono uppercase ${errors.birSerialPrefix ? 'border-red-400' : ''}`}
+              className={`${FIELD} font-mono uppercase ${invalid('birSerialPrefix')}`}
+              {...describe('set-birSerialPrefix', errors.birSerialPrefix)}
             />
           </Field>
-          <Field id="set-bir-serialStart" label="First number">
-            <input id="set-bir-serialStart" inputMode="numeric" value={b.serialStart || ''} onChange={(e) => put({ serialStart: num(e.target.value) })} className={`${FIELD} font-mono tabular-nums`} />
+          <Field id="set-bir-serialStart" label="First number" errors={errors['bir-serialStart']}>
+            <input
+              id="set-bir-serialStart"
+              inputMode="numeric"
+              value={b.serialStart || ''}
+              onChange={(e) => put({ serialStart: num(e.target.value) })}
+              className={`${FIELD} font-mono tabular-nums ${invalid('bir-serialStart')}`}
+              {...describe('set-bir-serialStart', errors['bir-serialStart'])}
+            />
           </Field>
-          <Field id="set-bir-serialEnd" label="Last number" hint="Blank if the permit sets no end.">
-            <input id="set-bir-serialEnd" inputMode="numeric" value={b.serialEnd || ''} onChange={(e) => put({ serialEnd: num(e.target.value) })} className={`${FIELD} font-mono tabular-nums`} />
+          <Field id="set-bir-serialEnd" label="Last number" hint="Blank if the permit sets no end." errors={errors['bir-serialEnd']}>
+            <input
+              id="set-bir-serialEnd"
+              inputMode="numeric"
+              value={b.serialEnd || ''}
+              onChange={(e) => put({ serialEnd: num(e.target.value) })}
+              className={`${FIELD} font-mono tabular-nums ${invalid('bir-serialEnd')}`}
+              {...describe('set-bir-serialEnd', errors['bir-serialEnd'], true)}
+            />
           </Field>
         </div>
-        {b.serialStart > 0 && (
-          <p className="mt-2 text-sm text-gray-600">
-            Serials read <span className="font-mono">{formatSerial(SERIAL_PREFIX.test(b.serialPrefix) ? b.serialPrefix : '', b.serialStart)}</span>
-            {b.serialEnd > 0 && (
+        <SerialStatus bir={b} base={base.bir} serials={serials} timezone={form.timezone} />
+      </div>
+    </Section>
+  );
+}
+
+/**
+ * Where the clinic is in its registered range. Each prefix numbers on its own and only moves
+ * forward (each serial is one past the highest given under that prefix), so a range entered at or
+ * below that number doesn't restart it, and a range that ends there is used up before the first
+ * print: say so before saving. A new prefix starts wherever its range starts.
+ */
+function SerialStatus({ bir, base, serials, timezone }: { bir: BirSettings; base: BirSettings; serials: ClinicSettingsPageData['serials']; timezone: string }) {
+  const prefix = SERIAL_PREFIX.test(bir.serialPrefix.trim()) ? bir.serialPrefix.trim().toUpperCase() : '';
+  const used = serials.used[prefix] ?? 0; // each prefix numbers on its own
+  if (!(Number.isInteger(bir.serialStart) && bir.serialStart >= 1) || (!bir.enabled && used === 0)) return null;
+  const end = bir.serialEnd >= bir.serialStart ? bir.serialEnd : 0;
+  const next = Math.max(used + 1, bir.serialStart);
+  const usedUp = end > 0 && next > end;
+  const size = end > 0 ? end - bir.serialStart + 1 : 0;
+  const given = size > 0 ? Math.min(size, Math.max(0, used - bir.serialStart + 1)) : 0;
+  const left = end > 0 ? Math.max(0, end - next + 1) : 0;
+  const share = size > 0 ? given / size : 0;
+  const fill = usedUp ? '#BE123C' : share >= 0.9 ? '#D97706' : SERIES.teal;
+  const rangeChanged = bir.serialStart !== base.serialStart || bir.serialEnd !== base.serialEnd || bir.serialPrefix !== base.serialPrefix;
+  const serial = (n: number) => <span className="font-mono tabular-nums text-gray-900">{formatSerial(prefix, n)}</span>;
+  const when = serials.last ? new Date(serials.last.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone }) : '';
+
+  return (
+    <div className="mt-4 space-y-1.5 rounded-md border border-gray-200 px-4 py-3 text-sm text-gray-600">
+      <p>
+        {serials.last ? (
+          <>
+            Last given <span className="font-mono tabular-nums text-gray-900">{serials.last.serialNo}</span> on {when}.
+          </>
+        ) : (
+          'No serial given yet.'
+        )}{' '}
+        {!usedUp && (
+          <>
+            Next: {serial(next)}
+            {end > 0 && (
               <>
-                {' '}
-                to <span className="font-mono">{formatSerial(SERIAL_PREFIX.test(b.serialPrefix) ? b.serialPrefix : '', b.serialEnd)}</span>
+                , then up to {serial(end)}: <span className="font-mono tabular-nums text-gray-900">{left.toLocaleString('en-US')}</span> left
               </>
             )}
             .
-          </p>
+          </>
         )}
-      </div>
-    </Section>
+      </p>
+      {size > 0 && (
+        <div
+          role="meter"
+          aria-label="Serial range used"
+          aria-valuemin={0}
+          aria-valuemax={size}
+          aria-valuenow={given}
+          aria-valuetext={`${given.toLocaleString('en-US')} of ${size.toLocaleString('en-US')} used`}
+          className="h-1.5 overflow-hidden rounded-full bg-gray-100"
+        >
+          <div className="motion-bar-grow h-full rounded-full" style={{ width: `${Math.min(100, share * 100)}%`, background: fill }} />
+        </div>
+      )}
+      {usedUp ? (
+        <p className="font-medium text-red-700">
+          This range is used up: numbers up to {used.toLocaleString('en-US')} have been given, so no BIR sales invoice will print until a range that goes past it is entered.
+        </p>
+      ) : (
+        rangeChanged &&
+        used >= bir.serialStart && <Warn>Numbering doesn’t restart: numbers up to {used.toLocaleString('en-US')} have been given, so the next serial is {formatSerial(prefix, next)}.</Warn>
+      )}
+    </div>
   );
 }
 
@@ -733,20 +878,19 @@ function PhilhealthSection({ form, set, errors }: { form: ClinicSettingsForm; se
         hint={ph.enabled ? 'Invoices can carry a PhilHealth claim priced from the case rates on the PhilHealth page.' : 'Off, invoices have no PhilHealth section.'}
         on={ph.enabled}
         onChange={(v) => put({ enabled: v })}
-      >
-        {errors.philhealth && (
-          <ul className="mt-2 space-y-0.5 text-sm font-medium text-red-700" role="alert">
-            {errors.philhealth.map((m) => (
-              <li key={m}>{m}</li>
-            ))}
-          </ul>
-        )}
-      </SwitchRow>
+      />
       <div className={`grid gap-4 border-t border-gray-100 p-5 sm:grid-cols-2 ${ph.enabled ? '' : 'opacity-70'}`}>
-        <Field id="set-ph-hci" label="Accreditation number" hint="The facility’s, as on its PhilHealth certificate.">
-          <input id="set-ph-hci" value={ph.hciAccreditationNo} onChange={(e) => put({ hciAccreditationNo: e.target.value })} maxLength={50} className={`${FIELD} font-mono`} />
+        <Field id="set-ph-hci" label="Accreditation number" hint="The facility’s, as on its PhilHealth certificate." errors={errors['ph-hci']}>
+          <input
+            id="set-ph-hci"
+            value={ph.hciAccreditationNo}
+            onChange={(e) => put({ hciAccreditationNo: e.target.value })}
+            maxLength={50}
+            className={`${FIELD} font-mono ${errors['ph-hci'] ? 'border-red-400' : ''}`}
+            {...describe('set-ph-hci', errors['ph-hci'], true)}
+          />
         </Field>
-        <Field id="set-ph-days" label="Claims must be filed within" hint="Days after the patient was seen. PhilHealth allows 60.">
+        <Field id="set-ph-days" label="Claims must be filed within" hint="Days after the patient was seen. PhilHealth allows 60." errors={errors['ph-days']}>
           <span className="flex items-center gap-2">
             <input
               id="set-ph-days"
@@ -755,7 +899,8 @@ function PhilhealthSection({ form, set, errors }: { form: ClinicSettingsForm; se
               max={365}
               value={Number.isFinite(ph.filingDays) ? ph.filingDays : ''}
               onChange={(e) => put({ filingDays: e.target.value === '' ? NaN : Number(e.target.value) })}
-              className={`${FIELD} w-24 font-mono tabular-nums`}
+              className={`${FIELD} w-24 font-mono tabular-nums ${errors['ph-days'] ? 'border-red-400' : ''}`}
+              {...describe('set-ph-days', errors['ph-days'], true)}
             />
             <span className="text-sm text-gray-600">days</span>
           </span>

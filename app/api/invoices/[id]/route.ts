@@ -16,6 +16,7 @@ import { parseBody, isValidationError, roundMoney } from '@/lib/api/validate';
 import { invoiceEditableSchema, computeInvoiceTotals, deriveStatus, statutoryDiscountProblem, taxProfileOf } from '../_lib/totals';
 import { resolveInsurance } from '../_lib/insurance';
 import { claimHold } from '@/lib/hmo-claims';
+import { announceInvoicePaid } from '@/lib/invoice-payments';
 import { resolvePhilhealth, capBenefit, grossOf } from '../_lib/philhealth';
 
 export async function GET(
@@ -324,6 +325,8 @@ export async function PUT(
         { status: 409 }
       );
     }
+    // Lowering the total to what's already paid settles the invoice without a payment.
+    if (current.status !== 'paid' && invoice.status === 'paid') announceInvoicePaid(invoice);
 
     await invoice.populate({
       path: 'patient',

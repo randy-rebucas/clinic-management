@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'A user with this email already exists' }, { status: 400 });
     }
 
-    // Reps stay inactive until their activation payment completes (see lib/medical-rep-payment).
+    // Reps stay inactive until their activation payment completes (PayMongo checkout, applied in lib/paymongo-apply).
     const representative = await MedicalRepresentative.create({
       firstName,
       lastName,

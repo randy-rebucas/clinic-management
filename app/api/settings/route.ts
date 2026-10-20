@@ -14,6 +14,10 @@ import { isCloudinaryConfigured } from '@/lib/cloudinary';
 import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { BRANCH_CODE, SERIAL_PREFIX, birSettingsOf, birSetupProblems } from '@/lib/bir';
+import { philhealthSettingsOf } from '@/lib/philhealth';
+import { AUTOMATIONS } from '@/lib/clinic-automations';
+
+const AUTOMATION_KEYS = new Set(AUTOMATIONS.map((a) => a.key));
 
 const zStr = (max = 200) => z.string().trim().max(max);
 const zNum = (min: number, max: number) => z.coerce.number().finite().min(min).max(max);
@@ -53,7 +57,7 @@ const settingsUpdateSchema = z.object({
   version: z.string().max(40).optional(),
   appointmentSettings: z
     .object({
-      defaultDuration: zNum(1, 1440),
+      defaultDuration: z.coerce.number().int().min(5).max(480),
       reminderHoursBefore: z.array(zNum(0, 720)).max(10),
       allowOnlineBooking: z.boolean(),
       teleconsultBooking: z.boolean(),
@@ -113,7 +117,8 @@ const settingsUpdateSchema = z.object({
     })
     .partial()
     .optional(),
-  automationSettings: z.record(z.string().regex(/^auto[A-Za-z]{1,60}$/), z.boolean()).optional(),
+  // Only switches the settings page offers: anything else isn't in the schema and would be dropped silently.
+  automationSettings: z.record(z.string().refine((k) => AUTOMATION_KEYS.has(k), 'Unknown automation.'), z.boolean()).optional(),
   displaySettings: z
     .object({
       theme: z.enum(['light', 'dark', 'auto']),
@@ -243,6 +248,14 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    // PhilHealth claims print the clinic's accreditation number, so it can't be on without one.
+    if (fields.philhealthSettings) {
+      const ph = philhealthSettingsOf({ ...philhealthSettingsOf(before.philhealthSettings), ...fields.philhealthSettings });
+      if (ph.enabled && !ph.hciAccreditationNo.trim()) {
+        return NextResponse.json({ success: false, error: 'PhilHealth billing can’t be turned on without the clinic’s accreditation number.' }, { status: 400 });
+      }
+    }
+
     const $set = toSetPaths(fields as Record<string, unknown>);
     const tenant = timezone
       ? await Tenant.findById(ctx.tenantObjectId).select('settings.timezone').lean<{ settings?: { timezone?: string } } | null>()
@@ -258,20 +271,31 @@ export async function PUT(request: NextRequest) {
       .map(([field, newValue]) => ({ field, oldValue: read(before, field) ?? null, newValue }));
     if (timezone && timezone !== oldZone) changes.push({ field: 'timezone', oldValue: oldZone, newValue: timezone });
 
+    // The clinic's zone is written first: if it fails, nothing is saved and the page's version stays good.
+    const zoneChanged = Boolean(timezone && timezone !== oldZone);
+    if (zoneChanged) await Tenant.updateOne({ _id: ctx.tenantObjectId }, { $set: { 'settings.timezone': timezone } });
+
+    // The version check is part of the write, so two saves at the same moment can't both pass it.
+    const unchangedSince = version && before.updatedAt ? { updatedAt: before.updatedAt } : {};
     const settings = Object.keys($set).length
-      ? await Settings.findOneAndUpdate(tenantFilter(ctx.tenantId), { $set }, { new: true, runValidators: true })
+      ? await Settings.findOneAndUpdate({ ...tenantFilter(ctx.tenantId), ...unchangedSince }, { $set }, { new: true, runValidators: true })
       : await Settings.findOne(tenantFilter(ctx.tenantId));
 
+    if (!settings && zoneChanged) {
+      await Tenant.updateOne({ _id: ctx.tenantObjectId }, { $set: { 'settings.timezone': oldZone } });
+    }
+    if (!settings && version) {
+      return NextResponse.json(
+        { success: false, error: 'Someone else saved the settings while you were editing. Reload to see their changes, then make yours again.' },
+        { status: 409 }
+      );
+    }
     if (!settings) {
       return NextResponse.json(
         { success: false, error: 'Settings not found' },
         { status: 404 }
       );
     }
-    if (timezone && timezone !== oldZone) {
-      await Tenant.updateOne({ _id: ctx.tenantObjectId }, { $set: { 'settings.timezone': timezone } });
-    }
-
     clearSettingsCache(ctx.tenantId);
 
     if (changes.length) {

@@ -99,6 +99,11 @@
       "path": "/api/cron/document-expiry-tracking",
       "schedule": "30 9 * * *",
       "comment": "Track expiring documents (staggered) - Medium Priority"
+    },
+    {
+      "path": "/api/cron/webhook-deliveries",
+      "schedule": "*/5 * * * *",
+      "comment": "Retry failed webhook deliveries every 5 min - Critical for API customers"
     }
   ]
 }

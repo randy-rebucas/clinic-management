@@ -12,5 +12,5 @@
       "comment": "Closes the clinic day at 23:00 Manila (queue entries, unattended appointments)"
     }
   ],
-  "note": "Backups are not a cron job: use MongoDB Atlas snapshots or scripts/backup/backup.sh. For additional automation, use external schedulers (n8n, GitHub Actions) calling /api/cron/* with Authorization: Bearer $CRON_SECRET."
+  "note": "Backups are not a cron job: use MongoDB Atlas snapshots or scripts/backup/backup.sh. For additional automation, use external schedulers (n8n, GitHub Actions) calling /api/cron/* with Authorization: Bearer $CRON_SECRET. If any clinic uses webhooks, schedule /api/cron/webhook-deliveries every 5 minutes that way, or failed deliveries are never retried."
 }

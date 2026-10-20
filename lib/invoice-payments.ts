@@ -93,17 +93,20 @@ export async function recordInvoicePayments(opts: {
     { new: true }
   );
   if (!invoice) return { ok: false, status: 409, error: 'Invoice changed while recording the payment. Please reload and try again.' };
-  if (current.status !== 'paid' && invoice.status === 'paid') {
-    const paid = invoice.toObject ? invoice.toObject() : invoice;
-    const send = () =>
-      import('@/lib/webhook-events')
-        .then(({ onInvoicePaid }) => onInvoicePaid(paid))
-        .catch((error) => console.error('[webhooks] invoice.paid:', error));
-    try {
-      after(send);
-    } catch {
-      void send();
-    }
-  }
+  if (current.status !== 'paid' && invoice.status === 'paid') announceInvoicePaid(invoice);
   return { ok: true, invoice };
+}
+
+/** Sends `invoice.paid` after the response. Call it whenever an invoice becomes paid, by payment or otherwise. */
+export function announceInvoicePaid(invoice: { toObject?: () => Record<string, any> } & Record<string, any>) {
+  const paid = invoice.toObject ? invoice.toObject() : invoice;
+  const send = () =>
+    import('@/lib/webhook-events')
+      .then(({ onInvoicePaid }) => onInvoicePaid(paid))
+      .catch((error) => console.error('[webhooks] invoice.paid:', error));
+  try {
+    after(send);
+  } catch {
+    void send();
+  }
 }

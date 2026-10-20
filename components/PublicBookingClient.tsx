@@ -178,9 +178,13 @@ export default function PublicBookingClient() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
     setError('');
     setSuccess(false);
+    if (!availableSlots.includes(formData.appointmentTime)) {
+      setError('Please choose one of the available times.');
+      return;
+    }
+    setSubmitting(true);
 
     try {
       // Add tenantId if clinic is selected
@@ -561,7 +565,8 @@ export default function PublicBookingClient() {
                           required
                           value={formData.appointmentTime}
                           onChange={(e) => setFormData({ ...formData, appointmentTime: e.target.value })}
-                          disabled={!selectedDate || !selectedDoctor}
+                          // Only offered slots can be booked (clinic hours + doctor schedule).
+                          disabled
                           className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base disabled:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
                         />
                       )}

@@ -31,14 +31,14 @@ import {
 import { memberTenantIds } from '../me/_lib/patient-scope';
 import { linkedRecords, recordAtClinic } from '../me/_lib/linked-records';
 import {
-  SLOT_MINUTES,
   bookingHorizon,
+  bookingRulesFrom,
   bookingWindow,
-  candidateSlots,
   clinicClock,
+  freeSlots,
   minutesToHHmm,
   slotRejection,
-} from './_lib/booking-slots';
+} from '@/lib/booking-slots';
 
 /**
  * Which of the patient's clinics this request is for: the subdomain's clinic (when the
@@ -114,6 +114,8 @@ export async function GET(request: NextRequest) {
     const tz = await getTenantTimezone(tenantId);
     const clock = clinicClock(tz);
     const horizon = bookingHorizon(clock.today);
+    // Opening hours + usual appointment length narrow every doctor's slots.
+    const rules = bookingRulesFrom(await getSettings(String(tenantId)));
 
     const records = await Doctor.find({ status: 'active', tenantId })
       .select('firstName lastName specializationId schedule availabilityOverrides')
@@ -123,7 +125,7 @@ export async function GET(request: NextRequest) {
     const doctors = records.map(({ schedule, availabilityOverrides, ...doctor }) => ({
       ...doctorSummary(doctor),
       hoursSummary: weekSummary(schedule ?? []),
-      bookableDates: horizon.filter((key) => bookingWindow({ schedule, availabilityOverrides }, key)),
+      bookableDates: horizon.filter((key) => bookingWindow({ schedule, availabilityOverrides }, key, rules)),
     }));
 
     if (date && doctorId) {
@@ -131,7 +133,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ success: false, error: 'Invalid date or doctor' }, { status: 400 });
       }
       const record = records.find((d) => String(d._id) === doctorId);
-      if (!record || !horizon.includes(date) || !bookingWindow(record, date)) {
+      if (!record || !horizon.includes(date) || !bookingWindow(record, date, rules)) {
         return NextResponse.json({ success: true, data: { availableSlots: [], dayOff: true, doctors } });
       }
       const { start, end } = appointmentDayRange(date, tz);
@@ -145,17 +147,14 @@ export async function GET(request: NextRequest) {
         .select('appointmentTime duration')
         .lean();
 
-      const booked: Array<[number, number]> = [];
-      for (const apt of existingAppointments as any[]) {
+      const booked = (existingAppointments as any[]).flatMap((apt) => {
         const s = timeToMinutes(apt.appointmentTime);
-        if (s !== null) booked.push([s, s + (apt.duration || 30)]);
-      }
+        return s === null ? [] : [{ start: s, duration: apt.duration }];
+      });
 
-      // The doctor's 30-minute grid that day, today's past slots dropped (clinic time); the
-      // POST accepts exactly these (slotRejection), minus what is already booked.
-      const availableSlots = candidateSlots(record, date, clock)
-        .filter((slotStart) => !booked.some(([s, e]) => slotStart < e && s < slotStart + SLOT_MINUTES))
-        .map(minutesToHHmm);
+      // The doctor's slot grid that day inside the clinic's opening hours, today's past slots
+      // dropped (clinic time); the POST accepts exactly these (slotRejection), minus what is booked.
+      const availableSlots = freeSlots(record, date, clock, booked, rules).map(minutesToHHmm);
 
       return NextResponse.json({
         success: true,
@@ -245,9 +244,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Only a slot the GET could have offered: not in the past (clinic time), inside the
-    // booking horizon, inside the doctor's hours and on the 30-minute grid.
+    // booking horizon, inside the doctor's hours and the clinic's opening hours, on the slot grid.
     const tz = await getTenantTimezone(tenantId);
-    const rejection = slotRejection(doctor, appointmentDate, timeToMinutes(appointmentTime), clinicClock(tz));
+    const rules = bookingRulesFrom(await getSettings(String(tenantId)));
+    const rejection = slotRejection(doctor, appointmentDate, timeToMinutes(appointmentTime), clinicClock(tz), rules);
     if (rejection) {
       const error = {
         past: 'Please choose a future date and time.',
@@ -263,7 +263,7 @@ export async function POST(request: NextRequest) {
       doctorId,
       appointmentDate,
       appointmentTime,
-      duration: 30,
+      duration: rules.slotMinutes,
       tz,
     });
     if (conflictingAppointment) {
@@ -315,7 +315,7 @@ export async function POST(request: NextRequest) {
         appointmentCode,
         appointmentDate: appointmentDateObj,
         appointmentTime,
-        duration: 30,
+        duration: rules.slotMinutes,
         status: 'pending', // Requires confirmation from clinic
         reason: reason || 'General Consultation',
         isWalkIn: false,

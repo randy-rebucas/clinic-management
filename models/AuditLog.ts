@@ -38,7 +38,10 @@ export type AuditResource =
   | 'medicine'
   | 'settings'
   | 'system'
-  | 'clinical_template';
+  | 'clinical_template'
+  | 'hmo'
+  | 'hmo_claim'
+  | 'philhealth';
 
 export interface IAuditLog extends Document {
   // Tenant reference for multi-tenant support

@@ -85,7 +85,34 @@ export interface ClinicSettingsPageData {
   /** The waiting-room screen's address. */
   displayPath: string;
   now: string;
+  /** Plan features a setting depends on. */
+  plan: { teleconsult: boolean };
+  /** BIR serials: per prefix ('' for none), the last number given (numbering only moves forward), and the newest serial printed. */
+  serials: { used: Record<string, number>; last: { serialNo: string; at: string } | null };
   lastChange: { who: string; at: string; what: string } | null;
+}
+
+/** Which part of the page a stored settings path belongs to, for "Last changed …: billing, queue". */
+const AREAS: [RegExp, string][] = [
+  [/^(clinicName|clinicAddress|clinicPhone|clinicEmail|clinicWebsite|taxId|licenseNumber|ptr)$/, 'clinic details'],
+  [/^(businessHours|timezone)/, 'opening hours'],
+  [/^(appointmentSettings|communicationSettings)/, 'appointments'],
+  [/^billingSettings/, 'billing'],
+  [/^birSettings/, 'BIR invoicing'],
+  [/^philhealthSettings/, 'PhilHealth'],
+  [/^queueSettings/, 'queue'],
+  [/^prescription/, 'prescriptions'],
+  [/^displaySettings/, 'staff screens'],
+  [/^automationSettings/, 'automations'],
+];
+
+export function settingsAreasOf(paths: string[]): string[] {
+  const out: string[] = [];
+  for (const p of paths) {
+    const area = AREAS.find(([re]) => re.test(p))?.[1];
+    if (area && !out.includes(area)) out.push(area);
+  }
+  return out;
 }
 
 /** "9:00 AM" from "09:00". */
