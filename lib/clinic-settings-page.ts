@@ -4,6 +4,11 @@ import connectDB from '@/lib/mongodb';
 import Settings from '@/models/Settings';
 import Tenant from '@/models/Tenant';
 import AuditLog from '@/models/AuditLog';
+import Counter from '@/models/Counter';
+import Invoice from '@/models/Invoice';
+import { COUNTER_KEY, highestIssuedByPrefix } from '@/lib/bir-issue';
+import { checkSubscriptionStatus } from '@/lib/subscription';
+import { hasFeature } from '@/lib/subscription-packages';
 import { getDefaultSettings, getSettings } from '@/lib/settings';
 import { resolveTimezone } from '@/lib/tz';
 import { isEmailConfigured } from '@/lib/email';
@@ -12,7 +17,7 @@ import { isCloudinaryConfigured } from '@/lib/cloudinary';
 import { AUTOMATIONS } from '@/lib/clinic-automations';
 import { birSettingsOf } from '@/lib/bir';
 import { philhealthSettingsOf } from '@/lib/philhealth';
-import { CURRENCIES, WEEKDAYS, type ClinicSettingsPageData, type DayHours } from '@/lib/clinic-settings';
+import { CURRENCIES, WEEKDAYS, settingsAreasOf, type ClinicSettingsPageData, type DayHours } from '@/lib/clinic-settings';
 
 const FALLBACK_ZONES = ['Asia/Manila', 'Asia/Singapore', 'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Kolkata', 'Australia/Sydney', 'Europe/London', 'America/New_York', 'America/Los_Angeles'];
 
@@ -39,11 +44,31 @@ export async function loadClinicSettingsPage(tenantIdInput: string): Promise<Cli
   await connectDB();
   await getSettings(tenantIdInput); // creates the document from defaults if this clinic has none
 
-  const [doc, tenant, last] = await Promise.all([
+  const [doc, tenant, last, teleconsult, counter, lastSerial] = await Promise.all([
     Settings.findOne({ tenantId }).lean<Record<string, any> | null>(),
     Tenant.findById(tenantId).select('settings.timezone subdomain').lean<{ settings?: { timezone?: string }; subdomain?: string } | null>(),
     AuditLog.findOne({ tenantId, resource: 'settings' }).sort({ timestamp: -1, createdAt: -1 }).populate('userId', 'name email').lean<any>(),
+    // The plan's feature only: an ended plan is the subscription page's business, not this switch's.
+    checkSubscriptionStatus(tenantId).then((s) => hasFeature(s.plan || 'trial', 'teleconsult'), () => true),
+    Promise.all([
+      Counter.find({ tenantId, key: new RegExp(`^${COUNTER_KEY}(:|$)`) }).select('key seq').lean<{ key: string; seq?: number }[]>(),
+      highestIssuedByPrefix(tenantId),
+    ]),
+    Invoice.findOne({ tenantId, 'bir.serialNo': { $exists: true } })
+      .sort({ 'bir.issuedAt': -1 })
+      .select('bir.serialNo bir.issuedAt')
+      .lean<{ bir?: { serialNo?: string; issuedAt?: Date } } | null>(),
   ]);
+  // Per prefix, the number its next serial follows: its counter, or what was printed under it before it had one.
+  const [counters, printed] = counter;
+  const usedByPrefix: Record<string, number> = Object.fromEntries(printed);
+  for (const c of counters) {
+    const prefix = c.key === COUNTER_KEY ? '' : c.key.slice(COUNTER_KEY.length + 1);
+    usedByPrefix[prefix] = Math.max(usedByPrefix[prefix] ?? 0, Number(c.seq) || 0);
+  }
+  const changedPaths: string[] = Array.isArray(last?.changes)
+    ? last.changes.map((c: { field?: string }) => String(c.field ?? ''))
+    : String(last?.description || '').replace(/^Changed clinic settings: /, '').split(', ');
 
   const defaults = getDefaultSettings();
   const s: Record<string, any> = { ...defaults, ...(doc ?? {}) };
@@ -93,11 +118,18 @@ export async function loadClinicSettingsPage(tenantIdInput: string): Promise<Cli
     services: { email: isEmailConfigured(), sms: isSMSConfigured(), files: isCloudinaryConfigured() },
     displayPath: '/api/queue/display',
     now: new Date().toISOString(),
+    plan: { teleconsult },
+    serials: {
+      used: usedByPrefix,
+      last: lastSerial?.bir?.serialNo
+        ? { serialNo: lastSerial.bir.serialNo, at: new Date(lastSerial.bir.issuedAt ?? Date.now()).toISOString() }
+        : null,
+    },
     lastChange: last
       ? {
           who: last.userId?.name || last.userEmail || 'Someone',
           at: new Date(last.timestamp ?? last.createdAt).toISOString(),
-          what: String(last.description || '').replace(/^Changed clinic settings: /, ''),
+          what: settingsAreasOf(changedPaths).join(', '),
         }
       : null,
   };

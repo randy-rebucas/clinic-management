@@ -7,7 +7,7 @@ import { getSettings } from '@/lib/settings';
 import { sendEmail, escapeHtml } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
 import { Types } from 'mongoose';
-import { automationEnabled } from './shared';
+import { automationEnabled, delivered } from './shared';
 
 export interface WelcomeMessageOptions {
   patientId: string | Types.ObjectId;
@@ -62,7 +62,7 @@ export async function sendWelcomeMessage(options: WelcomeMessageOptions): Promis
           message: welcomeMessage,
         });
 
-        if (smsResult.success) {
+        if (delivered(smsResult)) {
           sent = true;
         }
       } catch (error) {
@@ -79,7 +79,7 @@ export async function sendWelcomeMessage(options: WelcomeMessageOptions): Promis
           html: emailContent.html,
         });
 
-        if (emailResult.success) {
+        if (delivered(emailResult)) {
           sent = true;
         }
       } catch (error) {

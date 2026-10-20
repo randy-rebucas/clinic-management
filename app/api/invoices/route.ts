@@ -14,6 +14,7 @@ import { INVOICE_STATUSES, OPEN_STATUSES, agingRange, isAgingKey } from '@/lib/i
 import { invoiceEditableSchema, computeInvoiceTotals, statutoryDiscountProblem, taxProfileOf } from './_lib/totals';
 import { resolveInsurance } from './_lib/insurance';
 import { resolvePhilhealth, capBenefit, grossOf } from './_lib/philhealth';
+import { announceInvoicePaid } from '@/lib/invoice-payments';
 
 const MAX_RESULTS = 1000;
 
@@ -219,6 +220,7 @@ export async function POST(request: NextRequest) {
       status: totals.total > 0 ? 'unpaid' : 'paid',
       createdBy: session.userId,
     });
+    if (invoice.status === 'paid') announceInvoicePaid(invoice); // a ₱0 bill is paid as it's made
 
     await invoice.populate({
       path: 'patient',

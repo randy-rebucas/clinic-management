@@ -315,7 +315,6 @@ InvoiceSchema.index(
   { unique: true, name: 'uniq_tenant_birSerial', partialFilterExpression: { 'bir.serialNo': { $type: 'string' } } }
 ); // A BIR serial is issued once per clinic
 InvoiceSchema.index({ tenantId: 1, 'bir.issuedAt': 1 }); // BIR sales books by issue date
-InvoiceSchema.index({ tenantId: 1, 'philhealth.status': 1, 'philhealth.servedOn': 1 }); // PhilHealth claims by state and deadline
 
 export default mongoose.models.Invoice || mongoose.model<IInvoice>('Invoice', InvoiceSchema);
 

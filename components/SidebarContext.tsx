@@ -25,43 +25,45 @@ export function SidebarProvider({ children }: { children: ReactNode }) {
       setIsHydrated(true);
     }, 0);
     
-    // First, try to load from localStorage
+    // This device's own choice wins; the clinic's default only applies until someone picks one here.
     const saved = localStorage.getItem('sidebarCollapsed');
     if (saved !== null) {
-      // Use saved preference if it exists; otherwise stay expanded
       setTimeout(() => {
         setIsCollapsed(saved === 'true');
       }, 0);
+      return;
     }
 
-    // Then sync with settings
-    const syncWithSettings = async () => {
+    const applyClinicDefault = async () => {
       try {
         const response = await fetch('/api/settings');
         if (response.ok) {
           const settings = await response.json();
-          if (settings?.displaySettings?.sidebarCollapsed !== undefined) {
+          if (typeof settings?.displaySettings?.sidebarCollapsed === 'boolean') {
             setIsCollapsed(settings.displaySettings.sidebarCollapsed);
-            // Update localStorage to match settings
-            localStorage.setItem('sidebarCollapsed', String(settings.displaySettings.sidebarCollapsed));
           }
         }
-      } catch (error) {
-        // Silently fail - use localStorage value
+      } catch {
+        // Stay expanded
       }
     };
-    syncWithSettings();
+    applyClinicDefault();
   }, []);
 
-  // Save to localStorage when changed (only after hydration)
-  useEffect(() => {
-    if (isHydrated && typeof window !== 'undefined') {
-      localStorage.setItem('sidebarCollapsed', String(isCollapsed));
+  // Only a person's own toggle is remembered, so the clinic default isn't stored as their choice.
+  const choose = (collapsed: boolean) => {
+    setIsCollapsed(collapsed);
+    if (isHydrated) {
+      try {
+        localStorage.setItem('sidebarCollapsed', String(collapsed));
+      } catch {
+        // Storage blocked: the choice lasts until reload
+      }
     }
-  }, [isCollapsed, isHydrated]);
+  };
 
   return (
-    <SidebarContext.Provider value={{ isCollapsed, setIsCollapsed, isMobileOpen, setIsMobileOpen }}>
+    <SidebarContext.Provider value={{ isCollapsed, setIsCollapsed: choose, isMobileOpen, setIsMobileOpen }}>
       {children}
     </SidebarContext.Provider>
   );

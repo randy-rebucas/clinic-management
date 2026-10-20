@@ -14,15 +14,26 @@ import { normalizePhone } from '@/lib/phone';
 import { nextPatientCode } from '@/lib/patient-schema';
 import { checkSubscriptionLimit } from '@/lib/subscription-limits';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
-import { formatInTz } from '@/lib/tz';
+import { getSettings } from '@/lib/settings';
 import {
   ACTIVE_APPOINTMENT_STATUSES,
   appointmentDayRange,
   findDoctorConflict,
   nextAppointmentCode,
   normalizeTime,
+  timeToMinutes,
   isSlotDuplicateError,
 } from '@/lib/appointment-booking';
+import {
+  BOOKING_HORIZON_DAYS,
+  bookingRulesFrom,
+  bookingWindow,
+  clinicClock,
+  freeSlotsAnyDoctor,
+  minutesToHHmm,
+  slotRejection,
+  type BookedTime,
+} from '@/lib/booking-slots';
 
 /**
  * Resolve the clinic for a public request. The subdomain wins; on the root domain the
@@ -50,56 +61,63 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Clinic not found' }, { status: 404 });
     }
 
-    const doctors = await Doctor.find({ status: 'active', tenantId })
-      .select('firstName lastName specialization schedule')
-      .lean();
+    const records = await Doctor.find({ status: 'active', tenantId })
+      .select('firstName lastName specialization schedule availabilityOverrides')
+      .lean<Record<string, any>[]>();
+    // Time-off entries (and their reasons) stay private; the response keeps its old fields.
+    const doctors = records.map((record) => {
+      const doctor = { ...record };
+      delete doctor.availabilityOverrides;
+      return doctor;
+    });
 
-    if (date && doctorId) {
-      if (!isValidId(doctorId) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    if (date) {
+      if ((doctorId && !isValidId(doctorId)) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return NextResponse.json({ success: false, error: 'Invalid date or doctor' }, { status: 400 });
       }
-      const tz = await getTenantTimezone(tenantId);
-      const { start, end } = appointmentDayRange(date, tz);
+      // With a doctor: that doctor's free slots. Without one: slots where any doctor is free.
+      const candidates = doctorId ? records.filter((d) => String(d._id) === doctorId) : records;
+      if (doctorId || candidates.length > 0) {
+        const tz = await getTenantTimezone(tenantId);
+        const clock = clinicClock(tz);
+        const rules = bookingRulesFrom(await getSettings(String(tenantId)));
+        const open = candidates.filter((d) => bookingWindow(d, date, rules) && date >= clock.today);
 
-      const existingAppointments = await Appointment.find({
-        tenantId,
-        doctor: new Types.ObjectId(doctorId),
-        appointmentDate: { $gte: start, $lte: end },
-        status: { $in: ACTIVE_APPOINTMENT_STATUSES },
-      })
-        .select('appointmentTime duration')
-        .lean();
-
-      // Mark every 30-minute slot an existing appointment overlaps (zero-padded keys).
-      const bookedSlots = new Set<string>();
-      for (const apt of existingAppointments as any[]) {
-        const time = normalizeTime(apt.appointmentTime);
-        if (!time) continue;
-        const [h, m] = time.split(':').map(Number);
-        const startMin = h * 60 + m;
-        const endMin = startMin + (apt.duration || 30);
-        for (let slot = Math.floor(startMin / 30) * 30; slot < endMin; slot += 30) {
-          bookedSlots.add(`${String(Math.floor(slot / 60)).padStart(2, '0')}:${String(slot % 60).padStart(2, '0')}`);
-        }
-      }
-
-      const availableSlots: string[] = [];
-      for (let hour = 9; hour < 17; hour++) {
-        for (let minute = 0; minute < 60; minute += 30) {
-          const timeSlot = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-          if (!bookedSlots.has(timeSlot)) {
-            availableSlots.push(timeSlot);
+        const booked = new Map<string, BookedTime[]>();
+        if (open.length > 0) {
+          const { start, end } = appointmentDayRange(date, tz);
+          const existing = await Appointment.find({
+            tenantId,
+            doctor: { $in: open.map((d) => d._id) },
+            appointmentDate: { $gte: start, $lte: end },
+            status: { $in: ACTIVE_APPOINTMENT_STATUSES },
+          })
+            .select('doctor appointmentTime duration')
+            .lean<{ doctor: unknown; appointmentTime?: string; duration?: number }[]>();
+          for (const apt of existing) {
+            const s = timeToMinutes(apt.appointmentTime);
+            if (s === null) continue;
+            const key = String(apt.doctor);
+            booked.set(key, [...(booked.get(key) ?? []), { start: s, duration: apt.duration }]);
           }
         }
-      }
 
-      return NextResponse.json({
-        success: true,
-        data: {
-          availableSlots,
-          doctors,
-        },
-      });
+        const availableSlots = freeSlotsAnyDoctor(
+          open.map((d) => ({ doctor: d, booked: booked.get(String(d._id)) ?? [] })),
+          date,
+          clock,
+          rules
+        ).map(minutesToHHmm);
+
+        return NextResponse.json({
+          success: true,
+          data: {
+            availableSlots,
+            doctors,
+            slotMinutes: rules.slotMinutes,
+          },
+        });
+      }
     }
 
     return NextResponse.json({
@@ -156,8 +174,8 @@ export async function POST(request: NextRequest) {
     }
 
     const doctor = await Doctor.findOne({ _id: body.doctorId, status: 'active', tenantId })
-      .select('firstName lastName')
-      .lean();
+      .select('firstName lastName schedule availabilityOverrides')
+      .lean<Record<string, any>>();
     if (!doctor) {
       return NextResponse.json(
         { success: false, error: 'Invalid doctor selected. Please select a doctor from this clinic.' },
@@ -165,9 +183,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Only a slot the GET could have offered: clinic open, doctor working, on the grid, not past.
     const tz = await getTenantTimezone(tenantId);
-    if (formatInTz(new Date(), 'yyyy-MM-dd', tz) > body.appointmentDate) {
-      return NextResponse.json({ success: false, error: 'Please choose a future date.' }, { status: 400 });
+    const rules = bookingRulesFrom(await getSettings(String(tenantId)));
+    const rejection = slotRejection(doctor, body.appointmentDate, timeToMinutes(appointmentTime), clinicClock(tz), rules);
+    if (rejection) {
+      const error = {
+        past: 'Please choose a future date and time.',
+        'beyond-horizon': `Appointments can only be booked up to ${BOOKING_HORIZON_DAYS} days ahead.`,
+        'not-working': 'The clinic or doctor is not available at that time. Please choose another time.',
+        'off-grid': 'Please choose one of the offered appointment times.',
+      }[rejection];
+      return NextResponse.json({ success: false, error }, { status: 400 });
     }
 
     const conflict = await findDoctorConflict({
@@ -175,7 +202,7 @@ export async function POST(request: NextRequest) {
       doctorId: body.doctorId,
       appointmentDate: body.appointmentDate,
       appointmentTime,
-      duration: 30,
+      duration: rules.slotMinutes,
       tz,
     });
     if (conflict) {
@@ -232,7 +259,7 @@ export async function POST(request: NextRequest) {
         appointmentCode: await nextAppointmentCode(tenantId),
         appointmentDate: new Date(body.appointmentDate),
         appointmentTime,
-        duration: 30,
+        duration: rules.slotMinutes,
         status: 'pending',
         reason: body.reason,
         room: body.room,

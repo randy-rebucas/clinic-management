@@ -68,10 +68,11 @@ export async function sendEmail(options: EmailOptions): Promise<{ success: boole
   const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@clinic.com';
 
   if (!emailTransporter) {
-    // SMTP not configured - email logged only
+    // Nothing went out: callers must not record this as delivered.
     return {
-      success: true,
-      error: 'SMTP not configured - email logged only',
+      success: false,
+      skipped: true,
+      error: 'SMTP not configured - email not sent',
     };
   }
 
