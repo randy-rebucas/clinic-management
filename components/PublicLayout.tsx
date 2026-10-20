@@ -9,6 +9,44 @@ interface PublicLayoutProps {
   children: React.ReactNode;
 }
 
+// Only pages with real, supported content. Demos aren't offered (the free trial replaces them).
+const footerColumns = [
+  {
+    title: 'Product',
+    links: [
+      { href: '/features', label: 'Features' },
+      { href: '/pricing', label: 'Pricing' },
+      { href: '/compare', label: 'Compare' },
+      { href: '/integrations', label: 'Integrations' },
+      { href: '/security', label: 'Security' },
+    ],
+  },
+  {
+    title: 'Patients',
+    links: [
+      { href: '/onboard', label: 'Register' },
+      { href: '/book', label: 'Book appointment' },
+      { href: '/medical-representatives/onboard', label: 'Medical reps' },
+    ],
+  },
+  {
+    title: 'Support',
+    links: [
+      { href: '/support', label: 'Help center' },
+      { href: '/faq', label: 'FAQ' },
+      { href: '/contact', label: 'Contact' },
+      { href: '/about', label: 'About us' },
+    ],
+  },
+  {
+    title: 'Legal',
+    links: [
+      { href: '/privacy', label: 'Privacy Policy' },
+      { href: '/terms', label: 'Terms of Service' },
+    ],
+  },
+];
+
 export default function PublicLayout({ children }: PublicLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -120,56 +158,48 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
         {/* Footer */}
         <footer className="bg-white border-t border-gray-200 py-8 sm:py-12">
           <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-4">Product</h3>
-                <ul className="space-y-2">
-                  <li><Link href="/features" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Features</Link></li>
-                  <li><Link href="/pricing" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Pricing</Link></li>
-                  <li><Link href="/demo" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Demo</Link></li>
-                  <li><Link href="/integrations" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Integrations</Link></li>
-                  <li><Link href="/compare" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Compare</Link></li>
-                </ul>
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-8 mb-8">
+              {/* Brand */}
+              <div className="col-span-2">
+                <Link href="/" className="inline-flex items-center gap-2.5 mb-3">
+                  <BrandLogo size={28} rounded="rounded-lg" />
+                  <span className="font-bold text-gray-900 tracking-tight">MyClinicSoft</span>
+                </Link>
+                <p className="text-sm text-gray-600 max-w-xs mb-4">
+                  Clinic management for Philippine clinics — records, scheduling, queues, and billing in one place.
+                </p>
+                <Link
+                  href="/tenant-onboard"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-brand-teal px-3.5 py-2 text-sm font-semibold text-white hover:bg-brand-teal-dark transition-colors"
+                >
+                  Start 14-day free trial
+                </Link>
               </div>
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-4">Company</h3>
-                <ul className="space-y-2">
-                  <li><Link href="/about" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">About Us</Link></li>
-                  <li><Link href="/testimonials" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Testimonials</Link></li>
-                  <li><Link href="/contact" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Contact</Link></li>
-                  <li><Link href="/security" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Security</Link></li>
-                </ul>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-4">Resources</h3>
-                <ul className="space-y-2">
-                  <li><Link href="/resources" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Resources</Link></li>
-                  <li><Link href="/support" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Support</Link></li>
-                  <li><Link href="/faq" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">FAQ</Link></li>
-                </ul>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-4">Legal</h3>
-                <ul className="space-y-2">
-                  <li><Link href="/privacy" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Privacy Policy</Link></li>
-                  <li><Link href="/terms" className="text-sm text-gray-600 hover:text-brand-teal transition-colors">Terms of Service</Link></li>
-                </ul>
-              </div>
+              {footerColumns.map((col) => (
+                <div key={col.title}>
+                  <h3 className="font-semibold text-gray-900 mb-4">{col.title}</h3>
+                  <ul className="space-y-2">
+                    {col.links.map((l) => (
+                      <li key={l.href}>
+                        <Link href={l.href} className="text-sm text-gray-600 hover:text-brand-teal transition-colors">
+                          {l.label}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
             <div className="border-t border-gray-200 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="text-center sm:text-left">
-                <p className="text-sm text-gray-600">
-                  © {new Date().getFullYear()} <span className="font-semibold text-gray-900">MyClinicSoft</span>. All rights reserved.
-                </p>
-              </div>
-              <div className="flex items-center gap-6">
-                <a
-                  href="mailto:support@myclinicsoft.solutions"
-                  className="text-sm text-gray-600 hover:text-brand-teal transition-colors"
-                >
-                  Support
-                </a>
-              </div>
+              <p className="text-sm text-gray-600 text-center sm:text-left">
+                © {new Date().getFullYear()} <span className="font-semibold text-gray-900">MyClinicSoft</span>. All rights reserved.
+              </p>
+              <a
+                href="mailto:support@myclinicsoft.solutions"
+                className="text-sm text-gray-600 hover:text-brand-teal transition-colors"
+              >
+                support@myclinicsoft.solutions
+              </a>
             </div>
           </div>
         </footer>

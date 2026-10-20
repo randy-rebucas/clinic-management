@@ -11,7 +11,7 @@ export default function PricingPage() {
     {
       name: 'Trial',
       price: 0,
-      period: '7 days',
+      period: '14 days',
       description: 'Perfect for testing the system',
       features: [
         'Up to 50 patients',
@@ -25,7 +25,7 @@ export default function PricingPage() {
       limitations: [
         'No advanced reporting',
         'No API access',
-        'Limited to 7 days',
+        'Limited to 14 days',
       ],
       cta: 'Start Free Trial',
       ctaLink: '/tenant-onboard',
@@ -130,7 +130,7 @@ export default function PricingPage() {
               </span>
             </h1>
             <p className="text-xl sm:text-2xl text-gray-700 max-w-3xl mx-auto leading-relaxed">
-              Choose the perfect plan for your clinic. All plans include a 7-day free trial.
+              Choose the perfect plan for your clinic. All plans include a 14-day free trial.
             </p>
           </div>
         </div>
@@ -237,7 +237,7 @@ export default function PricingPage() {
             </div>
             <div className="bg-white/80 backdrop-blur-sm rounded-xl p-6 shadow-lg">
               <h3 className="text-lg font-bold text-gray-900 mb-2">What happens after the trial?</h3>
-              <p className="text-gray-600">After your 7-day trial, you&apos;ll need to choose a paid plan to continue using MyClinicSoft. Your data is preserved during the transition.</p>
+              <p className="text-gray-600">After your 14-day trial, you&apos;ll need to choose a paid plan to continue using MyClinicSoft. Your data is preserved during the transition.</p>
             </div>
             <div className="bg-white/80 backdrop-blur-sm rounded-xl p-6 shadow-lg">
               <h3 className="text-lg font-bold text-gray-900 mb-2">Do you offer refunds?</h3>
@@ -267,7 +267,7 @@ export default function PricingPage() {
             Ready to Get Started?
           </h2>
           <p className="text-base sm:text-lg lg:text-xl text-blue-100 mb-8 sm:mb-12 max-w-2xl mx-auto leading-relaxed">
-            Start your free 7-day trial today. No credit card required.
+            Start your free 14-day trial today. No credit card required.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <Link

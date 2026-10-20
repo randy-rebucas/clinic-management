@@ -28,23 +28,13 @@ export default function SupportPage() {
       description: 'Send us an email and we\'ll get back to you',
       link: '/contact',
     },
-    {
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-        </svg>
-      ),
-      title: 'Live Chat',
-      description: 'Chat with our support team in real-time',
-      link: '#',
-    },
   ];
 
   const quickLinks = [
-    { title: 'Getting Started', link: '/resources' },
-    { title: 'Video Tutorials', link: '/resources' },
-    { title: 'API Documentation', link: '/resources' },
-    { title: 'System Status', link: '#' },
+    { title: 'Feature Overview', link: '/features' },
+    { title: 'Plans & Pricing', link: '/pricing' },
+    { title: 'Security & Privacy', link: '/security' },
+    { title: 'Integrations', link: '/integrations' },
     { title: 'Feature Requests', link: '/contact' },
     { title: 'Report a Bug', link: '/contact' },
   ];
@@ -82,7 +72,7 @@ export default function SupportPage() {
       {/* Support Options */}
       <section className="relative py-12 sm:py-16 lg:py-20 px-4 sm:px-6 lg:px-8">
         <div className="container mx-auto max-w-7xl">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8 mb-12">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8 mb-12 max-w-3xl mx-auto">
             {supportOptions.map((option, index) => (
               <Link
                 key={index}

@@ -80,7 +80,7 @@ export default async function RootLayout({
   return (
     <html lang="en" data-scroll-behavior="smooth">
       <head>
-        <meta name="theme-color" content="#2563eb" />
+        <meta name="theme-color" content="#0a7f7e" />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}

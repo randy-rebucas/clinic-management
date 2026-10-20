@@ -247,9 +247,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create tenant with 7-day trial subscription
+    // Create tenant with 14-day trial subscription
     const trialExpiresAt = new Date();
-    trialExpiresAt.setDate(trialExpiresAt.getDate() + 7); // 7 days from now
+    trialExpiresAt.setDate(trialExpiresAt.getDate() + 14); // 14 days from now
 
     const tenantData: any = {
       name: name.trim(),

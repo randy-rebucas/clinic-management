@@ -81,13 +81,13 @@ export default function TermsPage() {
               <section>
                 <h2 className="text-2xl font-bold text-gray-900 mb-4">5. Free Trial</h2>
                 <p className="text-gray-700 leading-relaxed mb-4">
-                  We offer a 7-day free trial. During the trial:
+                  We offer a 14-day free trial. During the trial:
                 </p>
                 <ul className="list-disc pl-6 space-y-2 text-gray-700">
                   <li>You have full access to all features</li>
                   <li>No credit card required to start</li>
                   <li>Your data is preserved if you subscribe after trial</li>
-                  <li>Service automatically expires after 7 days unless you subscribe</li>
+                  <li>Service automatically expires after 14 days unless you subscribe</li>
                 </ul>
               </section>
 
