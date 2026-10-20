@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import ClinicalTemplate from '@/models/ClinicalTemplate';
+import '@/models/User';
 import { isAdmin, requirePermission } from '@/app/lib/auth-helpers';
-import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
+import { requireTenantSession, isTenantSessionError, isValidId, type TenantSession } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
-import { duplicateShortcut, toDTO, updateTemplateSchema } from '../_lib/shared';
+import { createAuditLog } from '@/lib/audit';
+import { duplicateShortcut, ownerIdOf, toDTO, updateTemplateSchema } from '../_lib/shared';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -15,6 +17,35 @@ function editableFilter(id: string, tenantId: unknown, userId: string, admin: bo
     tenantId,
     ...(admin ? { $or: [{ ownerId: userId }, { shared: true }] } : { ownerId: userId }),
   };
+}
+
+/**
+ * A change to your own template is your business; an administrator changing or removing a
+ * colleague's shared template is recorded, so the owner can see who did it.
+ */
+async function auditOthers(
+  ctx: TenantSession,
+  doc: { _id: unknown; name: string; kind: string; ownerId: unknown },
+  action: 'update' | 'delete',
+  changed: string[] = []
+) {
+  const ownerId = ownerIdOf(doc as Parameters<typeof ownerIdOf>[0]);
+  if (ownerId === ctx.session.userId) return;
+  const owner = (doc.ownerId as { name?: string })?.name ?? 'a colleague';
+  await createAuditLog({
+    userId: ctx.session.userId,
+    userEmail: ctx.session.email,
+    userRole: ctx.session.role,
+    tenantId: ctx.tenantId,
+    action,
+    resource: 'clinical_template',
+    resourceId: String(doc._id),
+    description:
+      action === 'delete'
+        ? `Removed “${doc.name}”, a shared ${doc.kind} template by ${owner}`
+        : `Changed “${doc.name}”, a shared ${doc.kind} template by ${owner}: ${changed.join(', ') || 'no fields'}`,
+    metadata: { ownerId, kind: doc.kind },
+  });
 }
 
 /** PUT /api/clinical-templates/:id — rename, share, or replace content. */
@@ -33,7 +64,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
   await connectDB();
   const admin = isAdmin(session);
-  const doc = await ClinicalTemplate.findOne(editableFilter(id, tenantObjectId, session.userId, admin));
+  const doc = await ClinicalTemplate.findOne(editableFilter(id, tenantObjectId, session.userId, admin)).populate('ownerId', 'name');
   if (!doc) return NextResponse.json({ success: false, error: 'Template not found' }, { status: 404 });
 
   const input = parsed.data;
@@ -52,6 +83,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     doc.set('medications', input.medications);
   }
 
+  const changed = doc.modifiedPaths({ includeChildren: false }).filter((p) => !p.includes('.'));
   try {
     await doc.save();
   } catch (error) {
@@ -61,6 +93,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
     console.error('Error updating clinical template:', error);
     return NextResponse.json({ success: false, error: 'Could not save the template.' }, { status: 500 });
   }
+  if (changed.length) await auditOthers(ctx, doc, 'update', changed);
   return NextResponse.json({ success: true, data: toDTO(doc.toObject() as any, session.userId, admin) });
 }
 
@@ -76,7 +109,10 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
   if (!isValidId(id)) return NextResponse.json({ success: false, error: 'Template not found' }, { status: 404 });
 
   await connectDB();
-  const result = await ClinicalTemplate.deleteOne(editableFilter(id, tenantObjectId, session.userId, isAdmin(session)));
-  if (!result.deletedCount) return NextResponse.json({ success: false, error: 'Template not found' }, { status: 404 });
+  const doc = await ClinicalTemplate.findOneAndDelete(editableFilter(id, tenantObjectId, session.userId, isAdmin(session)))
+    .populate('ownerId', 'name')
+    .lean();
+  if (!doc) return NextResponse.json({ success: false, error: 'Template not found' }, { status: 404 });
+  await auditOthers(ctx, doc, 'delete');
   return NextResponse.json({ success: true });
 }

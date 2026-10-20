@@ -70,11 +70,18 @@ type TemplateRow = {
   visit?: ClinicalTemplateDTO['visit'] & { physicalExam?: Record<string, string> | Map<string, string> };
   medications?: ClinicalTemplateDTO['medications'];
   usageCount?: number;
+  lastUsedAt?: Date;
 };
 
+/** The owner's id, whether or not `ownerId` was populated. */
+export function ownerIdOf(row: Pick<TemplateRow, 'ownerId'>): string {
+  const owner = row.ownerId as { _id?: { toString(): string } };
+  return owner?._id ? owner._id.toString() : row.ownerId.toString();
+}
+
 export function toDTO(row: TemplateRow, userId: string, admin: boolean): ClinicalTemplateDTO {
-  const owner = row.ownerId as { _id?: { toString(): string }; name?: string };
-  const ownerId = owner?._id ? owner._id.toString() : row.ownerId.toString();
+  const owner = row.ownerId as { name?: string };
+  const mine = ownerIdOf(row) === userId;
   const pe = row.visit?.physicalExam;
   return {
     _id: row._id.toString(),
@@ -82,7 +89,8 @@ export function toDTO(row: TemplateRow, userId: string, admin: boolean): Clinica
     name: row.name,
     specialty: row.specialty || undefined,
     shared: Boolean(row.shared),
-    mine: ownerId === userId || (admin && Boolean(row.shared)),
+    mine,
+    canEdit: mine || (admin && Boolean(row.shared)),
     ownerName: owner?.name,
     shortcut: row.shortcut || undefined,
     text: row.text,
@@ -91,6 +99,7 @@ export function toDTO(row: TemplateRow, userId: string, admin: boolean): Clinica
       : undefined,
     medications: row.medications,
     usageCount: row.usageCount ?? 0,
+    lastUsedAt: row.lastUsedAt ? new Date(row.lastUsedAt).toISOString() : undefined,
   };
 }
 

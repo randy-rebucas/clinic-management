@@ -882,6 +882,7 @@ export default function PrescriptionForm({
           open
           onClose={() => setPicker(false)}
           title="Add a saved prescription"
+          kind="prescription"
           templates={tpl.templates}
           loading={tpl.loading}
           error={tpl.error}

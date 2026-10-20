@@ -1125,6 +1125,7 @@ export default function VisitForm({ initialData, patients, onSubmit, onCancel, o
           open
           onClose={() => setPicker(null)}
           title={picker === 'visit' ? 'Apply a template' : 'Add a saved prescription'}
+          kind={picker}
           templates={picker === 'visit' ? visitTemplates : rxTemplates}
           loading={tpl.loading}
           error={tpl.error}

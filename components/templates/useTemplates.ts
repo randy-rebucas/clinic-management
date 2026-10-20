@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ClinicalTemplateDTO, TemplateKind } from '@/lib/clinical-templates';
 
-type CreateInput = Omit<ClinicalTemplateDTO, '_id' | 'mine' | 'usageCount' | 'shared' | 'starter' | 'ownerName'> & { shared?: boolean };
+type CreateInput = Omit<ClinicalTemplateDTO, '_id' | 'mine' | 'canEdit' | 'usageCount' | 'lastUsedAt' | 'shared' | 'starter' | 'ownerName'> & { shared?: boolean };
 
 export interface TemplatesState {
   templates: ClinicalTemplateDTO[];
@@ -34,9 +34,10 @@ async function send(url: string, method: string, body?: unknown) {
 
 export function useTemplates(kind?: TemplateKind): TemplatesState {
   const [templates, setTemplates] = useState<ClinicalTemplateDTO[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+  // Loading is derived: the request key differs from the last one that settled.
+  const key = `${kind ?? 'all'}:${nonce}`;
+  const [settled, setSettled] = useState<{ key: string; error: string | null }>({ key: '', error: null });
 
   useEffect(() => {
     let alive = true;
@@ -46,15 +47,17 @@ export function useTemplates(kind?: TemplateKind): TemplatesState {
         if (!alive) return;
         if (json?.success) {
           setTemplates(json.data);
-          setError(null);
-        } else setError(json?.error || 'Templates could not be loaded.');
+          setSettled({ key, error: null });
+        } else setSettled({ key, error: json?.error || 'Templates could not be loaded.' });
       })
-      .catch(() => alive && setError('Templates could not be loaded.'))
-      .finally(() => alive && setLoading(false));
+      .catch(() => alive && setSettled({ key, error: 'Templates could not be loaded.' }));
     return () => {
       alive = false;
     };
-  }, [kind, nonce]);
+  }, [kind, key]);
+
+  const loading = settled.key !== key;
+  const error = loading ? null : settled.error;
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 
@@ -77,7 +80,7 @@ export function useTemplates(kind?: TemplateKind): TemplatesState {
 
   const markUsed = useCallback((id: string) => {
     if (id.startsWith('starter:')) return;
-    setTemplates((list) => list.map((t) => (t._id === id ? { ...t, usageCount: t.usageCount + 1 } : t)));
+    setTemplates((list) => list.map((t) => (t._id === id ? { ...t, usageCount: t.usageCount + 1, lastUsedAt: new Date().toISOString() } : t)));
     fetch(`/api/clinical-templates/${id}/use`, { method: 'POST' }).catch(() => {});
   }, []);
 
