@@ -2,7 +2,7 @@ import webpush from 'web-push';
 import { Expo, ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
 import connectDB from '@/lib/mongodb';
 import PushSubscription from '@/models/PushSubscription';
-import MobileDevice from '@/models/MobileDevice';
+import MobileDevice, { PushCategory } from '@/models/MobileDevice';
 import { Types } from 'mongoose';
 
 const expo = new Expo();
@@ -131,16 +131,32 @@ export async function sendPushToUserDevices(
   return sendToMobileDevices({ userId: new Types.ObjectId(userId) }, payload);
 }
 
+/**
+ * The mutable category a push belongs to, from its tag (the same prefixes the app routes on).
+ * Untagged or unknown pushes have no category and can't be muted per category.
+ */
+export function pushCategoryForTag(tag: string | undefined): PushCategory | null {
+  if (!tag) return null;
+  if (tag.startsWith('appointment-')) return 'appointments';
+  if (tag.startsWith('lab-result-')) return 'labResults';
+  if (tag.startsWith('queue-')) return 'queue';
+  if (tag.startsWith('message-')) return 'messages';
+  return null;
+}
+
 async function sendToMobileDevices(
   owner: { patientId: { $in: Types.ObjectId[] }; $or?: Record<string, unknown>[] } | { userId: Types.ObjectId },
   payload: PushPayload
 ): Promise<{ sent: boolean }> {
   await connectDB();
 
+  // Devices that muted this category on the Notification Settings screen are skipped.
+  const category = pushCategoryForTag(payload.tag);
   const devices = await MobileDevice.find({
     ...owner,
     revokedAt: null,
     pushToken: { $ne: null },
+    ...(category ? { [`pushPrefs.${category}`]: { $ne: false } } : {}),
   }).lean();
 
   const validDevices = devices.filter((d) => d.pushToken && Expo.isExpoPushToken(d.pushToken));

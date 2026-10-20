@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { BRAND_GRADIENT, BRAND_HEART_PATH, BRAND_PULSE_COLOR, BRAND_PULSE_PATH } from "@/lib/brand-mark";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
@@ -14,7 +15,7 @@ export default function OpengraphImage() {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          background: "linear-gradient(135deg, #0F172A 0%, #0E4C63 100%)",
+          background: "linear-gradient(135deg, #0B2136 0%, #0A4F57 100%)",
         }}
       >
         <div
@@ -25,26 +26,18 @@ export default function OpengraphImage() {
             borderRadius: 32,
             alignItems: "center",
             justifyContent: "center",
-            background: "linear-gradient(135deg, #0EA5A4 0%, #2563EB 100%)",
+            background: BRAND_GRADIENT,
             marginBottom: 36,
           }}
         >
-          <svg width="86" height="86" viewBox="0 0 24 24" fill="none">
+          <svg width="92" height="92" viewBox="0 0 24 24" fill="none">
+            <path d={BRAND_HEART_PATH} fill="white" />
             <path
-              d="M12 2 L21 6 V12 C21 17 17 21 12 22 C7 21 3 17 3 12 V6 Z"
-              fill="white"
-              fillOpacity="0.18"
-            />
-            <path
-              d="M12 2 L21 6 V12 C21 17 17 21 12 22 C7 21 3 17 3 12 V6 Z"
-              stroke="white"
-              strokeWidth="1.2"
-            />
-            <path
-              d="M12 7.5 V16.5 M7.5 12 H16.5"
-              stroke="white"
-              strokeWidth="2.2"
+              d={BRAND_PULSE_PATH}
+              stroke={BRAND_PULSE_COLOR}
+              strokeWidth="1.6"
               strokeLinecap="round"
+              strokeLinejoin="round"
             />
           </svg>
         </div>

@@ -25,7 +25,7 @@ export default function FAQPage() {
         },
         {
           q: 'Can I try MyClinicSoft before purchasing?',
-          a: 'Yes! We offer a 7-day free trial with full access to all features. No credit card required to start your trial.',
+          a: 'Yes! We offer a 14-day free trial with full access to all features. No credit card required to start your trial.',
         },
       ],
     },

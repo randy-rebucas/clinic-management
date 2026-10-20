@@ -1,10 +1,10 @@
-import Image from "next/image";
+import BrandLogo from "@/components/BrandLogo";
 
 export default function MarketingFunnelPage() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex flex-col items-center justify-center px-4 py-12">
       <section className="max-w-2xl w-full bg-white rounded-xl shadow-lg p-8 flex flex-col items-center">
-        <Image src="/logo.png" alt="MyClinicSoft Logo" width={150} height={150} className="mb-4" />
+        <BrandLogo size={88} rounded="rounded-2xl" className="mb-6 shadow-lg" />
         <h1 className="text-4xl font-bold text-blue-700 mb-2 text-center">Transform Your Clinic with MyClinicSoft</h1>
         <p className="text-lg text-gray-700 mb-6 text-center">
           The all-in-one, modern clinic management platform for patient care, operations, and growth.

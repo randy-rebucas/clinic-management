@@ -115,6 +115,8 @@ after linking joins at the patient's next code sign-in.
 | `DELETE /api/patients/me/login-qr` | Revoke the login QR **and sign out every session** (a QR that was already scanned can't be told apart). The caller gets a new `token`, `expiresIn`, `refreshToken`, `refreshExpiresIn`. Optional `{ deviceId }` keeps this device's push |
 | `POST /api/patients/me/devices` | `{ deviceId, platform: "ios"\|"android", pushToken?, appVersion? }`. Call after sign-in, after a password change, and when the Expo token changes. **Changed:** a device or push token belongs to one patient at a time; registering it removes any other patient's registration of the same `deviceId` or `pushToken` |
 | `DELETE /api/patients/me/devices?deviceId=…` | Unregister from push |
+| `GET /api/patients/me/devices/preferences?deviceId=…` | **New.** Which push categories this device gets → `{ appointments, labResults, queue, messages }` (booleans; unset = `true`). `404 DEVICE_NOT_FOUND` until the device is registered |
+| `PATCH /api/patients/me/devices/preferences` | **New.** `{ deviceId, appointments?, labResults?, queue?, messages? }`, only the categories sent change. Returns the full set. A muted category is skipped at send time by its push tag (`appointment-`, `lab-result-`, `queue-`, `message-`); SMS, email and the in-app inbox are unaffected |
 
 ### Records (read-only, paginated, newest first)
 

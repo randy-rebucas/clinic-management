@@ -8,6 +8,10 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
  * Distinct from PushSubscription, which stores browser web-push (VAPID)
  * subscriptions for staff users — different payload shape, different channel.
  */
+/** Push categories a patient can mute on one device. A missing or true value means "send". */
+export const PUSH_CATEGORIES = ['appointments', 'labResults', 'queue', 'messages'] as const;
+export type PushCategory = (typeof PUSH_CATEGORIES)[number];
+
 export interface IMobileDevice extends Document {
   patientId?: Types.ObjectId;
   userId?: Types.ObjectId;
@@ -16,6 +20,7 @@ export interface IMobileDevice extends Document {
   pushToken?: string;
   platform: 'ios' | 'android';
   appVersion?: string;
+  pushPrefs?: Partial<Record<PushCategory, boolean>>;
   lastSeenAt: Date;
   revokedAt?: Date;
   createdAt: Date;
@@ -31,6 +36,12 @@ const MobileDeviceSchema = new Schema<IMobileDevice>(
     pushToken: { type: String },
     platform: { type: String, enum: ['ios', 'android'], required: true },
     appVersion: { type: String },
+    pushPrefs: {
+      appointments: { type: Boolean },
+      labResults: { type: Boolean },
+      queue: { type: Boolean },
+      messages: { type: Boolean },
+    },
     lastSeenAt: { type: Date, default: Date.now },
     revokedAt: { type: Date },
   },

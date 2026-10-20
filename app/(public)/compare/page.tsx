@@ -145,7 +145,7 @@ export default function ComparePage() {
             Ready to Make the Switch?
           </h2>
           <p className="text-base sm:text-lg lg:text-xl text-blue-100 mb-8 sm:mb-12 max-w-2xl mx-auto leading-relaxed">
-            Start your free 7-day trial and experience the difference.
+            Start your free 14-day trial and experience the difference.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <Link
