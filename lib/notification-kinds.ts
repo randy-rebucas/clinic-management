@@ -14,6 +14,9 @@ export const NOTIFICATION_TYPES = [
   'referral_followup_reminder',
   'referral_escalation',
   'patient_reengagement',
+  'message',
+  'announcement',
+  'support',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -31,7 +34,20 @@ export const TYPE_LABEL: Record<NotificationType, string> = {
   referral_followup_reminder: 'Referral',
   referral_escalation: 'Referral',
   patient_reengagement: 'Patient follow-up',
+  message: 'Message',
+  announcement: 'From MyClinicSoft',
+  support: 'Support',
 };
+
+export type NotificationSenderKind = 'system' | 'staff' | 'platform' | 'support';
+
+/** "From …" line for a notification someone sent; null for automatic ones. */
+export function senderLabel(sender?: { kind?: string; name?: string | null } | null): string | null {
+  if (!sender?.kind || sender.kind === 'system') return null;
+  if (sender.kind === 'platform') return 'From MyClinicSoft';
+  if (sender.kind === 'support') return 'From MyClinicSoft support';
+  return sender.name ? `From ${sender.name}` : 'From a colleague';
+}
 
 /** Filter groups: a handful of plain kinds instead of thirteen internal types. */
 export const NOTIFICATION_GROUPS = {
@@ -39,8 +55,8 @@ export const NOTIFICATION_GROUPS = {
   clinical: { label: 'Clinical', types: ['visit', 'prescription', 'lab_result', 'visit_followup_reminder'] },
   referrals: { label: 'Referrals', types: ['referral_followup_reminder', 'referral_escalation'] },
   billing: { label: 'Billing', types: ['invoice', 'membership_expiry_reminder'] },
-  clinic: { label: 'Stock, documents & account', types: ['system'] },
-  messages: { label: 'Reminders & announcements', types: ['reminder', 'broadcast', 'patient_reengagement'] },
+  clinic: { label: 'Stock, documents & account', types: ['system', 'support'] },
+  messages: { label: 'Messages & announcements', types: ['message', 'announcement', 'reminder', 'broadcast', 'patient_reengagement'] },
 } as const satisfies Record<string, { label: string; types: readonly NotificationType[] }>;
 export type NotificationGroup = keyof typeof NOTIFICATION_GROUPS;
 export const GROUP_KEYS = Object.keys(NOTIFICATION_GROUPS) as NotificationGroup[];

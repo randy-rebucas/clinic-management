@@ -1,26 +1,13 @@
 // Notification helper functions for creating in-app notifications
 
 import connectDB from '@/lib/mongodb';
-import Notification from '@/models/Notification';
+import Notification, { type NotificationType, type NotificationSenderKind } from '@/models/Notification';
 import { Types } from 'mongoose';
 
 export interface CreateNotificationOptions {
   userId: string | Types.ObjectId;
   tenantId?: string | Types.ObjectId; // Tenant ID for multi-tenant support
-  type:
-    | 'appointment'
-    | 'visit'
-    | 'prescription'
-    | 'lab_result'
-    | 'invoice'
-    | 'reminder'
-    | 'system'
-    | 'broadcast'
-    | 'visit_followup_reminder'
-    | 'membership_expiry_reminder'
-    | 'referral_followup_reminder'
-    | 'referral_escalation'
-    | 'patient_reengagement';
+  type: NotificationType;
   priority?: 'low' | 'normal' | 'high' | 'urgent';
   title: string;
   message: string;
@@ -31,6 +18,18 @@ export interface CreateNotificationOptions {
   actionUrl?: string;
   metadata?: { [key: string]: any };
   expiresAt?: Date;
+  /** Who sent it. Leave out for automatic notifications ('system'). */
+  sender?: { kind: NotificationSenderKind; userId?: string | Types.ObjectId; name?: string };
+  /**
+   * Also push it to the person's browsers and mobile devices. Defaults to on for high and
+   * urgent notifications, off otherwise (routine notices would be noise on a phone).
+   */
+  push?: boolean;
+}
+
+/** Whether a notification is pushed when the caller does not say. */
+export function pushByDefault(priority: CreateNotificationOptions['priority']): boolean {
+  return priority === 'high' || priority === 'urgent';
 }
 
 /**
@@ -64,6 +63,13 @@ export async function createNotification(options: CreateNotificationOptions): Pr
       metadata: options.metadata,
       expiresAt: options.expiresAt,
       read: false,
+      sender: options.sender
+        ? {
+            kind: options.sender.kind,
+            userId: options.sender.userId ? new Types.ObjectId(String(options.sender.userId)) : undefined,
+            name: options.sender.name,
+          }
+        : { kind: 'system' },
     };
     
     if (tenantId) {
@@ -71,6 +77,17 @@ export async function createNotification(options: CreateNotificationOptions): Pr
     }
     
     const notification = await Notification.create(notificationData);
+
+    if (options.push ?? pushByDefault(options.priority)) {
+      const { pushNotificationToStaff } = await import('./notify');
+      pushNotificationToStaff([String(options.userId)], {
+        title: options.title,
+        message: options.message,
+        actionUrl: options.actionUrl,
+        tenantId: notificationData.tenantId ? String(notificationData.tenantId) : null,
+        tag: `notification-${notification._id}`,
+      });
+    }
     return notification;
   } catch (error: any) {
     console.error('Error creating notification:', error);

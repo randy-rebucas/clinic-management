@@ -17,6 +17,7 @@ vi.mock('@/models/Appointment', () => ({ default: { find: vi.fn() } }));
 vi.mock('@/models/LabResult', () => ({ default: { find: vi.fn() } }));
 vi.mock('@/models/Invoice', () => ({ default: { find: vi.fn() } }));
 vi.mock('@/models/Prescription', () => ({ default: { find: vi.fn() } }));
+vi.mock('@/models/PatientMessage', () => ({ default: { find: vi.fn() } }));
 
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
 import Patient from '@/models/Patient';
@@ -24,6 +25,7 @@ import Appointment from '@/models/Appointment';
 import LabResult from '@/models/LabResult';
 import Invoice from '@/models/Invoice';
 import Prescription from '@/models/Prescription';
+import PatientMessage from '@/models/PatientMessage';
 import { GET, PATCH } from '@/app/api/patients/me/notifications/route';
 import { notificationId } from '@/app/api/patients/me/_lib/notification-id';
 
@@ -57,8 +59,9 @@ describe('notificationId', () => {
     expect(notificationId('apt', 'a1', 'pending')).not.toBe(notificationId('apt', 'a1', 'confirmed'));
   });
 
-  it('prescriptions notify once, with no status part', () => {
+  it('prescriptions and clinic messages notify once, with no status part', () => {
     expect(notificationId('rx', 'r1', 'dispensed')).toBe('rx-r1');
+    expect(notificationId('msg', 'm1')).toBe('msg-m1');
   });
 
   it('strips characters that do not belong in an id', () => {
@@ -80,6 +83,21 @@ describe('patient notifications', () => {
     ]));
     vi.mocked(Invoice.find).mockReturnValue(chain([]));
     vi.mocked(Prescription.find).mockReturnValue(chain([]));
+    vi.mocked(PatientMessage.find).mockReturnValue(chain([]));
+  });
+
+  it('includes messages the clinic sent, named by sender, with no screen to open', async () => {
+    vi.mocked(PatientMessage.find).mockReturnValue(chain([
+      { _id: 'm1', kind: 'message', title: 'About your follow-up', message: 'Please come in fasting.', sender: { kind: 'staff', name: 'Dr. Reyes' }, createdAt: new Date('2026-10-15') },
+      { _id: 'm2', kind: 'announcement', title: 'Closed on Monday', message: 'Holiday.', sender: { kind: 'clinic' }, createdAt: new Date('2026-10-14') },
+    ]));
+    const body = await getFeed();
+    const messages = body.data.filter((n: any) => n.type === 'message');
+    expect(messages).toMatchObject([
+      { id: 'msg-m1', title: 'About your follow-up', message: 'Please come in fasting.', read: false, target: { screen: 'messages', id: 'm1' }, metadata: { from: 'Dr. Reyes' } },
+      { id: 'msg-m2', metadata: { from: 'Your clinic' } },
+    ]);
+    expect(body.data[0].id).toBe('msg-m1'); // newest first
   });
 
   it('gives each item an app navigation target instead of a web portal URL', async () => {

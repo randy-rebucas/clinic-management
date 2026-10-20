@@ -11,7 +11,7 @@ export function RequestLinkForm() {
   if (state?.sent) {
     return (
       <p role="status" className="rounded-md bg-brand-teal-light px-4 py-3 text-sm text-brand-navy">
-        If that address belongs to a platform admin, a sign-in link is on its way. It works once, for 15 minutes.
+        If that address belongs to a platform admin, a sign-in link has been written to the server log. It works once, for 15 minutes.
       </p>
     );
   }
@@ -22,7 +22,7 @@ export function RequestLinkForm() {
         <input id="email" name="email" type="email" autoComplete="email" required className={FIELD} />
       </div>
       {state?.error && <p role="alert" className="text-sm text-rose-700">{state.error}</p>}
-      <button type="submit" disabled={pending} className={BUTTON}>{pending ? 'Sending…' : 'Email me a sign-in link'}</button>
+      <button type="submit" disabled={pending} className={BUTTON}>{pending ? 'Creating…' : 'Get a sign-in link'}</button>
     </form>
   );
 }

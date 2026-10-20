@@ -76,6 +76,35 @@ async function notifyRequester(to: string, id: string, subject: string, message:
 }
 
 /**
+ * The requester's in-app notification (and push): clinic staff open it on the clinic's
+ * support page; medical representatives see it in the mobile app. Never throws.
+ */
+export async function notifyRequesterInApp(
+  ticket: { userId?: unknown; tenantId?: unknown },
+  id: string,
+  title: string,
+  message: string
+) {
+  if (!ticket.userId) return;
+  try {
+    const { notifyStaff } = await import('@/lib/notify');
+    await notifyStaff({
+      tenantId: ticket.tenantId ? String(ticket.tenantId) : null,
+      audience: { userIds: [String(ticket.userId)] },
+      type: 'support',
+      title: title.slice(0, 200),
+      message: message.slice(0, 2000),
+      priority: 'high',
+      actionUrl: ticket.tenantId ? `/admin/support/${id}` : undefined,
+      sender: { kind: 'support', name: 'MyClinicSoft support' },
+      metadata: { supportRequestId: id },
+    });
+  } catch (error) {
+    console.error('[support] in-app notification failed:', error);
+  }
+}
+
+/**
  * Append a reply. A requester reply reopens a resolved request; a platform reply moves an
  * open request to in-progress unless a status is given.
  */
@@ -92,7 +121,7 @@ export async function addSupportReply(opts: {
   await connectDB();
   const filter: Record<string, unknown> = { _id: opts.id };
   if (opts.tenantId) filter.tenantId = new Types.ObjectId(opts.tenantId);
-  const ticket = await SupportRequest.findOne(filter).select('status email subject tenantId').lean<any>();
+  const ticket = await SupportRequest.findOne(filter).select('status email subject tenantId userId').lean<any>();
   if (!ticket) return null;
 
   let status: SupportStatus = opts.status ?? ticket.status;
@@ -108,6 +137,7 @@ export async function addSupportReply(opts: {
 
   if (opts.authorType === 'platform') {
     void notifyRequester(ticket.email, opts.id, ticket.subject, opts.message, status);
+    await notifyRequesterInApp(ticket, opts.id, `Support replied: ${ticket.subject}`, opts.message);
   } else {
     void notifyPlatformTeam(opts.id, ticket.subject, opts.clinicName ?? 'a clinic', opts.authorEmail, opts.message, false);
   }

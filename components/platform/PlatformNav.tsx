@@ -7,6 +7,7 @@ const SECTIONS = [
   { label: 'Overview', href: '/platform' },
   { label: 'Clinics', href: '/platform/clinics' },
   { label: 'Support', href: '/platform/support' },
+  { label: 'Notify', href: '/platform/notifications' },
 ];
 
 export default function PlatformNav({ waiting }: { waiting: number }) {

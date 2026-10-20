@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import MessagePatientButton from './patients/MessagePatientButton';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
@@ -321,6 +322,7 @@ export default function PatientDetailClient({ patientId, permissions }: { patien
               New visit
             </Link>
           )}
+          {permissions.canMessage && <MessagePatientButton patientId={patientId} patientName={p.firstName} />}
           <MoreMenu items={more} />
         </div>
       </header>

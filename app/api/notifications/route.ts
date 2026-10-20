@@ -3,30 +3,15 @@ import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Notification from '@/models/Notification';
 import User from '@/models/User';
-import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
-import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
+import { refuseAccess } from '@/app/lib/auth-helpers';
+import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
+import { notifyStaff, MAX_STAFF_RECIPIENTS, STAFF_SENDER_ROLES } from '@/lib/notify';
+import { createAuditLog } from '@/lib/audit';
 import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
 import { requireNotificationScope, isNotificationScopeError } from './_lib/scope';
 import { GROUP_KEYS, NOTIFICATION_GROUPS, NOTIFICATION_TYPES, groupOf, type NotificationGroup } from '@/lib/notification-kinds';
 
-const LIST_FIELDS = 'type priority title message relatedEntity actionUrl read readAt createdAt';
-
-const createNotificationSchema = z.object({
-  user: zObjectId.optional(),
-  type: z.enum(NOTIFICATION_TYPES),
-  priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
-  title: z.string().trim().min(1).max(200),
-  message: z.string().trim().min(1).max(5000),
-  relatedEntity: z
-    .object({
-      type: z.enum(['appointment', 'visit', 'prescription', 'lab_result', 'invoice', 'patient']),
-      id: zObjectId,
-    })
-    .optional(),
-  // In-app links only: a path on this site, never an absolute or protocol-relative URL.
-  actionUrl: z.string().max(500).regex(/^\/(?![/\\])/, 'actionUrl must be a relative path').optional(),
-  expiresAt: z.coerce.date().optional(),
-});
+const LIST_FIELDS = 'type priority title message relatedEntity actionUrl read readAt sender.kind sender.name createdAt';
 
 /**
  * GET /api/notifications — the caller's own notifications, newest first.
@@ -93,48 +78,71 @@ export async function GET(request: NextRequest) {
   }
 }
 
+const sendSchema = z
+  .object({
+    /** Legacy single recipient. */
+    user: zObjectId.optional(),
+    userIds: z.array(zObjectId).max(MAX_STAFF_RECIPIENTS).optional(),
+    roles: z.array(z.string().trim().min(1).max(50)).max(20).optional(),
+    allStaff: z.boolean().optional(),
+    title: z.string().trim().min(1).max(200),
+    message: z.string().trim().min(1).max(2000),
+    priority: z.enum(['normal', 'high', 'urgent']).optional(),
+    // In-app links only: a path on this site, never an absolute or protocol-relative URL.
+    actionUrl: z.string().max(500).regex(/^\/(?![/\\])/,'actionUrl must be a relative path').optional(),
+  })
+  .refine((b) => b.user || b.userIds?.length || b.roles?.length || b.allStaff, { message: 'Choose who to notify' });
+
+/**
+ * POST /api/notifications — send a notification to colleagues in the clinic: chosen people,
+ * everyone in some roles, or all staff. Admins, owners and doctors only. Recipients see who it
+ * is from; it is pushed to their devices, and recorded in the audit log.
+ */
 export async function POST(request: NextRequest) {
   const ctx = await requireTenantSession();
   if (isTenantSessionError(ctx)) return ctx;
-  const { session, tenantId, tenantObjectId } = ctx;
+  const { session, tenantId } = ctx;
 
-  // Only admin can create notifications for other users
-  if (!isAdmin(session)) {
-    return refuseAccess(session, 'Unauthorized', 'notifications', 'write');
+  if (!STAFF_SENDER_ROLES.includes(session.role)) {
+    return refuseAccess(session, 'Only doctors and clinic administrators can send notifications', 'notifications', 'write');
   }
+
+  const parsed = await parseBody(request, sendSchema);
+  if (isValidationError(parsed)) return parsed;
+  const b = parsed.data;
 
   try {
     await connectDB();
-    const parsed = await parseBody(request, createNotificationSchema);
-    if (isValidationError(parsed)) return parsed;
-    const body = parsed.data;
-
-    const recipient = body.user || session.userId;
-    if (!(await User.exists(tenantFilter(tenantId, { _id: recipient })))) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
-      );
+    const me = await User.findById(session.userId).select('name').lean<{ name?: string } | null>();
+    const result = await notifyStaff({
+      tenantId,
+      audience: { userIds: [...(b.userIds ?? []), ...(b.user ? [b.user] : [])], roles: b.roles, allStaff: b.allStaff },
+      type: 'message',
+      title: b.title,
+      message: b.message,
+      priority: b.priority ?? 'normal',
+      actionUrl: b.actionUrl,
+      sender: { kind: 'staff', userId: session.userId, name: me?.name ?? session.email },
+      excludeUserId: session.userId,
+    });
+    if (!result.recipients) {
+      return NextResponse.json({ success: false, error: 'Nobody in the clinic matches those recipients.' }, { status: 400 });
     }
 
-    const notification = await Notification.create({
-      ...body,
-      user: recipient,
-      tenantId: tenantObjectId,
+    await createAuditLog({
+      userId: session.userId,
+      userEmail: session.email,
+      userRole: session.role,
+      tenantId,
+      action: 'create',
+      resource: 'notification',
+      description: `Sent "${b.title}" to ${result.recipients} staff`,
+      metadata: { batchId: result.batchId, allStaff: !!b.allStaff, roles: b.roles ?? [], people: (b.userIds ?? []).length + (b.user ? 1 : 0) },
     });
 
-    return NextResponse.json({ success: true, data: notification }, { status: 201 });
+    return NextResponse.json({ success: true, data: { recipients: result.recipients } }, { status: 201 });
   } catch (error: any) {
-    console.error('Error creating notification:', error);
-    if (error.name === 'ValidationError') {
-      return NextResponse.json(
-        { success: false, error: 'Invalid notification data' },
-        { status: 400 }
-      );
-    }
-    return NextResponse.json(
-      { success: false, error: 'Failed to create notification' },
-      { status: 500 }
-    );
+    console.error('Error sending notification:', error);
+    return NextResponse.json({ success: false, error: 'Failed to send notification' }, { status: 500 });
   }
 }

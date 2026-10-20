@@ -13,7 +13,13 @@ export type NotificationType =
   | 'membership_expiry_reminder'
   | 'referral_followup_reminder'
   | 'referral_escalation'
-  | 'patient_reengagement';
+  | 'patient_reengagement'
+  | 'message'
+  | 'announcement'
+  | 'support';
+
+/** Who a notification comes from. Automations are 'system'. */
+export type NotificationSenderKind = 'system' | 'staff' | 'platform' | 'support';
 
 export type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent';
 
@@ -36,6 +42,12 @@ export interface INotification extends Document {
   // Read status
   read: boolean;
   readAt?: Date;
+  /** Who sent it; absent on older notifications (treated as 'system'). */
+  sender?: {
+    kind: NotificationSenderKind;
+    userId?: Types.ObjectId;
+    name?: string;
+  };
   // Additional metadata
   metadata?: {
     [key: string]: any;
@@ -72,6 +84,9 @@ const NotificationSchema: Schema = new Schema(
         'referral_followup_reminder',
         'referral_escalation',
         'patient_reengagement',
+        'message',
+        'announcement',
+        'support',
       ],
       required: true,
       index: true,
@@ -94,6 +109,11 @@ const NotificationSchema: Schema = new Schema(
     actionUrl: { type: String },
     read: { type: Boolean, default: false, index: true },
     readAt: { type: Date },
+    sender: {
+      kind: { type: String, enum: ['system', 'staff', 'platform', 'support'] },
+      userId: { type: Schema.Types.ObjectId, ref: 'User' },
+      name: { type: String, maxlength: 200 },
+    },
     metadata: { type: Schema.Types.Mixed },
     expiresAt: { type: Date },
   },

@@ -6,6 +6,7 @@ import { useKeyedFetch } from './hooks/useKeyedFetch';
 import { FOCUS_RING, ICON, Svg } from './appointments/shared';
 import { DEFAULT_PAGE_SIZE } from '@/lib/page-size';
 import PageSizeSelect from './ui/PageSizeSelect';
+import SendNotificationDialog from './notifications/SendNotificationDialog';
 import {
   GROUP_KEYS,
   NOTIFICATION_GROUPS,
@@ -13,6 +14,7 @@ import {
   UNREAD_EVENT,
   groupOf,
   notificationHref,
+  senderLabel,
   type NotificationGroup,
   type NotificationType,
 } from '@/lib/notification-kinds';
@@ -26,6 +28,7 @@ interface Note {
   relatedEntity?: { type: string; id: string } | null;
   actionUrl?: string | null;
   read: boolean;
+  sender?: { kind?: string; name?: string | null } | null;
   createdAt: string;
 }
 
@@ -63,8 +66,9 @@ function dayHeading(iso: string, today: number) {
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
-export default function NotificationsPageClient() {
+export default function NotificationsPageClient({ canSend = false }: { canSend?: boolean }) {
   const router = useRouter();
+  const [composing, setComposing] = useState(false);
   const [view, setView] = useState<View>('all');
   const [group, setGroup] = useState<NotificationGroup | ''>('');
   // Rows per batch: the first load and each "Show older".
@@ -227,6 +231,17 @@ export default function NotificationsPageClient() {
               )}
             </p>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+          {canSend && (
+            <button
+              type="button"
+              onClick={() => setComposing(true)}
+              className={`inline-flex w-fit items-center gap-1.5 rounded-md bg-brand-teal-dark px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep ${FOCUS_RING}`}
+            >
+              <Svg d={ICONS.envelope} />
+              Send notification
+            </button>
+          )}
           {markCount > 0 && (
             <button
               type="button"
@@ -240,7 +255,9 @@ export default function NotificationsPageClient() {
               <span className="font-mono text-gray-500">{markCount}</span>
             </button>
           )}
+          </div>
         </header>
+        {canSend && <SendNotificationDialog open={composing} onOpenChange={setComposing} />}
 
         {/* View and kind */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -371,6 +388,7 @@ function Row({ n, index, onOpen, onToggle, onRemove }: { n: Note; index: number;
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
           <span>{TYPE_LABEL[n.type] ?? 'Notice'}</span>
+          {senderLabel(n.sender) && <span className="font-medium text-gray-700">{senderLabel(n.sender)}</span>}
           {(urgent || high) && (
             <span className={`inline-flex items-center gap-1 font-semibold ${urgent ? 'text-red-700' : 'text-amber-800'}`}>
               <Svg d={ICON.alert} className="h-3.5 w-3.5" />
@@ -389,7 +407,7 @@ function Row({ n, index, onOpen, onToggle, onRemove }: { n: Note; index: number;
           {n.title}
           {href && <span className="sr-only"> (opens the record)</span>}
         </button>
-        <p className={`mt-0.5 text-sm ${n.read ? 'text-gray-500' : 'text-gray-700'}`}>{n.message}</p>
+        <p className={`mt-0.5 whitespace-pre-wrap text-sm ${n.read ? 'text-gray-500' : 'text-gray-700'}`}>{n.message}</p>
       </div>
       <div className="relative z-10 flex shrink-0 items-start gap-0.5">
         <button

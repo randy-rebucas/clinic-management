@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
 import { denyPage, getPermissionChecker } from '@/app/lib/auth-helpers';
+import { STAFF_SENDER_ROLES } from '@/lib/notify';
 
 /** What the signed-in user may do from a patient's page (the API enforces each one again). */
 export interface PatientRecordPermissions {
@@ -12,6 +13,8 @@ export interface PatientRecordPermissions {
   canBook: boolean;
   canOrderLab: boolean;
   canInvoice: boolean;
+  /** Doctors and admins — send the patient a message in the patient app */
+  canMessage: boolean;
 }
 
 export async function loadPatientRecordPermissions(): Promise<PatientRecordPermissions> {
@@ -28,5 +31,6 @@ export async function loadPatientRecordPermissions(): Promise<PatientRecordPermi
     canBook: can('appointments', 'write'),
     canOrderLab: can('lab-results', 'write'),
     canInvoice: can('invoices', 'write'),
+    canMessage: STAFF_SENDER_ROLES.includes(session.role) && !session.imp,
   };
 }

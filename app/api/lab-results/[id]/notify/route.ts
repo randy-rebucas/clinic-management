@@ -4,7 +4,6 @@ import LabResult from '@/models/LabResult';
 import { requirePermission } from '@/app/lib/auth-helpers';
 import { sendSMS } from '@/lib/sms';
 import { sendEmail, generateLabResultEmail } from '@/lib/email';
-import { createLabResultNotification } from '@/lib/notifications';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
 import { normalizePhone } from '@/lib/phone';
 
@@ -103,17 +102,17 @@ export async function POST(
       await labResult.save();
     }
 
-    // In-app notification for a user account at this clinic with the patient's email
-    if (patient.email) {
-      try {
-        const User = (await import('@/models/User')).default;
-        const user = await User.findOne({ email: patient.email, tenantId: tenantObjectId }).select('_id');
-        if (user) {
-          await createLabResultNotification(user._id, labResult, tenantObjectId);
-        }
-      } catch (error: any) {
-        console.error('Error creating in-app notification:', error);
-      }
+    // The patient app already lists the result (its feed is built from lab results); push it to
+    // the patient's phone so they know. Staff accounts are never involved.
+    try {
+      const { sendPushToPatientDevices } = await import('@/lib/push-notifications');
+      await sendPushToPatientDevices(
+        String(patient._id),
+        { title: 'Lab result available', body: `Your ${labResult.request.testType} result is ready.`, tag: `lab-result-${labResult._id}` },
+        { tenantId: tenantObjectId }
+      );
+    } catch (error: any) {
+      console.error('Lab result push failed:', error);
     }
 
     return NextResponse.json({

@@ -110,6 +110,9 @@ export default async function PlatformClinicPage({ params }: { params: Promise<{
           <section className={`${CARD} p-5`} aria-labelledby="actions">
             <h2 id="actions" className={`${H2} mb-4`}>Actions</h2>
             <ClinicActions clinicId={c.id} status={c.status} admins={c.admins} />
+            <Link href={`/platform/notifications?clinic=${c.id}`} className={`${LINK} mt-5 inline-block text-sm`}>
+              Send this clinic a notification
+            </Link>
           </section>
         </aside>
       </div>

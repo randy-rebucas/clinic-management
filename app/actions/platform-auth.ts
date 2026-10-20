@@ -9,7 +9,6 @@ import {
   isPlatformAdminEmail,
   issuePlatformLoginToken,
 } from '@/lib/platform-auth';
-import { sendEmail, escapeHtml, isEmailConfigured } from '@/lib/email';
 import { consumeRateLimit, getClientIp } from '@/lib/middleware/rate-limit';
 import { getTenantContext } from '@/lib/tenant';
 
@@ -19,7 +18,7 @@ const LINK_IP_LIMIT = { name: 'platform-link-ip', windowMs: 15 * 60 * 1000, maxR
 const LINK_EMAIL_LIMIT = { name: 'platform-link-email', windowMs: 60 * 60 * 1000, maxRequests: 5, identifierOnly: true };
 
 /**
- * Email a sign-in link to an allowlisted platform admin. The answer is the same whether or
+ * Issue a sign-in link to an allowlisted platform admin. The answer is the same whether or
  * not the address is allowed, so the form does not reveal who the admins are.
  */
 export async function requestPlatformLink(_state: PlatformLinkState, formData: FormData): Promise<PlatformLinkState> {
@@ -38,17 +37,8 @@ export async function requestPlatformLink(_state: PlatformLinkState, formData: F
     const token = await issuePlatformLoginToken(email);
     const proto = h.get('x-forwarded-proto') ?? (process.env.NODE_ENV === 'production' ? 'https' : 'http');
     const link = `${proto}://${h.get('host')}/platform/login/verify?token=${encodeURIComponent(token)}`;
-    if (!isEmailConfigured() && process.env.NODE_ENV !== 'production') {
-      console.info(`[platform] Sign-in link for ${email} (SMTP not configured): ${link}`);
-    } else {
-      await sendEmail({
-        to: email,
-        subject: 'Your MyClinicSoft platform console sign-in link',
-        html: `<p>Use this link to sign in to the platform console. It works once and runs out in 15 minutes.</p>
-<p><a href="${escapeHtml(link)}">Sign in to the platform console</a></p>
-<p>If you did not ask for it, ignore this email.</p>`,
-      });
-    }
+    // Email delivery is parked for now: the link goes to the server log (Vercel function logs in prod).
+    console.info(`[platform] Sign-in link for ${email}: ${link}`);
   }
   return { sent: true };
 }
