@@ -4,21 +4,14 @@ import { useId, useMemo, useState, type KeyboardEvent } from 'react';
 import Link from 'next/link';
 import { Modal } from '../ui/Modal';
 import { FIELD, FOCUS_RING, ICON, Svg } from '../appointments/shared';
-import type { ClinicalTemplateDTO } from '@/lib/clinical-templates';
+import type { ClinicalTemplateDTO, TemplateKind } from '@/lib/clinical-templates';
+import { templateSummary } from './content';
 
 const BUTTON = `inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`;
 const PRIMARY = `${BUTTON} bg-brand-teal-dark text-white hover:bg-brand-teal-deep`;
 const SECONDARY = `${BUTTON} border border-gray-300 bg-white text-gray-900 hover:border-gray-900`;
 
-function summaryOf(t: ClinicalTemplateDTO): string {
-  if (t.kind === 'prescription' || (t.kind === 'visit' && !t.visit?.soapNotes && t.medications?.length)) {
-    return (t.medications ?? []).map((m) => [m.name, m.dosage, m.frequency].filter(Boolean).join(' ')).join(' · ');
-  }
-  if (t.kind === 'phrase') return t.text ?? '';
-  const dx = (t.visit?.diagnoses ?? []).map((d) => d.code || d.description).filter(Boolean).join(', ');
-  const meds = t.medications?.length ? `${t.medications.length} medicine${t.medications.length === 1 ? '' : 's'}` : '';
-  return [t.visit?.chiefComplaint, dx, meds].filter(Boolean).join(' · ');
-}
+const summaryOf = templateSummary;
 
 /**
  * Searchable list of templates to apply: the user's own, those shared by the clinic,
@@ -33,10 +26,13 @@ export function TemplatePickerDialog({
   error,
   onPick,
   emptyHint,
+  kind,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
+  /** Opens the templates page on this kind's tab. */
+  kind?: TemplateKind;
   templates: ClinicalTemplateDTO[];
   loading: boolean;
   error: string | null;
@@ -114,7 +110,7 @@ export function TemplatePickerDialog({
           )}
         </div>
         <div className="flex items-center justify-between gap-3 border-t border-gray-200 px-5 py-3">
-          <Link href="/templates" className={`rounded text-sm font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+          <Link href={kind ? `/templates?tab=${kind}` : '/templates'} className={`rounded text-sm font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
             Manage templates
           </Link>
           <button type="button" onClick={onClose} className={SECONDARY}>

@@ -34,14 +34,18 @@ export interface ClinicalTemplateDTO {
   name: string;
   specialty?: string;
   shared: boolean;
-  /** True when the signed-in user may edit or delete it. */
+  /** True when the signed-in user made it. */
   mine: boolean;
+  /** True when the signed-in user may change or delete it (the owner, or an administrator for a shared one). */
+  canEdit: boolean;
   ownerName?: string;
   shortcut?: string;
   text?: string;
   visit?: TemplateVisitContent;
   medications?: TemplateMedication[];
   usageCount: number;
+  /** ISO date of the last time it was applied. */
+  lastUsedAt?: string;
   /** Built-in starter, not stored; id starts with "starter:". */
   starter?: boolean;
 }
@@ -164,6 +168,7 @@ const starter = (
   specialty,
   shared: true,
   mine: false,
+  canEdit: false,
   usageCount: 0,
   starter: true,
   visit,
