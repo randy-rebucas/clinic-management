@@ -6,6 +6,7 @@ import Appointment from '@/models/Appointment';
 import LabResult from '@/models/LabResult';
 import Invoice from '@/models/Invoice';
 import Prescription from '@/models/Prescription';
+import PatientMessage from '@/models/PatientMessage';
 import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth, type PatientSessionPayload } from '@/app/lib/patient-auth';
 import { parsePagination, tenantScopeFilter } from '../_lib/patient-scope';
@@ -18,13 +19,16 @@ import { invoiceBalance } from '../_lib/invoice-balance';
  */
 type PatientNotification = {
   id: string;
-  type: 'appointment' | 'lab_result' | 'invoice' | 'prescription';
+  type: 'appointment' | 'lab_result' | 'invoice' | 'prescription' | 'message';
   title: string;
   message: string;
   date: Date;
   read: boolean;
-  /** Where the mobile app should navigate when the notification is tapped. */
-  target: { screen: 'appointments' | 'lab-results' | 'invoices' | 'prescriptions'; id: string };
+  /**
+   * Where the mobile app should navigate when the notification is tapped. Messages have no
+   * screen of their own ('messages'): the app shows the full text in the feed.
+   */
+  target: { screen: 'appointments' | 'lab-results' | 'invoices' | 'prescriptions' | 'messages'; id: string };
   metadata?: Record<string, any>;
 };
 
@@ -38,7 +42,7 @@ const MAX_READ_IDS = 500;
  * statuses were part of the id (`apt-<id>` etc.) can never match again and are dropped.
  */
 function isOutOfScopeCandidate(id: string): boolean {
-  return /^(apt|lab|inv)-[0-9a-f]{24}-[a-z0-9_-]+$/i.test(id) || /^rx-[0-9a-f]{24}$/i.test(id);
+  return /^(apt|lab|inv)-[0-9a-f]{24}-[a-z0-9_-]+$/i.test(id) || /^(rx|msg)-[0-9a-f]{24}$/i.test(id);
 }
 
 /**
@@ -59,7 +63,7 @@ async function buildPatientNotifications(
   const since = new Date(Date.now() - NOTIFICATION_WINDOW_MS);
 
   // Fetch recent clinical events in parallel
-  const [appointments, labResults, unpaidInvoices, recentPrescriptions] = await Promise.all([
+  const [appointments, labResults, unpaidInvoices, recentPrescriptions, messages] = await Promise.all([
     Appointment.find({
       patient: patientId,
       ...tenantFilter,
@@ -101,6 +105,16 @@ async function buildPatientNotifications(
       .select('medications status issuedAt createdAt')
       .sort({ createdAt: -1 })
       .limit(10)
+      .lean(),
+
+    PatientMessage.find({
+      patient: patientId,
+      ...tenantFilter,
+      createdAt: { $gte: since },
+    })
+      .select('kind title message sender createdAt')
+      .sort({ createdAt: -1 })
+      .limit(30)
       .lean(),
   ]);
 
@@ -198,6 +212,24 @@ async function buildPatientNotifications(
       date: rx.createdAt as Date,
       read: read.has(id),
       target: { screen: 'prescriptions', id: (rx as any)._id.toString() },
+    });
+  }
+
+  // Messages the clinic sent (a doctor's note, a clinic announcement)
+  for (const m of messages as any[]) {
+    const id = notificationId('msg', m._id);
+    notifications.push({
+      id,
+      type: 'message',
+      title: m.title,
+      message: m.message,
+      date: m.createdAt as Date,
+      read: read.has(id),
+      target: { screen: 'messages', id: String(m._id) },
+      metadata: {
+        kind: m.kind,
+        from: m.sender?.kind === 'staff' && m.sender?.name ? m.sender.name : 'Your clinic',
+      },
     });
   }
 

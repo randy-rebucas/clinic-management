@@ -5,7 +5,7 @@ import SupportRequest from '@/models/SupportRequest';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { isValidId, notFound } from '@/lib/api/tenant-session';
 import { requirePlatformApi, isPlatformError } from '@/lib/platform-auth';
-import { SUPPORT_STATUSES } from '@/lib/support';
+import { SUPPORT_STATUSES, notifyRequesterInApp } from '@/lib/support';
 
 const PatchSchema = z.object({ status: z.enum(SUPPORT_STATUSES) });
 
@@ -20,7 +20,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (isValidationError(parsed)) return parsed;
 
   await connectDB();
-  const updated = await SupportRequest.findByIdAndUpdate(id, { $set: { status: parsed.data.status } }, { new: true, projection: { status: 1 } }).lean();
-  if (!updated) return notFound('Support request');
+  const before = await SupportRequest.findByIdAndUpdate(id, { $set: { status: parsed.data.status } }, { new: false, projection: { status: 1, subject: 1, userId: 1, tenantId: 1 } }).lean<any>();
+  if (!before) return notFound('Support request');
+  if (parsed.data.status === 'resolved' && before.status !== 'resolved') {
+    await notifyRequesterInApp(before, id, `Resolved: ${before.subject}`, 'MyClinicSoft support marked your request resolved. Reply if anything is still wrong.');
+  }
   return NextResponse.json({ success: true, data: { status: parsed.data.status } });
 }

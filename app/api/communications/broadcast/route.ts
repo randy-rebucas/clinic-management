@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
-import Notification from '@/models/Notification';
-import User from '@/models/User';
 import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
-import { requireTenantSession, isTenantSessionError, patientTenantFilter, tenantFilter } from '@/lib/api/tenant-session';
+import { requireTenantSession, isTenantSessionError, patientTenantFilter } from '@/lib/api/tenant-session';
+import { notifyPatients, MAX_PATIENT_RECIPIENTS } from '@/lib/notify';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { escapeHtml } from '@/lib/document-protection';
 import { sendSMS } from '@/lib/sms';
@@ -40,7 +39,7 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
 
-    const patientQuery: Record<string, unknown> = patientTenantFilter(ctx.tenantId);
+    const patientQuery: Record<string, unknown> = patientTenantFilter(ctx.tenantId, { active: { $ne: false } });
     if (filters) {
       if (filters.city) {
         patientQuery['address.city'] = { $regex: sanitizeSearch(filters.city), $options: 'i' };
@@ -53,7 +52,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const patients = await Patient.find(patientQuery).select('_id firstName lastName email phone');
+    const patients = await Patient.find(patientQuery).select('_id firstName lastName email phone').limit(MAX_PATIENT_RECIPIENTS);
 
     const results = {
       totalPatients: patients.length,
@@ -125,27 +124,23 @@ export async function POST(request: NextRequest) {
             results.errors.push(`Email failed for ${patientName}`);
           }
         }
-
-        if (channels.includes('in-app') && patient.email) {
-          // Only notify a linked user account in this clinic.
-          const user = await User.findOne(tenantFilter(ctx.tenantId, { email: patient.email })).select('_id');
-          if (user) {
-            await Notification.create({
-              tenantId: ctx.tenantObjectId,
-              user: user._id,
-              type: 'broadcast',
-              priority: 'normal',
-              title,
-              message,
-              read: false,
-            });
-            results.inAppCreated++;
-          }
-        }
       } catch (error) {
         console.error('Broadcast processing error', { patientId: String(patient._id), error });
         results.errors.push(`Error processing ${patientName}`);
       }
+    }
+
+    // In the patient app's notifications (and pushed), from the clinic.
+    if (channels.includes('in-app') && patients.length) {
+      const inApp = await notifyPatients({
+        tenantId: ctx.tenantId,
+        patientIds: patients.map((p) => String(p._id)),
+        title,
+        message: message.slice(0, 2000),
+        kind: 'announcement',
+        sender: { kind: 'clinic', userId: ctx.session.userId, role: ctx.session.role },
+      });
+      results.inAppCreated = inApp.recipients;
     }
 
     return NextResponse.json({

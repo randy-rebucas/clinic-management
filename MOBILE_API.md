@@ -176,6 +176,15 @@ and `id` is the record id for the matching detail endpoint.
 stay `rx-<id>`. Ids marked read under the old format won't match; expect those items to show as
 unread once. Invoice notifications carry `metadata.balance`.
 
+**New: clinic messages.** The feed also holds messages the clinic sends the patient: a doctor's
+note from the patient's page, or a clinic announcement to all patients. They have
+`type: 'message'`, id `msg-<id>`, `target: { screen: 'messages', id }` and
+`metadata: { from, kind }`. `from` is the sender's name ("Dr. Ana Reyes") or "Your clinic", and
+`kind` is `message` or `announcement`. There is no detail screen, so show the whole `message` in
+the feed. Each message is also pushed, with `data.tag = "message-<id>"` and `data.messageId`. Open
+the notifications screen when it is tapped. Older app builds show these with the appointment icon,
+and tapping them does nothing.
+
 `PATCH /api/patients/me/notifications` with `{ ids: [...] }` or `{ markAllRead: true }`.
 **Fixed:** `markAllRead` used to clear the read list, which made every notification unread again.
 It now marks the current feed as read.
