@@ -5,10 +5,12 @@ import Tenant from '@/models/Tenant';
 import User from '@/models/User';
 import SupportRequest, { type SupportStatus, type SupportCategory, type SupportReplyAuthor } from '@/models/SupportRequest';
 import { escapeRegex } from '@/lib/api/validate';
+import { gatewayCurrency, subscriptionGateway } from '@/lib/payment-gateway';
 import {
   computePlatformMetrics,
   lifecycleOf,
   monthlyValue,
+  mrrCurrency,
   type PlatformMetrics,
   type PlatformTenantRow,
   type TenantLifecycle,
@@ -20,6 +22,9 @@ const TENANT_FIELDS =
   'name displayName subdomain status createdAt email phone subscription.plan subscription.status subscription.billingCycle subscription.expiresAt subscription.paymentHistory';
 
 const iso = (d: Date | string | null | undefined) => (d ? new Date(d).toISOString() : null);
+
+/** MRR is valued at the prices clinics are charged now, so in pesos when PayMongo is set up. */
+const priceCurrency = () => gatewayCurrency(subscriptionGateway());
 
 async function allTenants(): Promise<(PlatformTenantRow & { displayName?: string })[]> {
   await connectDB();
@@ -52,7 +57,7 @@ export async function loadPlatformOverview(): Promise<PlatformOverview> {
       createdAt: iso(t.createdAt)!,
       lifecycle: lifecycleOf(t, now),
     }));
-  return { metrics: computePlatformMetrics(tenants, now), recentSignups, support: { open, waiting } };
+  return { metrics: computePlatformMetrics(tenants, now, 6, priceCurrency()),recentSignups, support: { open, waiting } };
 }
 
 // ── Clinics list ──────────────────────────────────────────────────────────────
@@ -77,10 +82,13 @@ export interface PlatformTenantList {
   page: number;
   pageSize: number;
   counts: Record<TenantLifecycle | 'all', number>;
+  /** ISO code each row's mrr is in. */
+  currency: string;
 }
 
 export async function loadPlatformTenants(opts: { q?: string; lifecycle?: TenantLifecycle | ''; page?: number }): Promise<PlatformTenantList> {
   const now = new Date();
+  const cur = priceCurrency();
   const pageSize = 25;
   const page = Math.max(1, opts.page ?? 1);
   let tenants = await allTenants();
@@ -116,7 +124,7 @@ export async function loadPlatformTenants(opts: { q?: string; lifecycle?: Tenant
       plan: t.subscription?.plan || 'trial',
       billingCycle: t.subscription?.billingCycle ?? null,
       lifecycle: life,
-      mrr: monthlyValue(t, now),
+      mrr: monthlyValue(t, now, cur),
       expiresAt: iso(t.subscription?.expiresAt),
       createdAt: iso(t.createdAt)!,
       staff: staffBy.get(t._id)?.staff ?? 0,
@@ -126,6 +134,7 @@ export async function loadPlatformTenants(opts: { q?: string; lifecycle?: Tenant
     page,
     pageSize,
     counts,
+    currency: mrrCurrency(cur),
   };
 }
 
@@ -142,6 +151,7 @@ export interface PlatformTenantDetail {
   createdAt: string;
   lifecycle: TenantLifecycle;
   mrr: number;
+  mrrCurrency: string;
   subscription: {
     plan: string;
     status: string;
@@ -190,7 +200,8 @@ export async function loadPlatformTenant(id: string): Promise<PlatformTenantDeta
     status: t.status,
     createdAt: iso(t.createdAt)!,
     lifecycle: lifecycleOf(row, now),
-    mrr: monthlyValue(row, now),
+    mrr: monthlyValue(row, now, priceCurrency()),
+    mrrCurrency: mrrCurrency(priceCurrency()),
     subscription: {
       plan: t.subscription?.plan || 'trial',
       status: t.subscription?.status || 'active',

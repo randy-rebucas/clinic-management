@@ -214,6 +214,50 @@ export function generateSetPasswordEmail(options: {
   return { subject, html, text };
 }
 
+/** The one-time sign-in link for the platform console. */
+export function generatePlatformLoginEmail(options: { url: string; expiresInMinutes: number }): { subject: string; html: string; text: string } {
+  const subject = 'Your MyClinicSoft platform console sign-in link';
+  const intro = 'Someone asked to sign in to the MyClinicSoft platform console with this address.';
+  const outro = `This link can be used once and expires in ${options.expiresInMinutes} minutes. If you did not ask for it, you can ignore this email; nobody can sign in without it.`;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #0f766e; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; background-color: #f9f9f9; }
+        .button { display: inline-block; background-color: #0f766e; color: #ffffff !important; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; }
+        .link { word-break: break-all; font-size: 12px; color: #555; }
+        .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Platform console</h1>
+        </div>
+        <div class="content">
+          <p>${escapeHtml(intro)}</p>
+          <p style="text-align: center;"><a class="button" href="${escapeHtml(options.url)}">Sign in</a></p>
+          <p class="link">If the button does not work, copy this link into your browser:<br>${escapeHtml(options.url)}</p>
+          <p>${escapeHtml(outro)}</p>
+        </div>
+        <div class="footer">
+          <p>This is an automated message. Please do not reply to this email.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const text = `${intro}\n\nSign in: ${options.url}\n\n${outro}\n`;
+
+  return { subject, html, text };
+}
+
 export function generateLabResultEmail(labResult: any): { subject: string; html: string } {
   const patient = labResult.patient as any;
   const testType = labResult.request?.testType || 'Lab Test';

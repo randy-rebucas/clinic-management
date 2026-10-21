@@ -37,6 +37,11 @@ describe('monthlyValue', () => {
     expect(monthlyValue(tenant({ sub: { plan: 'basic', status: 'active', billingCycle: 'yearly', expiresAt: daysFromNow(200) } }), NOW)).toBeCloseTo(290 / 12);
   });
 
+  it('uses peso prices when asked, a year costing ten months', () => {
+    expect(monthlyValue(tenant({ sub: { plan: 'professional', status: 'active', billingCycle: 'monthly', expiresAt: daysFromNow(5) } }), NOW, 'PHP')).toBe(3999);
+    expect(monthlyValue(tenant({ sub: { plan: 'basic', status: 'active', billingCycle: 'yearly', expiresAt: daysFromNow(200) } }), NOW, 'PHP')).toBeCloseTo((1499 * 10) / 12);
+  });
+
   it('is zero for cancelled, lapsed and trial clinics', () => {
     expect(monthlyValue(tenant({ sub: { plan: 'basic', status: 'cancelled', expiresAt: daysFromNow(5) } }), NOW)).toBe(0);
     expect(monthlyValue(tenant({ sub: { plan: 'basic', status: 'active', expiresAt: daysFromNow(-5) } }), NOW)).toBe(0);
@@ -86,6 +91,11 @@ describe('computePlatformMetrics', () => {
     expect(m.mrr).toBeCloseTo(79 + 29 + 1990 / 12 + 29, 2);
     expect(m.arr).toBeCloseTo(m.mrr * 12, 1);
     expect(m.mrrByPlan.find((p) => p.plan === 'basic')).toMatchObject({ clinics: 2, mrr: 58 });
+    expect(m.currency).toBe('USD');
+
+    const php = computePlatformMetrics(rows, NOW, 6, 'PHP');
+    expect(php.currency).toBe('PHP');
+    expect(php.mrr).toBeCloseTo(3999 + 1499 + (9999 * 10) / 12 + 1499, 2);
 
     expect(m.churn).toEqual({ churned: 1, base: 5, rate: 0.2 });
     expect(m.trialConversion).toEqual({ cohort: 2, converted: 1, rate: 0.5 });
