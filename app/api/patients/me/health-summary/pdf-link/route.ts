@@ -6,6 +6,7 @@ import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { createHealthSummaryLinkToken } from '@/lib/health-summary-link';
 import { requestOrigin } from '@/lib/signed-link';
+import { requireActiveEmcr } from '@/lib/emcr/activation';
 
 /**
  * POST /api/patients/me/health-summary/pdf-link
@@ -15,6 +16,8 @@ import { requestOrigin } from '@/lib/signed-link';
 export async function POST(request: NextRequest) {
   const session = await verifyPatientAuth(request);
   if (!session) return patientAuthError(request);
+  const locked = await requireActiveEmcr(session, 'health_summary');
+  if (locked) return locked;
 
   try {
     await connectDB();

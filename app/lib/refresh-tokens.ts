@@ -25,7 +25,7 @@ export async function issueRefreshToken(
   subjectId: string | Types.ObjectId,
   sessionVersion: number,
   family: string = randomUUID(),
-  scope: { tid?: string | null } = {}
+  scope: { tid?: string | null; acc?: string | null; rel?: 'guardian' | null } = {}
 ): Promise<string> {
   await connectDB();
   const token = randomBytes(32).toString('base64url');
@@ -36,6 +36,8 @@ export async function issueRefreshToken(
     subjectId: new Types.ObjectId(String(subjectId)),
     sessionVersion,
     ...(scope.tid ? { scopeTenantId: new Types.ObjectId(String(scope.tid)) } : {}),
+    ...(scope.acc ? { scopeAccountId: new Types.ObjectId(String(scope.acc)) } : {}),
+    ...(scope.acc && scope.rel === 'guardian' ? { scopeRel: 'guardian' } : {}),
     expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000),
   });
   return token;
@@ -47,6 +49,9 @@ export type ConsumedRefreshToken = {
   family: string;
   /** Clinic scope the chain was issued with (patients); absent = unscoped. */
   tid?: string;
+  /** eMCR account and holder relation the chain was issued with (patients). */
+  acc?: string;
+  rel?: 'guardian';
 };
 
 export type ConsumeResult =
@@ -73,7 +78,14 @@ export async function consumeRefreshToken(
     { tokenHash, subjectType, usedAt: null, revokedAt: null, expiresAt: { $gt: now } },
     { $set: { usedAt: now } },
     { new: true }
-  ).lean<{ subjectId: Types.ObjectId; sessionVersion?: number; family: string; scopeTenantId?: Types.ObjectId } | null>();
+  ).lean<{
+    subjectId: Types.ObjectId;
+    sessionVersion?: number;
+    family: string;
+    scopeTenantId?: Types.ObjectId;
+    scopeAccountId?: Types.ObjectId;
+    scopeRel?: 'guardian';
+  } | null>();
 
   if (row) {
     return {
@@ -83,6 +95,8 @@ export async function consumeRefreshToken(
         sessionVersion: row.sessionVersion ?? 0,
         family: row.family,
         ...(row.scopeTenantId ? { tid: row.scopeTenantId.toString() } : {}),
+        ...(row.scopeAccountId ? { acc: row.scopeAccountId.toString() } : {}),
+        ...(row.scopeAccountId && row.scopeRel === 'guardian' ? { rel: 'guardian' as const } : {}),
       },
     };
   }
@@ -126,7 +140,7 @@ export async function revokeRefreshToken(
 export async function findRefreshTokenSubject(
   rawToken: unknown,
   subjectType: RefreshSubjectType
-): Promise<{ subjectId: string; sessionVersion: number } | null> {
+): Promise<{ subjectId: string; sessionVersion: number; rel?: 'guardian' } | null> {
   if (typeof rawToken !== 'string' || !TOKEN_FORMAT.test(rawToken)) return null;
   await connectDB();
   const row = await RefreshToken.findOne({
@@ -136,9 +150,11 @@ export async function findRefreshTokenSubject(
     revokedAt: null,
     expiresAt: { $gt: new Date() },
   })
-    .select('subjectId sessionVersion')
-    .lean<{ subjectId: Types.ObjectId; sessionVersion?: number } | null>();
-  return row ? { subjectId: row.subjectId.toString(), sessionVersion: row.sessionVersion ?? 0 } : null;
+    .select('subjectId sessionVersion scopeRel')
+    .lean<{ subjectId: Types.ObjectId; sessionVersion?: number; scopeRel?: 'guardian' } | null>();
+  return row
+    ? { subjectId: row.subjectId.toString(), sessionVersion: row.sessionVersion ?? 0, ...(row.scopeRel ? { rel: row.scopeRel } : {}) }
+    : null;
 }
 
 /** Read `{ refreshToken }` from an optional JSON body (e.g. on DELETE). Never throws. */

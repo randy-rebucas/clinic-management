@@ -21,7 +21,8 @@ import {
  * its chain is revoked. Either way the app must sign in again.
  * 403 `ACCOUNT_INACTIVE`: the clinic deactivated the patient; show the message, don't retry.
  *
- * The new access token keeps the clinic scope (`tid`) of the original sign-in. It carries no
+ * The new access token keeps the clinic scope (`tid`) and eMCR account (`acc`, `rel`) of the
+ * original sign-in. It carries no
  * `amr`, so a refreshed token never counts as a fresh OTP sign-in.
  */
 export async function POST(request: NextRequest) {
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
   try {
     const consumed = await consumeRefreshToken(body.refreshToken, 'patient');
     if (!consumed.ok) return invalid(consumed.code);
-    const { subjectId, sessionVersion, family, tid } = consumed.value;
+    const { subjectId, sessionVersion, family, tid, acc, rel } = consumed.value;
 
     await connectDB();
     const patient = await Patient.findById(subjectId).select('active patientCode email sessionVersion');
@@ -60,8 +61,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const token = await issuePatientToken(patient, { tid });
-    const refreshToken = await issueRefreshToken('patient', patient._id, sessionVersion, family, { tid });
+    const token = await issuePatientToken(patient, { tid, acc, rel });
+    const refreshToken = await issueRefreshToken('patient', patient._id, sessionVersion, family, { tid, acc, rel });
 
     return NextResponse.json({
       success: true,

@@ -281,9 +281,25 @@ export async function DELETE(request: NextRequest) {
   const refreshToken = await readRefreshTokenFromBody(request);
 
   let patientId: string | null = null;
+  // A guardian-only eMCR session is signed in on a record it manages: "everywhere" would sign
+  // that person out on their own devices too.
+  let guardian = false;
   if (all || deviceId) {
     const session = await verifyPatientAuth(request, { profile: 'ignore' });
-    if (session) patientId = session.patientId;
+    if (session) {
+      patientId = session.patientId;
+      guardian = session.rel === 'guardian';
+    }
+  }
+  if (all && !patientId && refreshToken) {
+    const owner = await findRefreshTokenSubject(refreshToken, 'patient').catch(() => null);
+    guardian = owner?.rel === 'guardian';
+  }
+  if (all && guardian) {
+    return NextResponse.json(
+      { success: false, code: 'NOT_FOR_FAMILY_PROFILE', error: 'Sign out on this device instead.' },
+      { status: 403 }
+    );
   }
 
   if (refreshToken) {

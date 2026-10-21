@@ -50,6 +50,7 @@ export async function DELETE(request: NextRequest) {
     const rotated = await rotatePatientSessionAfterPasswordChange(request, session.patientId, {
       tid: session.tid,
       keepDeviceId: deviceId,
+      acc: session.acc,
       amr: null,
     });
     return rotated.apply(NextResponse.json({ success: true, ...rotated.bodyFields }));

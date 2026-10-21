@@ -5,6 +5,7 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import { patientAuthError, verifyPatientAuth, type PatientSessionPayload } from '@/app/lib/patient-auth';
 import { isValidId } from '@/lib/api/tenant-session';
+import { requireActiveEmcr, type EmcrFeature } from '@/lib/emcr/activation';
 import { tenantScopeFilter } from './patient-scope';
 import { linkedRecords, type LinkedRecords } from './linked-records';
 
@@ -25,10 +26,16 @@ export type OwnedRecordContext = {
 export async function ownedRecordContext(
   request: NextRequest,
   id: string,
-  notFoundLabel: string
+  notFoundLabel: string,
+  /** eMCR feature this record type needs (paid); none for records that stay free. */
+  feature?: EmcrFeature
 ): Promise<OwnedRecordContext | NextResponse> {
   const session = await verifyPatientAuth(request);
   if (!session) return patientAuthError(request);
+  if (feature) {
+    const locked = await requireActiveEmcr(session, feature);
+    if (locked) return locked;
+  }
 
   await connectDB();
 

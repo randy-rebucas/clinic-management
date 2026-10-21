@@ -96,13 +96,16 @@ export async function sendPushToPatientDevices(
   if (options.tenantId) scopes.push({ tenantId: new Types.ObjectId(String(options.tenantId)) });
 
   const { personRecordIds, guardianRecordIds } = await import('@/lib/patient-family');
-  const [ownIds, guardianIds] = await Promise.all([
+  const { accountManagerRecordIds } = await import('@/lib/emcr/account');
+  const [ownIds, guardianIds, accountManagerIds] = await Promise.all([
     personRecordIds(patientId).catch(() => []),
     guardianRecordIds(patientId).catch(() => []),
+    accountManagerRecordIds(patientId).catch(() => []),
   ]);
   const own = ownIds.length ? ownIds : [new Types.ObjectId(patientId)];
   const ownKeys = new Set(own.map(String));
-  const managers = guardianIds.filter((id) => !ownKeys.has(String(id)));
+  const managerMap = new Map([...guardianIds, ...accountManagerIds].map((id) => [String(id), id]));
+  const managers = [...managerMap.values()].filter((id) => !ownKeys.has(String(id)));
 
   const self = await sendToMobileDevices({ patientId: { $in: own }, $or: scopes }, payload);
   if (!managers.length) return self;

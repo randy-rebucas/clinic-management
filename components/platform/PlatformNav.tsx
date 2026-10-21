@@ -7,6 +7,7 @@ const SECTIONS = [
   { label: 'Overview', href: '/platform' },
   { label: 'Clinics', href: '/platform/clinics' },
   { label: 'Support', href: '/platform/support' },
+  { label: 'eMCR vouchers', href: '/platform/vouchers' },
   { label: 'Notify', href: '/platform/notifications' },
 ];
 

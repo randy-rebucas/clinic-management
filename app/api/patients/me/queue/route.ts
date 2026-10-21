@@ -8,6 +8,7 @@ import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { queuePosition } from '@/lib/queue-position';
 import { resolveTenantFilter } from '../_lib/patient-scope';
 import { linkedRecords } from '../_lib/linked-records';
+import { requireActiveEmcr } from '@/lib/emcr/activation';
 
 /**
  * GET /api/patients/me/queue
@@ -19,6 +20,8 @@ export async function GET(request: NextRequest) {
   const session = await verifyPatientAuth(request);
 
   if (!session) return patientAuthError(request);
+  const locked = await requireActiveEmcr(session, 'queue');
+  if (locked) return locked;
 
   try {
     await connectDB();

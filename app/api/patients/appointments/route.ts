@@ -39,6 +39,7 @@ import {
   minutesToHHmm,
   slotRejection,
 } from '@/lib/booking-slots';
+import { requireActiveEmcr } from '@/lib/emcr/activation';
 
 /**
  * Which of the patient's clinics this request is for: the subdomain's clinic (when the
@@ -193,6 +194,8 @@ export async function POST(request: NextRequest) {
   try {
     const sessionData = await verifyPatientAuth(request);
     if (!sessionData) return patientAuthError(request);
+    const locked = await requireActiveEmcr(sessionData, 'booking');
+    if (locked) return locked;
 
     await connectDB();
 

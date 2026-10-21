@@ -31,6 +31,7 @@
     { "path": "/api/cron/data-retention", "schedule": "0 18 * * 6" },
     { "path": "/api/cron/lab-notifications", "schedule": "*/30 0-13 * * *" },
     { "path": "/api/cron/membership-expiry", "schedule": "5 2 * * *" },
+    { "path": "/api/cron/emcr-renewal", "schedule": "0 1 * * *" },
     { "path": "/api/cron/referral-followup", "schedule": "25 1 * * *" },
     { "path": "/api/cron/visit-followup", "schedule": "35 2 * * *" },
     { "path": "/api/cron/patient-reengagement", "schedule": "0 2 * * 1" },

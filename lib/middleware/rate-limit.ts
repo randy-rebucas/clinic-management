@@ -219,6 +219,24 @@ export const rateLimiters = {
     message: 'Too many codes requested, please try again later',
   }),
 
+  // eMCR "is this your record?" answers per account per day (5 per 15 min comes from authAccount)
+  emcrClaimDaily: rateLimit({
+    name: 'emcr-claim-daily',
+    windowMs: 24 * 60 * 60 * 1000,
+    maxRequests: 10,
+    identifierOnly: true,
+    message: 'Too many tries today. Please try again tomorrow or ask your clinic for help.',
+  }),
+
+  // eMCR voucher codes per account (wrong codes are guesses)
+  voucherRedeem: rateLimit({
+    name: 'voucher-redeem',
+    windowMs: 60 * 60 * 1000,
+    maxRequests: 10,
+    identifierOnly: true,
+    message: 'Too many codes tried. Please check the voucher and try again later.',
+  }),
+
   // Standard API rate limit
   api: rateLimit({
     name: 'api',

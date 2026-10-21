@@ -13,6 +13,7 @@ vi.mock('@/models/PushSubscription', () => ({ default: { find: vi.fn() } }));
 vi.mock('@/models/MobileDevice', () => ({
   default: { find: vi.fn(), updateMany: vi.fn() },
 }));
+vi.mock('@/lib/emcr/account', () => ({ accountManagerRecordIds: vi.fn().mockResolvedValue([]) }));
 vi.mock('@/lib/patient-family', () => ({
   personRecordIds: vi.fn().mockResolvedValue([]),
   guardianRecordIds: vi.fn().mockResolvedValue([]),

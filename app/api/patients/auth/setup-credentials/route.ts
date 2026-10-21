@@ -178,6 +178,7 @@ export async function POST(request: NextRequest) {
     const rotated = await rotatePatientSessionAfterPasswordChange(request, session.patientId, {
       tid: phoneProven ? undefined : session.tid,
       keepDeviceId,
+      acc: session.acc,
     });
 
     logger.info('Patient credentials set up for third-party access', {
