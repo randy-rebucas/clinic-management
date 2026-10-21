@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 // The token is in the URL: never send it to other origins in the Referer header.
 export const metadata: Metadata = {
-  title: 'Set your password | My Clinic Software',
+  title: 'Set your password',
   referrer: 'no-referrer',
   robots: { index: false, follow: false },
 };

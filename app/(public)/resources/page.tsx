@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { Metadata } from 'next';
+import { pageMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
-  title: 'Resources - MyClinicSoft',
-  description: 'Helpful resources, documentation, and guides for MyClinicSoft users.',
-};
+export const metadata: Metadata = pageMetadata({
+  title: 'Resources',
+  path: '/resources',
+  description: 'Guides, documentation, and help articles for getting your clinic set up and running smoothly on MyClinicSoft.',
+});
 
 export default function ResourcesPage() {
   const resources = [

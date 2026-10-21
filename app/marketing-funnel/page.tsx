@@ -1,4 +1,9 @@
+import type { Metadata } from "next";
 import BrandLogo from "@/components/BrandLogo";
+import { NO_INDEX } from "@/lib/seo";
+
+// Campaign landing page: kept out of search so it doesn't compete with the home page.
+export const metadata: Metadata = { title: "Transform Your Clinic", robots: NO_INDEX };
 
 export default function MarketingFunnelPage() {
   return (

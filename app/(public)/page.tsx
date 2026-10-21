@@ -1,15 +1,18 @@
 import type { Metadata } from 'next';
+import { pageMetadata, softwareApplicationJsonLd } from '@/lib/seo';
+import JsonLd from '@/components/JsonLd';
 import Link from 'next/link';
 import Image from 'next/image';
 import { verifySession } from '@/app/lib/dal';
 import { redirect } from 'next/navigation';
 import { BRAND_GRADIENT } from '@/lib/brand-mark';
 
-export const metadata: Metadata = {
-  title: 'My Clinic Software — Clinic Management Made Simple',
-  description:
-    'Manage patients, appointments, queues, and billing — all in one place. The complete clinic management solution for modern healthcare providers.',
-};
+export const metadata: Metadata = pageMetadata({
+  title: 'MyClinicSoft — Clinic Management Software for Philippine Clinics',
+  path: '/',
+  absoluteTitle: true,
+  description: 'Run your clinic from one system: patient records, appointments, queues, billing, PhilHealth and HMO claims, and inventory — plus the eMCR app for patients. Try it free for 14 days.',
+});
 
 function Icon({ d, className = 'w-5 h-5' }: { d: string; className?: string }) {
   return (
@@ -157,6 +160,7 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen bg-white">
+      <JsonLd data={softwareApplicationJsonLd()} />
       {/* Hero */}
       <section className="relative overflow-hidden px-4 sm:px-6 lg:px-8">
         <div

@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { Metadata } from 'next';
+import { pageMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
-  title: 'Terms of Service - MyClinicSoft',
-  description: 'MyClinicSoft Terms of Service - Read our terms and conditions.',
-};
+export const metadata: Metadata = pageMetadata({
+  title: 'Terms of Service',
+  path: '/terms',
+  description: 'The terms and conditions for using MyClinicSoft clinic management software and the eMCR patient app.',
+});
 
 export default function TermsPage() {
   return (

@@ -2,7 +2,7 @@ import { requirePagePermission } from '@/app/lib/auth-helpers';
 import TemplatesClient from '@/components/templates/TemplatesClient';
 import type { TemplateKind } from '@/lib/clinical-templates';
 
-export const metadata = { title: 'Templates · My Clinic Software' };
+export const metadata = { title: 'Templates' };
 
 const KINDS: TemplateKind[] = ['visit', 'prescription', 'phrase'];
 

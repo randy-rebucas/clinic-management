@@ -2,7 +2,7 @@ import { requireAdmin } from '@/app/lib/auth-helpers';
 import MedicalRepsManagementClient from '@/components/MedicalRepsManagementClient';
 
 export const metadata = {
-  title: 'Medical Representatives | MyClinicSoft',
+  title: 'Medical Representatives',
   description: 'Manage medical representatives',
 };
 

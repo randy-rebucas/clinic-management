@@ -562,7 +562,7 @@ export default function TenantOnboardClient() {
         <div className="relative z-10">
           <Link href="/" className="flex items-center gap-3">
             <BrandLogo size={48} rounded="rounded-lg" />
-            <span className="text-white font-bold text-lg">My Clinic Software</span>
+            <span className="text-white font-bold text-lg">MyClinicSoft</span>
           </Link>
         </div>
 
@@ -615,7 +615,7 @@ export default function TenantOnboardClient() {
         {/* Bottom tagline */}
         <div className="relative z-10">
           <p className="text-slate-400 text-sm">
-            &copy; {new Date().getFullYear()} My Clinic Software. All rights reserved.
+            &copy; {new Date().getFullYear()} MyClinicSoft. All rights reserved.
           </p>
         </div>
       </div>
@@ -638,7 +638,7 @@ export default function TenantOnboardClient() {
           {/* Mobile logo */}
           <Link href="/" className="flex lg:hidden items-center justify-center gap-3 mb-10">
             <BrandLogo size={44} rounded="rounded-lg" className="shadow-lg" />
-            <span className="text-gray-900 font-bold text-lg">My Clinic Software</span>
+            <span className="text-gray-900 font-bold text-lg">MyClinicSoft</span>
           </Link>
 
           {/* Heading */}

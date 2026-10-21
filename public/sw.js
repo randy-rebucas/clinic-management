@@ -59,7 +59,7 @@ self.addEventListener('push', (event) => {
   try {
     data = event.data.json();
   } catch {
-    data = { title: 'My Clinic Software', body: event.data.text() };
+    data = { title: 'MyClinicSoft', body: event.data.text() };
   }
 
   const options = {
@@ -76,7 +76,7 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'My Clinic Software', options)
+    self.registration.showNotification(data.title || 'MyClinicSoft', options)
   );
 });
 

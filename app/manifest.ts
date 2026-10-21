@@ -2,9 +2,9 @@ import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'My Clinic Software',
-    short_name: 'MCS',
-    description: 'Manage patients, appointments, queues, and billing — all in one place.',
+    name: 'MyClinicSoft',
+    short_name: 'MyClinicSoft',
+    description: 'Clinic management for Philippine clinics — patient records, appointments, queues, and billing in one place.',
     start_url: '/dashboard',
     scope: '/',
     display: 'standalone',

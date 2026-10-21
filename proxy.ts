@@ -52,6 +52,17 @@ function isTrustedSource(sourceHost: string, requestHost: string): boolean {
   return inRoot(hostnameOf(sourceHost)) && inRoot(hostnameOf(requestHost));
 }
 
+/**
+ * Clinic subdomains and Vercel preview deployments serve the same marketing pages as the main
+ * site; keep them out of search so they don't compete with it as duplicate content.
+ */
+function isNonCanonicalHost(requestHost: string): boolean {
+  const hostname = hostnameOf(requestHost);
+  if (hostname.endsWith('.vercel.app')) return true;
+  const root = rootDomain();
+  return !!root && hostname.endsWith(`.${root}`) && hostname !== `www.${root}`;
+}
+
 function createNonce(): string {
   return btoa(crypto.randomUUID());
 }
@@ -112,7 +123,11 @@ export function proxy(request: NextRequest): NextResponse {
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set('x-nonce', nonce);
     requestHeaders.set('Content-Security-Policy', csp);
-    return addSecurityHeaders(NextResponse.next({ request: { headers: requestHeaders } }), csp);
+    const response = addSecurityHeaders(NextResponse.next({ request: { headers: requestHeaders } }), csp);
+    if (isNonCanonicalHost(request.headers.get('host') ?? host)) {
+      response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+    }
+    return response;
   };
 
   // ─── 1. Cron route protection ─────────────────────────────────────────────

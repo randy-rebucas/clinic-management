@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { Metadata } from 'next';
+import { pageMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
-  title: 'Integrations - MyClinicSoft',
-  description: 'Connect MyClinicSoft with your favorite tools and services.',
-};
+export const metadata: Metadata = pageMetadata({
+  title: 'Integrations',
+  path: '/integrations',
+  description: 'Connect MyClinicSoft with SMS (Twilio), email, PayPal payments, Cloudinary file storage, and your own systems through the REST API and webhooks.',
+});
 
 export default function IntegrationsPage() {
   const integrations = [

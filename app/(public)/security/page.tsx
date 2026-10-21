@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { Metadata } from 'next';
+import { pageMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
-  title: 'Security & Compliance - MyClinicSoft',
-  description: 'Learn about MyClinicSoft security measures and compliance certifications.',
-};
+export const metadata: Metadata = pageMetadata({
+  title: 'Security & Compliance',
+  path: '/security',
+  description: 'How MyClinicSoft protects patient data: encryption, role-based access controls, multi-factor authentication, audit logging, and Data Privacy Act compliance.',
+});
 
 export default function SecurityPage() {
   const securityFeatures = [

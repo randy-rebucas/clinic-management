@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { Metadata } from 'next';
+import { pageMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
-  title: 'Compare - MyClinicSoft',
-  description: 'See how MyClinicSoft compares to other clinic management solutions.',
-};
+export const metadata: Metadata = pageMetadata({
+  title: 'Compare Clinic Management Software',
+  path: '/compare',
+  description: 'See how MyClinicSoft compares with other clinic management systems — patient records, scheduling, queues, lab results, SMS, API access, and pricing side by side.',
+});
 
 export default function ComparePage() {
   const features = [

@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { connection } from "next/server";
 import WebVitals from "@/components/WebVitals";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/seo";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,40 +19,72 @@ const geistMono = Geist_Mono({
   preload: true,
 });
 
-const baseUrl =
-  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
-  "https://www.myclinicsoft.solutions";
-
 export const metadata: Metadata = {
-  metadataBase: new URL(baseUrl),
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: "My Clinic Software",
-    template: "%s | My Clinic Software",
+    default: `${SITE_NAME} — Clinic Management Software`,
+    template: `%s | ${SITE_NAME}`,
   },
-  description:
-    "Manage patients, appointments, queues, and billing — all in one place.",
-  applicationName: "My Clinic Software",
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  keywords: [
+    "clinic management software",
+    "clinic management system Philippines",
+    "electronic medical records",
+    "EMR Philippines",
+    "patient records",
+    "appointment scheduling",
+    "patient queue system",
+    "clinic billing",
+    "PhilHealth claims",
+    "HMO claims",
+    "medical clinic software",
+  ],
+  authors: [{ name: "DevCom Digital" }],
+  creator: "DevCom Digital",
+  publisher: "DevCom Digital",
+  category: "health",
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
+  verification: {
+    google: process.env.GOOGLE_SITE_VERIFICATION || undefined,
+    other: process.env.BING_SITE_VERIFICATION
+      ? { "msvalidate.01": process.env.BING_SITE_VERIFICATION }
+      : undefined,
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "My Clinic Software",
+    title: SITE_NAME,
   },
   formatDetection: {
     telephone: false,
   },
   openGraph: {
     type: "website",
-    siteName: "My Clinic Software",
-    title: "My Clinic Software",
-    description:
-      "Manage patients, appointments, queues, and billing — all in one place.",
+    siteName: SITE_NAME,
+    locale: "en_PH",
+    title: `${SITE_NAME} — Clinic Management Software`,
+    description: SITE_DESCRIPTION,
   },
   twitter: {
     card: "summary_large_image",
-    title: "My Clinic Software",
-    description:
-      "Manage patients, appointments, queues, and billing — all in one place.",
+    title: `${SITE_NAME} — Clinic Management Software`,
+    description: SITE_DESCRIPTION,
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0a7f7e",
 };
 
 /**
@@ -79,9 +112,6 @@ export default async function RootLayout({
 
   return (
     <html lang="en" data-scroll-behavior="smooth">
-      <head>
-        <meta name="theme-color" content="#0a7f7e" />
-      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

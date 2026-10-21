@@ -1,4 +1,4 @@
-export const metadata = { title: 'Payment | MyClinicSoft', robots: { index: false } };
+export const metadata = { title: 'Payment', robots: { index: false } };
 
 /** Where PayMongo sends a patient after paying a clinic's payment link. Says nothing about the bill. */
 export default async function PayDonePage({ searchParams }: { searchParams: Promise<{ ref?: string; cancelled?: string }> }) {
