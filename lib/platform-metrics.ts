@@ -1,4 +1,5 @@
-import { SUBSCRIPTION_PACKAGES, type SubscriptionPlan } from '@/lib/subscription-packages';
+import { type SubscriptionPlan } from '@/lib/subscription-packages';
+import { planPrice, type PaidPlan } from '@/lib/subscription-period';
 
 /**
  * Platform-wide business numbers for the super-admin console, computed from tenants'
@@ -6,7 +7,8 @@ import { SUBSCRIPTION_PACKAGES, type SubscriptionPlan } from '@/lib/subscription
  *
  * Definitions (shown in the console next to each number):
  *  - Paying: a paid plan, subscription status active, current period not ended.
- *  - MRR: each paying clinic's list price, yearly plans divided by 12, in USD.
+ *  - MRR: each paying clinic's list price, yearly plans divided by 12, in the currency plans
+ *    are sold in now (pesos under PayMongo, the packages' USD under PayPal).
  *    Clinics that cancelled are left out even while their period runs on.
  *  - Churned (30 days): a paid plan whose period ended in the last 30 days without renewal.
  *    Churn rate = churned / (paying + churned).
@@ -66,14 +68,16 @@ export function lifecycleOf(t: PlatformTenantRow, now: Date): TenantLifecycle {
   return running ? 'trial' : 'trial-ended';
 }
 
-/** One clinic's monthly recurring revenue in USD (0 unless paying). */
-export function monthlyValue(t: PlatformTenantRow, now: Date): number {
+/** One clinic's monthly recurring revenue at list price in `currency` (planPrice's), 0 unless paying. */
+export function monthlyValue(t: PlatformTenantRow, now: Date, currency?: 'PHP'): number {
   if (lifecycleOf(t, now) !== 'paying') return 0;
   const sub = t.subscription!;
-  const price = SUBSCRIPTION_PACKAGES[sub.plan as SubscriptionPlan].price;
-  if (sub.billingCycle === 'yearly') return (price.yearly ?? price.monthly * 12) / 12;
-  return price.monthly;
+  const yearly = sub.billingCycle === 'yearly';
+  return planPrice(sub.plan as PaidPlan, yearly ? 'yearly' : 'monthly', currency).amount / (yearly ? 12 : 1);
 }
+
+/** The currency monthlyValue reports in for a given planPrice currency. */
+export const mrrCurrency = (currency?: 'PHP') => planPrice('basic', 'monthly', currency).currency;
 
 function hasPaid(t: PlatformTenantRow): boolean {
   return (t.subscription?.paymentHistory ?? []).some((p) => (p.status ?? 'completed') === 'completed');
@@ -88,6 +92,8 @@ export interface MonthRevenue {
 export interface PlatformMetrics {
   asOf: string;
   tenants: { total: number; byLifecycle: Record<TenantLifecycle, number> };
+  /** ISO code mrr, arr and mrrByPlan are in. */
+  currency: string;
   mrr: number;
   arr: number;
   mrrByPlan: Array<{ plan: SubscriptionPlan; clinics: number; mrr: number }>;
@@ -103,7 +109,7 @@ function monthKey(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
-export function computePlatformMetrics(rows: PlatformTenantRow[], now = new Date(), months = 6): PlatformMetrics {
+export function computePlatformMetrics(rows: PlatformTenantRow[], now = new Date(), months = 6, currency?: 'PHP'): PlatformMetrics {
   const byLifecycle: Record<TenantLifecycle, number> = {
     paying: 0, cancelling: 0, trial: 0, 'trial-ended': 0, lapsed: 0, suspended: 0,
   };
@@ -131,7 +137,7 @@ export function computePlatformMetrics(rows: PlatformTenantRow[], now = new Date
     const life = lifecycleOf(t, now);
     byLifecycle[life]++;
 
-    const value = monthlyValue(t, now);
+    const value = monthlyValue(t, now, currency);
     if (value > 0) {
       mrr += value;
       const agg = planAgg.get(t.subscription!.plan as SubscriptionPlan)!;
@@ -164,6 +170,7 @@ export function computePlatformMetrics(rows: PlatformTenantRow[], now = new Date
   return {
     asOf: now.toISOString(),
     tenants: { total: rows.length, byLifecycle },
+    currency: mrrCurrency(currency),
     mrr: round2(mrr),
     arr: round2(mrr * 12),
     mrrByPlan: PAID_PLANS.map((plan) => ({ plan, ...planAgg.get(plan)!, mrr: round2(planAgg.get(plan)!.mrr) })),

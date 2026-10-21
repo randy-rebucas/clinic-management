@@ -20,7 +20,7 @@ import { getTenantContext } from '@/lib/tenant';
 
 export const PLATFORM_COOKIE = 'platform_session';
 const PLATFORM_SESSION_TTL_S = 8 * 60 * 60;
-const LOGIN_LINK_TTL_S = 15 * 60;
+export const LOGIN_LINK_TTL_S = 15 * 60;
 const VIEW_AS_HANDOFF_TTL_S = 60;
 
 type PlatformTokenType = 'platform' | 'platform-login' | 'view-as';

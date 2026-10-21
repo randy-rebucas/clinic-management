@@ -4,9 +4,6 @@ import type { VoucherBatchStatus } from '@/models/VoucherBatch';
 
 /** Formatting and badges shared by the platform console's server and client components. */
 
-export const usd = (n: number, digits = 0) =>
-  n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: digits, minimumFractionDigits: digits });
-
 export const money = (n: number, currency: string) =>
   n.toLocaleString('en-US', { style: 'currency', currency, maximumFractionDigits: 0 });
 

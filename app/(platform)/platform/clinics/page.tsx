@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { requirePlatformPage } from '@/lib/platform-auth';
 import { loadPlatformTenants } from '@/lib/platform-console';
 import { LIFECYCLE_LABEL, type TenantLifecycle } from '@/lib/platform-metrics';
-import { CARD, LINK, LifecycleBadge, ago, day, planLabel, usd } from '@/components/platform/shared';
+import { CARD, LINK, LifecycleBadge, ago, day, money, planLabel } from '@/components/platform/shared';
 import { FIELD, FOCUS_RING } from '@/components/appointments/shared';
 
 export const dynamic = 'force-dynamic';
@@ -78,7 +78,7 @@ export default async function PlatformClinicsPage({
                 </td>
                 <td className="px-4 py-2.5"><LifecycleBadge lifecycle={r.lifecycle} /></td>
                 <td className="px-4 py-2.5 text-gray-700">{planLabel(r.plan)}{r.billingCycle === 'yearly' && r.plan !== 'trial' ? ' (yearly)' : ''}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-gray-900">{r.mrr ? usd(r.mrr) : '—'}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-gray-900">{r.mrr ? money(r.mrr, data.currency) : '—'}</td>
                 <td className="px-4 py-2.5 text-gray-700">{day(r.expiresAt)}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{r.staff}</td>
                 <td className="px-4 py-2.5 text-gray-700">{ago(r.lastStaffLogin)}</td>

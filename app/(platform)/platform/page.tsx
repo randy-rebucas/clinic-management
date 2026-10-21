@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { requirePlatformPage } from '@/lib/platform-auth';
 import { loadPlatformOverview } from '@/lib/platform-console';
 import { LIFECYCLE_LABEL, type MonthRevenue, type TenantLifecycle } from '@/lib/platform-metrics';
-import { CARD, H2, LINK, LifecycleBadge, ago, money, pct, planLabel, usd } from '@/components/platform/shared';
+import { CARD, H2, LINK, LifecycleBadge, ago, money, pct, planLabel } from '@/components/platform/shared';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,7 +69,7 @@ export default async function PlatformOverviewPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Tile label="MRR" value={usd(m.mrr)} note={`${usd(m.arr)} a year, at list price`} />
+        <Tile label="MRR" value={money(m.mrr, m.currency)} note={`${money(m.arr, m.currency)} a year, at list price`} />
         <Tile label="Paying clinics" value={String(life.paying)} note={`${life.cancelling} cancelling, ${m.tenants.total} clinics in all`} />
         <Tile label="In trial" value={String(life.trial)} note={`${m.signups.last30} sign-ups in 30 days (${m.signups.previous30} the 30 before)`} />
         <Tile label="Churn, 30 days" value={pct(m.churn.rate)} note={`${m.churn.churned} paid ${m.churn.churned === 1 ? 'plan' : 'plans'} ended without renewal`} />
@@ -91,7 +91,7 @@ export default async function PlatformOverviewPage() {
                 <tr key={p.plan} className="border-t border-gray-100 first:border-0">
                   <td className="py-2 text-gray-700">{planLabel(p.plan)}</td>
                   <td className="py-2 text-right tabular-nums text-gray-500">{p.clinics}</td>
-                  <td className="py-2 text-right font-medium tabular-nums text-gray-900">{usd(p.mrr)}</td>
+                  <td className="py-2 text-right font-medium tabular-nums text-gray-900">{money(p.mrr, m.currency)}</td>
                 </tr>
               ))}
             </tbody>
@@ -136,7 +136,7 @@ export default async function PlatformOverviewPage() {
       </div>
 
       <p className="text-xs text-gray-500">
-        MRR counts each paying clinic at its plan&rsquo;s list price in USD (yearly plans ÷ 12) and leaves out clinics that cancelled.
+        MRR counts each paying clinic at its plan&rsquo;s list price in {m.currency} (yearly plans ÷ 12) and leaves out clinics that cancelled.
         Churn is paid plans whose period ended in the last 30 days without renewal, over paying clinics plus those.
       </p>
     </div>

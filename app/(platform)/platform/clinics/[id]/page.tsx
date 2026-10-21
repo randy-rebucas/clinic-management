@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { requirePlatformPage } from '@/lib/platform-auth';
 import { loadPlatformTenant } from '@/lib/platform-console';
 import ClinicActions from '@/components/platform/ClinicActions';
-import { CARD, H2, LINK, LifecycleBadge, SupportStatusBadge, ago, day, money, planLabel, usd } from '@/components/platform/shared';
+import { CARD, H2, LINK, LifecycleBadge, SupportStatusBadge, ago, day, money, planLabel } from '@/components/platform/shared';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +41,7 @@ export default async function PlatformClinicPage({ params }: { params: Promise<{
               <Fact label="Plan">{planLabel(c.subscription.plan)}{c.subscription.billingCycle === 'yearly' ? ' (yearly)' : ''}</Fact>
               <Fact label="Status">{planLabel(c.subscription.status)}</Fact>
               <Fact label="Period ends">{day(c.subscription.expiresAt)}</Fact>
-              <Fact label="MRR">{c.mrr ? usd(c.mrr) : '—'}</Fact>
+              <Fact label="MRR">{c.mrr ? money(c.mrr, c.mrrCurrency) : '—'}</Fact>
             </dl>
             <h3 className="mt-6 text-xs font-medium text-gray-500">Payments</h3>
             {c.payments.length ? (
