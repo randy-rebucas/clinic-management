@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { Metadata } from 'next';
+import { pageMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
-  title: 'Privacy Policy - MyClinicSoft',
-  description: 'MyClinicSoft Privacy Policy - Learn how we protect and handle your data.',
-};
+export const metadata: Metadata = pageMetadata({
+  title: 'Privacy Policy',
+  path: '/privacy',
+  description: 'How MyClinicSoft collects, uses, and protects personal and health information, in line with the Philippine Data Privacy Act of 2012.',
+});
 
 export default function PrivacyPage() {
   return (

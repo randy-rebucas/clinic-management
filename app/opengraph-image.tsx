@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 import { BRAND_GRADIENT, BRAND_HEART_PATH, BRAND_PULSE_COLOR, BRAND_PULSE_PATH } from "@/lib/brand-mark";
 
+export const alt = "MyClinicSoft — clinic management software for Philippine clinics";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -50,7 +51,7 @@ export default function OpengraphImage() {
             letterSpacing: -1,
           }}
         >
-          My Clinic Software
+          MyClinicSoft
         </div>
         <div
           style={{
@@ -60,7 +61,7 @@ export default function OpengraphImage() {
             marginTop: 14,
           }}
         >
-          Patients · Appointments · Queues · Billing
+          Clinic management software for Philippine clinics
         </div>
       </div>
     ),

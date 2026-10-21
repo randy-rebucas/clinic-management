@@ -3,7 +3,7 @@ import { verifySession } from '@/app/lib/dal';
 import { loadAccount, loadAccountActivity } from '@/lib/account';
 import SettingsClient from '@/components/account/SettingsClient';
 
-export const metadata = { title: 'Sign-in & security · My Clinic Software' };
+export const metadata = { title: 'Sign-in & security' };
 
 export default async function SettingsPage() {
   const session = await verifySession();

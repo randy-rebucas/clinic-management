@@ -167,7 +167,7 @@ export function generateSetPasswordEmail(options: {
   expiresInHours: number;
   kind: 'invite' | 'reset';
 }): { subject: string; html: string; text: string } {
-  const clinic = options.clinicName?.trim() || 'My Clinic Software';
+  const clinic = options.clinicName?.trim() || 'MyClinicSoft';
   const isInvite = options.kind === 'invite';
   const subject = isInvite ? `You're invited to ${clinic}` : `Set a new password for ${clinic}`;
   const intro = isInvite

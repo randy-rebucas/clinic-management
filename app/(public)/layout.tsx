@@ -1,16 +1,16 @@
-import type { Metadata } from "next";
 import PublicLayout from "@/components/PublicLayout";
-
-export const metadata: Metadata = {
-  title: "My Clinic Software",
-  description: "Access healthcare services and manage your appointments",
-};
+import JsonLd from "@/components/JsonLd";
+import { organizationJsonLd, websiteJsonLd } from "@/lib/seo";
 
 export default function PublicRouteLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return <PublicLayout>{children}</PublicLayout>;
+  return (
+    <PublicLayout>
+      <JsonLd data={[organizationJsonLd, websiteJsonLd]} />
+      {children}
+    </PublicLayout>
+  );
 }
-

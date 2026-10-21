@@ -1,10 +1,13 @@
 import Link from 'next/link';
 import { Metadata } from 'next';
+import { pageMetadata, softwareApplicationJsonLd } from '@/lib/seo';
+import JsonLd from '@/components/JsonLd';
 
-export const metadata: Metadata = {
-  title: 'Pricing - MyClinicSoft',
-  description: 'Choose the perfect plan for your clinic. Flexible pricing options from small practices to large healthcare facilities.',
-};
+export const metadata: Metadata = pageMetadata({
+  title: 'Pricing',
+  path: '/pricing',
+  description: 'Simple monthly plans for clinics of every size, starting with a free 14-day trial. Compare the Basic, Professional, and Enterprise plans of MyClinicSoft.',
+});
 
 export default function PricingPage() {
   const plans = [
@@ -108,6 +111,11 @@ export default function PricingPage() {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
+      <JsonLd
+        data={softwareApplicationJsonLd(
+          plans.map((p) => ({ name: p.name, price: p.price, priceCurrency: 'USD', description: p.description })),
+        )}
+      />
       {/* Background */}
       <div className="fixed inset-0 -z-10">
         <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"></div>

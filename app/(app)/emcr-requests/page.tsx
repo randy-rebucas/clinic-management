@@ -2,7 +2,7 @@ import { hasPermission, requirePagePermission } from '@/app/lib/auth-helpers';
 import { verifySession } from '@/app/lib/dal';
 import EmcrRequestsClient from '@/components/patients/EmcrRequestsClient';
 
-export const metadata = { title: 'eMCR requests · My Clinic Software' };
+export const metadata = { title: 'eMCR requests' };
 
 export default async function EmcrRequestsPage() {
   // Same rules as the API: patients → read to see the requests, patients → write to decide them.

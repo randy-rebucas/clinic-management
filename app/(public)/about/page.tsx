@@ -1,11 +1,13 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Metadata } from 'next';
+import { pageMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
-  title: 'About Us - MyClinicSoft',
-  description: 'Learn about MyClinicSoft - our mission, values, and commitment to transforming healthcare management.',
-};
+export const metadata: Metadata = pageMetadata({
+  title: 'About Us',
+  path: '/about',
+  description: 'MyClinicSoft is clinic management software built for Philippine clinics by DevCom Digital. Learn about our mission, our values, and our commitment to patient data security.',
+});
 
 export default function AboutPage() {
   const values = [

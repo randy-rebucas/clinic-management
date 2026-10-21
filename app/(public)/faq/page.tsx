@@ -1,10 +1,13 @@
 import Link from 'next/link';
 import { Metadata } from 'next';
+import { faqPageJsonLd, pageMetadata } from '@/lib/seo';
+import JsonLd from '@/components/JsonLd';
 
-export const metadata: Metadata = {
-  title: 'FAQ - MyClinicSoft',
-  description: 'Frequently asked questions about MyClinicSoft clinic management system.',
-};
+export const metadata: Metadata = pageMetadata({
+  title: 'Frequently Asked Questions',
+  path: '/faq',
+  description: 'Answers about MyClinicSoft pricing, the free trial, features, data security and compliance, support and training, and migrating your clinic records.',
+});
 
 export default function FAQPage() {
   const faqCategories = [
@@ -142,6 +145,7 @@ export default function FAQPage() {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
+      <JsonLd data={faqPageJsonLd(faqCategories.flatMap((c) => c.questions))} />
       {/* Background */}
       <div className="fixed inset-0 -z-10">
         <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"></div>

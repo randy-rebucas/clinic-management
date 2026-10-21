@@ -3,7 +3,7 @@ import { verifySession } from '@/app/lib/dal';
 import { loadAccount } from '@/lib/account';
 import ProfileClient from '@/components/account/ProfileClient';
 
-export const metadata = { title: 'Your profile · My Clinic Software' };
+export const metadata = { title: 'Your profile' };
 
 export default async function ProfilePage() {
   const session = await verifySession();

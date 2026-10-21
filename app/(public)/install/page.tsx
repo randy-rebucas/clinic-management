@@ -1,10 +1,14 @@
+import type { Metadata } from 'next';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import InstallClient from '@/components/InstallClient';
 import connectDB from '@/lib/mongodb';
 import { validateEnv } from '@/lib/env-validation';
+import { NO_INDEX } from '@/lib/seo';
 
 export const dynamic = 'force-dynamic';
+
+export const metadata: Metadata = { title: 'Install', robots: NO_INDEX };
 
 interface InstallCheck {
   nodeVersion?: string;

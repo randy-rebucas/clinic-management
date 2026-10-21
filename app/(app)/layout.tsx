@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { NO_INDEX } from "@/lib/seo";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import Navigation from "@/components/Navigation";
@@ -12,8 +13,8 @@ import TenantNotFound from "@/components/TenantNotFound";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 
 export const metadata: Metadata = {
-  title: "My Clinic Software",
-  description: "Manage patients, appointments, queues, and billing — all in one place.",
+  title: { default: "MyClinicSoft", template: "%s | MyClinicSoft" },
+  robots: NO_INDEX,
 };
 
 export default async function AppLayout({

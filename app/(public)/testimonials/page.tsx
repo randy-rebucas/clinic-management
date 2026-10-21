@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { Metadata } from 'next';
+import { pageMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
-  title: 'Testimonials - MyClinicSoft',
-  description: 'See what healthcare providers are saying about MyClinicSoft.',
-};
+export const metadata: Metadata = pageMetadata({
+  title: 'Customer Stories',
+  path: '/testimonials',
+  description: 'Hear from clinics and healthcare providers who run their day-to-day operations on MyClinicSoft.',
+});
 
 export default function TestimonialsPage() {
   const testimonials = [

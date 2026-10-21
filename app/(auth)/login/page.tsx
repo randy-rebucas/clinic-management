@@ -58,7 +58,7 @@ export default async function LoginPage() {
         <div className="relative z-10">
           <Link href="/" className="flex items-center gap-3">
             <BrandLogo size={48} rounded="rounded-2xl" />
-            <span className="text-white font-bold text-lg">My Clinic Software</span>
+            <span className="text-white font-bold text-lg">MyClinicSoft</span>
           </Link>
         </div>
 
@@ -100,7 +100,7 @@ export default async function LoginPage() {
         {/* Bottom tagline */}
         <div className="relative z-10">
           <p className="text-slate-400 text-sm">
-            &copy; {new Date().getFullYear()} My Clinic Software. All rights reserved.
+            &copy; {new Date().getFullYear()} MyClinicSoft. All rights reserved.
           </p>
         </div>
       </div>
@@ -123,7 +123,7 @@ export default async function LoginPage() {
           {/* Mobile logo */}
           <Link href="/" className="flex lg:hidden items-center justify-center gap-3 mb-10">
             <BrandLogo size={44} rounded="rounded-2xl" className="shadow-lg" />
-            <span className="text-gray-900 font-bold text-lg">My Clinic Software</span>
+            <span className="text-gray-900 font-bold text-lg">MyClinicSoft</span>
           </Link>
 
           {/* Heading */}
@@ -138,7 +138,7 @@ export default async function LoginPage() {
             <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
-            Protected by secure authentication &mdash; My Clinic Software
+            Protected by secure authentication &mdash; MyClinicSoft
           </p>
         </div>
       </div>

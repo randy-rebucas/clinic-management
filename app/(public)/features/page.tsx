@@ -1,11 +1,13 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Metadata } from 'next';
+import { pageMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
-  title: 'Features - MyClinicSoft',
-  description: 'Discover all the powerful features of MyClinicSoft - comprehensive clinic management solution',
-};
+export const metadata: Metadata = pageMetadata({
+  title: 'Features: EMR, Scheduling, Queues & Billing',
+  path: '/features',
+  description: 'Every MyClinicSoft module in one place: patient records, appointments, queue management, prescriptions, lab results, referrals, billing, inventory, reports, and audit logs.',
+});
 
 export default function FeaturesPage() {
   const coreFeatures = [

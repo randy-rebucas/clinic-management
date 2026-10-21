@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { Metadata } from 'next';
+import { pageMetadata } from '@/lib/seo';
 
-export const metadata: Metadata = {
-  title: 'Support - MyClinicSoft',
-  description: 'Get help and support for MyClinicSoft. Find answers, contact support, and access resources.',
-};
+export const metadata: Metadata = pageMetadata({
+  title: 'Help Center',
+  path: '/support',
+  description: 'Get help with MyClinicSoft: find answers to common questions, browse guides, and contact our support team.',
+});
 
 export default function SupportPage() {
   const supportOptions = [
