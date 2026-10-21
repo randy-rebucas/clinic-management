@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyPatientSession, PatientSessionPayload } from '@/app/lib/dal';
 import { canActFor } from '@/lib/patient-family';
+import { accountManages } from '@/lib/emcr/account';
 
 /** Header the app sends to act for a family member (their record id). */
 export const PATIENT_PROFILE_HEADER = 'x-patient-profile';
@@ -40,6 +41,16 @@ export async function verifyPatientAuth(
   if (!session) return null;
 
   const mode = options.profile ?? 'allow';
+  // A guardian-only eMCR session signs in on a record its holder manages: never let it act on
+  // that record's credentials, and end it once the holder no longer manages the record.
+  if (session.rel === 'guardian') {
+    if (mode === 'refuse') {
+      profileFailures.set(request, 'refused');
+      return null;
+    }
+    if (!session.acc || !(await accountManages(session.acc, session.patientId))) return null;
+  }
+
   const profileId = request.headers.get(PATIENT_PROFILE_HEADER)?.trim();
   if (!profileId || profileId === session.patientId || mode === 'ignore') return session;
   if (mode === 'refuse') {
@@ -47,7 +58,10 @@ export async function verifyPatientAuth(
     return null;
   }
 
-  if (!(await canActFor(session.patientId, profileId))) {
+  const allowed =
+    (session.rel !== 'guardian' && (await canActFor(session.patientId, profileId))) ||
+    (!!session.acc && (await accountManages(session.acc, profileId)));
+  if (!allowed) {
     profileFailures.set(request, 'forbidden');
     return null;
   }

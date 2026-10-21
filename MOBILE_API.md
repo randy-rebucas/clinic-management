@@ -278,6 +278,48 @@ Rules for the header:
   member's first name (`"Ana: You're next"`) and `data.profileId` set to the member's record id, so
   a tap can open that profile.
 
+### eMCR sign-in, claim and activation (new)
+
+eMCR is run separately from the clinics. **An eMCR account is one verified phone number**; the
+clinics' patient records are attached to it once the caller answers "Is this your record?". These
+endpoints replace `patients/auth/otp/*` + `auth/token {method:"otp"}` for phone sign-in (the old
+ones still work, but they pick the most recently updated record on a shared household number).
+
+| Method & path | Body | Notes |
+|---|---|---|
+| `POST /api/emcr/auth/otp/request` | `{ phone }` | Texts a 6-digit code (5 minutes) when any clinic has this number on file, as a patient's own number or a contact number. Always the same `200` answer. Rate limits as the old OTP |
+| `POST /api/emcr/auth/otp/verify` | `{ phone, otp }` | → `{ claimToken, claimExpiresAt, peopleOnNumber, account, session }`. `session` is the Bearer fields (`token, tokenType, expiresIn, refreshToken, refreshExpiresIn, guardianOnly, patient`) when the account already has a profile (returning user); **`null` for a first sign-in**, then ask the questions with `claimToken` (valid 15 minutes). `peopleOnNumber`: how many people the clinics have on this number (never their names). Wrong code `401`, 5 wrong codes `429` |
+| `POST /api/emcr/auth/claim` | `{ claimToken, relation: "self" \| "other", firstName, dateOfBirth: "YYYY-MM-DD", relationship? }` | "Is this your record?" → `{ status, profileId?, clinics?, account, session }`. `status`: `linked`, `already_linked`, or `pending_approval` (an **adult** someone else's: the clinic must approve; `clinics` = how many clinics were asked). A **minor** (`relation: "other"`, under 18) is added at once and lapses at 18. `session` once the account has any profile. Wrong answers: `400` with `code` `NO_MATCH` (first name + birth date don't match a record on this number; your own record must carry the number as its own phone), `AMBIGUOUS` (ask the clinic), `SELF_TAKEN` (the account already has its own record; use `"other"`). `401 CLAIM_EXPIRED`: start again from the code. 5 tries per 15 minutes, 10 per day |
+| `POST /api/emcr/access-requests` | `{ tenantId, firstName, lastName, dateOfBirth, contactPhone?, contactEmail? }` | No sign-in. "Request access" for someone whose phone isn't on file. One of the contacts is required. Always the same `200` message. When the clinic has a single matching record with a phone/email, sign-in instructions go **to the contact on that record** (never to the one typed); otherwise the clinic's staff get the request. Clinics: `GET /api/tenants/directory?search=` |
+| `GET /api/emcr/account` | | → `{ id, hasOwnRecord, guardianOnly, pendingRequests, activation }`. `activation`: `{ active, plan, activatedAt, expiresAt, daysLeft, enforced }` |
+| `POST /api/emcr/activation/redeem` | `{ code }` | Voucher code (`ABCD-EFGH-JKMN`; dashes/spaces/case ignored). Adds a year (stacks on a running year). Always for the signed-in account (`X-Patient-Profile` ignored). → `{ message, activation, soldBy }`. `400` `code`: `INVALID`, `USED`, `NOT_PAID` (the clinic hasn't paid for that voucher batch yet). 10 tries per hour |
+
+`otp/verify`, `claim` and `redeem` return their fields at the top level (not under `data`);
+`GET /api/emcr/account` returns them under `data`. After redeeming, other server instances may
+still answer `402` for up to 30 seconds.
+
+`DELETE /api/patients/session?all=true` refuses a guardian-only session (`403
+NOT_FOR_FAMILY_PROFILE`): it would sign the managed person out everywhere. Sign out on this device.
+
+Tokens from these endpoints carry two more claims:
+
+- `acc`: the eMCR account id. Refresh keeps it.
+- `rel: "guardian"`: the account has **no record of its own** (a parent who isn't a patient); the
+  token is signed in on one of the records it manages (`guardianOnly: true`). `GET /me/family` then
+  returns `self: null, guardianOnly: true` and every managed person in `members`; switch between
+  them with `X-Patient-Profile` as usual. Credential routes (`change-password`,
+  `setup-credentials`, `login-qr`, family add/remove, `phone-code`) refuse such a session with
+  `403 NOT_FOR_FAMILY_PROFILE`; don't offer them.
+
+**Activation gate.** Without an active year, these answer `402 { code: "ACTIVATION_REQUIRED" }`:
+booking (`POST /api/patients/appointments`), `me/check-in`, `me/queue`, `me/health-summary` (+
+`pdf-link`), `me/documents` (+ detail), `me/vitals`, `me/visits/[id]` and `me/lab-results/[id]`.
+Free without activation: profile, the appointments, prescriptions, invoices, visits and lab-results
+**lists**, notifications, clinics, family list. Show the "Enter activation code" screen on `402`.
+The gate is only switched on when the server sets `EMCR_ACTIVATION_ENFORCED=true`
+(`activation.enforced`); until then everything stays open. **Never show prices or "buy" wording
+in the app**: vouchers are sold at clinic counters.
+
 ---
 
 ## Medical representative app

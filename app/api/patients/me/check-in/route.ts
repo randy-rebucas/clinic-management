@@ -18,6 +18,7 @@ import { createQueueEntry } from '@/lib/queue-entry';
 import { queuePosition } from '@/lib/queue-position';
 import { scopedTenantIds } from '../_lib/patient-scope';
 import { linkedRecords, recordAtClinic } from '../_lib/linked-records';
+import { requireActiveEmcr } from '@/lib/emcr/activation';
 
 const ACTIVE = ['waiting', 'in-progress'];
 /** Appointments a patient can arrive for: anything booked and not finished or cancelled. */
@@ -41,6 +42,8 @@ function refuse(status: number, code: string, error: string) {
 export async function POST(request: NextRequest) {
   const session = await verifyPatientAuth(request);
   if (!session) return patientAuthError(request);
+  const locked = await requireActiveEmcr(session, 'check_in');
+  if (locked) return locked;
 
   const limited = await applyRateLimit(request, rateLimiters.api, `patient-checkin:${session.patientId}`);
   if (limited) return limited;

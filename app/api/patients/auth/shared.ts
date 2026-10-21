@@ -359,7 +359,13 @@ export function otpRequiredResponse() {
 export async function rotatePatientSessionAfterPasswordChange(
   request: NextRequest,
   patientId: string,
-  options: { tid?: string; keepDeviceId?: string; amr?: PatientTokenClaims['amr'] | null } = {}
+  options: {
+    tid?: string;
+    keepDeviceId?: string;
+    amr?: PatientTokenClaims['amr'] | null;
+    /** eMCR account the caller's session belongs to; kept on the fresh token. */
+    acc?: string;
+  } = {}
 ): Promise<{
   apply: (response: NextResponse) => NextResponse;
   token: string | null;
@@ -371,12 +377,12 @@ export async function rotatePatientSessionAfterPasswordChange(
   if (!patient) return { apply: (r) => r, token: null, bodyFields: {} };
 
   const amr = options.amr === undefined ? 'password' : options.amr ?? undefined;
-  const token = await issuePatientToken(patient, { tid: options.tid, amr });
+  const token = await issuePatientToken(patient, { tid: options.tid, amr, acc: options.acc });
   const usedCookie = !!request.cookies.get('patient_session')?.value;
   // Old refresh tokens die with the session version bump; the app gets a new one.
   const refreshToken = usedCookie
     ? null
-    : await issueRefreshToken('patient', patient._id, patient.sessionVersion ?? 0, undefined, { tid: options.tid });
+    : await issueRefreshToken('patient', patient._id, patient.sessionVersion ?? 0, undefined, { tid: options.tid, acc: options.acc });
   return {
     token: usedCookie ? null : token,
     bodyFields: usedCookie

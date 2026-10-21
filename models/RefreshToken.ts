@@ -19,6 +19,9 @@ export interface IRefreshToken extends Document {
    * Every access token minted from the chain carries the same scope.
    */
   scopeTenantId?: Types.ObjectId;
+  /** Patient tokens only: the eMCR account (`acc`) and holder relation (`rel`) of the sign-in. */
+  scopeAccountId?: Types.ObjectId;
+  scopeRel?: 'guardian';
   expiresAt: Date;
   usedAt?: Date;
   revokedAt?: Date;
@@ -34,6 +37,8 @@ const RefreshTokenSchema = new Schema<IRefreshToken>(
     subjectId: { type: Schema.Types.ObjectId, required: true, index: true },
     sessionVersion: { type: Number, default: 0 },
     scopeTenantId: { type: Schema.Types.ObjectId },
+    scopeAccountId: { type: Schema.Types.ObjectId },
+    scopeRel: { type: String, enum: ['guardian'] },
     expiresAt: { type: Date, required: true },
     usedAt: { type: Date },
     revokedAt: { type: Date },

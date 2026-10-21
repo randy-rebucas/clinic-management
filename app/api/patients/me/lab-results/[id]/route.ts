@@ -14,7 +14,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const ctx = await ownedRecordContext(request, id, 'Lab result');
+    const ctx = await ownedRecordContext(request, id, 'Lab result', 'records');
     if (isOwnedRecordError(ctx)) return ctx;
 
     const labResult = await LabResult.findOne(ctx.filter).select(PATIENT_LAB_RESULT_HIDDEN).lean();

@@ -1,5 +1,6 @@
 import { LIFECYCLE_LABEL, type TenantLifecycle } from '@/lib/platform-metrics';
 import type { SupportStatus } from '@/models/SupportRequest';
+import type { VoucherBatchStatus } from '@/models/VoucherBatch';
 
 /** Formatting and badges shared by the platform console's server and client components. */
 
@@ -69,3 +70,20 @@ export function SupportStatusBadge({ status }: { status: SupportStatus }) {
 export const CARD = 'rounded-lg border border-gray-200 bg-white';
 export const H2 = 'text-sm font-semibold text-gray-900';
 export const LINK = 'font-medium text-brand-teal-deep hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal rounded';
+
+/** Pesos, whole (eMCR vouchers are priced in PHP). */
+export const php = (n: number) => money(n, 'PHP');
+
+const BATCH_TONE: Record<VoucherBatchStatus, string> = {
+  unpaid: 'bg-amber-50 text-amber-800 ring-amber-200',
+  paid: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
+  void: 'bg-gray-100 text-gray-600 ring-gray-300',
+};
+
+export function BatchStatusBadge({ status }: { status: VoucherBatchStatus }) {
+  return (
+    <span className={`inline-block whitespace-nowrap rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${BATCH_TONE[status]}`}>
+      {planLabel(status)}
+    </span>
+  );
+}

@@ -549,6 +549,13 @@ export interface PatientSessionPayload {
   tid?: string;
   /** How this token's sign-in was proven. Not carried through refresh (refreshed tokens have none). */
   amr?: PatientAuthMethod;
+  /** eMCR account (EmcrAccount id) this sign-in belongs to: set for eMCR phone sign-ins. */
+  acc?: string;
+  /**
+   * 'guardian': `patientId` is not the account holder but a record they manage (a parent with no
+   * patient record of their own). Credential actions on that record are refused.
+   */
+  rel?: 'guardian';
   iat?: number;
   /**
    * Set (never signed into a token) when the request acts for a family member: `patientId` is the
@@ -560,6 +567,8 @@ export interface PatientSessionPayload {
 export interface PatientTokenClaims {
   tid?: string | null;
   amr?: PatientAuthMethod;
+  acc?: string | null;
+  rel?: 'guardian' | null;
 }
 
 interface PatientTokenSubject {
@@ -579,6 +588,8 @@ export async function issuePatientToken(
   validateSecret();
   const tid = claims.tid ? String(claims.tid) : undefined;
   if (tid && !OBJECT_ID_FORMAT.test(tid)) throw new Error('Invalid tid claim');
+  const acc = claims.acc ? String(claims.acc) : undefined;
+  if (acc && !OBJECT_ID_FORMAT.test(acc)) throw new Error('Invalid acc claim');
   return new SignJWT({
     typ: 'patient',
     type: 'patient',
@@ -588,6 +599,8 @@ export async function issuePatientToken(
     pv: patient.sessionVersion ?? 0,
     ...(tid ? { tid } : {}),
     ...(claims.amr ? { amr: claims.amr } : {}),
+    ...(acc ? { acc } : {}),
+    ...(acc && claims.rel === 'guardian' ? { rel: 'guardian' } : {}),
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
@@ -625,6 +638,24 @@ async function loadPatientSessionState(patientId: string) {
     for (const [key, entry] of patientStateCache) if (entry.expires < now) patientStateCache.delete(key);
   }
   return state;
+}
+
+const emcrAccountCache = new Map<string, { ok: boolean; expires: number }>();
+
+/** An eMCR account still exists and is not disabled (cached like the patient state). */
+async function emcrAccountUsable(accountId: string): Promise<boolean> {
+  const cached = emcrAccountCache.get(accountId);
+  if (cached && cached.expires > Date.now()) return cached.ok;
+  await connectDB();
+  const EmcrAccount = (await import('@/models/EmcrAccount')).default;
+  const account = await EmcrAccount.findById(accountId).select('disabled').lean<{ disabled?: boolean } | null>();
+  const ok = !!account && !account.disabled;
+  emcrAccountCache.set(accountId, { ok, expires: Date.now() + SESSION_CHECK_TTL_MS });
+  if (emcrAccountCache.size > 5000) {
+    const now = Date.now();
+    for (const [key, entry] of emcrAccountCache) if (entry.expires < now) emcrAccountCache.delete(key);
+  }
+  return ok;
 }
 
 /** Invalidate every patient token issued so far (e.g. after a password change). Returns the new version. */
@@ -667,6 +698,8 @@ export async function verifyPatientSession(
     // A malformed scope claim must never fall back to "every clinic".
     if (p.tid !== undefined && (typeof p.tid !== 'string' || !OBJECT_ID_FORMAT.test(p.tid))) return null;
     if (p.amr !== undefined && p.amr !== 'password' && p.amr !== 'otp' && p.amr !== 'qr') return null;
+    if (p.acc !== undefined && (typeof p.acc !== 'string' || !OBJECT_ID_FORMAT.test(p.acc))) return null;
+    if (p.rel !== undefined && (p.rel !== 'guardian' || p.acc === undefined)) return null;
     // Older tokens were issued for 30 days; cap every token at the current TTL.
     if (typeof payload.iat === 'number' && Date.now() / 1000 - payload.iat > PATIENT_TOKEN_TTL_SECONDS) {
       return null;
@@ -675,6 +708,7 @@ export async function verifyPatientSession(
     const state = await loadPatientSessionState(p.patientId);
     if (!state || !state.active) return null;
     if ((typeof p.pv === 'number' ? p.pv : 0) !== state.sessionVersion) return null;
+    if (typeof p.acc === 'string' && !(await emcrAccountUsable(p.acc))) return null;
 
     return payload as unknown as PatientSessionPayload;
   } catch {

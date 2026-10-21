@@ -17,7 +17,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const ctx = await ownedRecordContext(request, id, 'Document');
+    const ctx = await ownedRecordContext(request, id, 'Document', 'documents');
     if (isOwnedRecordError(ctx)) return ctx;
 
     const document = await Document.findOne({

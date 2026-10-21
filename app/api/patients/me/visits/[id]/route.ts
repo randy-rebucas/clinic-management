@@ -14,7 +14,7 @@ export async function GET(
   try {
     const { id } = await params;
     // Own visit, at the patient's clinics (session clinic scope applies); malformed id → 404.
-    const ctx = await ownedRecordContext(request, id, 'Visit');
+    const ctx = await ownedRecordContext(request, id, 'Visit', 'records');
     if (isOwnedRecordError(ctx)) return ctx;
 
     const visit = await Visit.findOne(ctx.filter)

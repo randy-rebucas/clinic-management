@@ -7,6 +7,7 @@ import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { parsePagination, resolveTenantFilter } from '../_lib/patient-scope';
 import { linkedRecords } from '../_lib/linked-records';
+import { requireActiveEmcr } from '@/lib/emcr/activation';
 
 /**
  * GET /api/patients/me/vitals
@@ -16,6 +17,8 @@ import { linkedRecords } from '../_lib/linked-records';
 export async function GET(request: NextRequest) {
   const session = await verifyPatientAuth(request);
   if (!session) return patientAuthError(request);
+  const locked = await requireActiveEmcr(session, 'records');
+  if (locked) return locked;
 
   try {
     await connectDB();

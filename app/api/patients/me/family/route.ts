@@ -13,6 +13,7 @@ import {
   listDependents,
   personRecordIds,
 } from '@/lib/patient-family';
+import { findAccountForSession, listAccountDependents } from '@/lib/emcr/account';
 import { checkPhoneProof, otpFailureResponse, otpRequiredResponse } from '../../auth/shared';
 
 type SelfRecord = { _id: unknown; firstName: string; lastName: string; active?: boolean; email?: string; tenantIds?: unknown[] };
@@ -26,7 +27,9 @@ async function loadSelf(patientId: string) {
  * GET /api/patients/me/family
  * The signed-in person, the family members they manage, and minors registered with their phone
  * number that they can add. Always about the signed-in person (`X-Patient-Profile` is ignored).
- * → { self: { id, firstName, lastName }, members: FamilyMember[], suggestions: FamilySuggestion[] }
+ * → { self: { id, firstName, lastName } | null, guardianOnly, members: FamilyMember[], suggestions: FamilySuggestion[] }
+ * `self` is null (and `guardianOnly` true) for an eMCR account with no record of its own: the
+ * session is signed in on one of `members`.
  */
 export async function GET(request: NextRequest) {
   const session = await verifyPatientAuth(request, { profile: 'ignore' });
@@ -40,13 +43,25 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Account is inactive.' }, { status: 403 });
     }
 
+    // eMCR accounts may also hold dependents themselves (a parent with no record of their own).
+    const account = session.acc ? await findAccountForSession(session) : null;
+    const accountMembers = account ? await listAccountDependents(account) : [];
+
+    if (session.rel === 'guardian') {
+      // Signed in on a record the holder manages: there is no "self" profile.
+      return NextResponse.json({ success: true, data: { self: null, guardianOnly: true, members: accountMembers, suggestions: [] } });
+    }
+
     const ids = await personRecordIds(session.patientId);
-    const [members, suggestions] = await Promise.all([listDependents(ids), findFamilySuggestions(session.patientId)]);
+    const [linkedMembers, suggestions] = await Promise.all([listDependents(ids), findFamilySuggestions(session.patientId)]);
+    const seen = new Set(linkedMembers.map((m) => m.id));
+    const members = [...linkedMembers, ...accountMembers.filter((m) => !seen.has(m.id))];
 
     return NextResponse.json({
       success: true,
       data: {
         self: { id: session.patientId, firstName: self.firstName, lastName: self.lastName },
+        guardianOnly: false,
         members,
         suggestions,
       },
