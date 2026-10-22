@@ -11,6 +11,9 @@ import { Types } from 'mongoose';
 import { isValidId } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId, zEmail, zPhone, zShortText } from '@/lib/api/validate';
 import { normalizePhone } from '@/lib/phone';
+import { phoneVariants } from '@/app/api/patients/auth/shared';
+import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
+import { turnstileRejection } from '@/lib/turnstile';
 import { nextPatientCode } from '@/lib/patient-schema';
 import { checkSubscriptionLimit } from '@/lib/subscription-limits';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
@@ -146,17 +149,27 @@ const publicBookingSchema = z.object({
   dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   sex: z.enum(['male', 'female', 'other']).optional(),
   tenantId: zObjectId.optional(),
+  turnstileToken: z.string().max(2048).optional(),
 });
 
 const SLOT_TAKEN = 'This time slot is already booked. Please choose another time.';
 
+/** Open online requests one phone number may hold at a clinic before staff act on them. */
+const MAX_PENDING_PER_PHONE = 3;
+
 // Public endpoint for patient booking (no authentication required)
 export async function POST(request: NextRequest) {
+  const ipLimited = await applyRateLimit(request, rateLimiters.publicWrite);
+  if (ipLimited) return ipLimited;
+
   try {
     await connectDB();
     const parsed = await parseBody(request, publicBookingSchema);
     if (isValidationError(parsed)) return parsed;
     const body = parsed.data;
+
+    const captchaRejected = await turnstileRejection(request, body.turnstileToken);
+    if (captchaRejected) return captchaRejected;
 
     const tenantId = await resolvePublicTenant(body.tenantId);
     if (!tenantId) {
@@ -172,6 +185,8 @@ export async function POST(request: NextRequest) {
     if (!phone) {
       return NextResponse.json({ success: false, error: 'Invalid phone number' }, { status: 400 });
     }
+    const phoneLimited = await applyRateLimit(request, rateLimiters.publicWritePhone, phone);
+    if (phoneLimited) return phoneLimited;
 
     const doctor = await Doctor.findOne({ _id: body.doctorId, status: 'active', tenantId })
       .select('firstName lastName schedule availabilityOverrides')
@@ -209,6 +224,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: SLOT_TAKEN }, { status: 409 });
     }
 
+    // Durable backstop to the rate limits: pending slots block real patients, so one number
+    // can't hold more than a few at once. The note line is written below.
+    const pendingForPhone = await Appointment.countDocuments({
+      tenantId,
+      status: 'pending',
+      isWalkIn: false,
+      notes: new RegExp(`^Submitted phone: \\+${phone.slice(1)}$`, 'm'),
+    });
+    if (pendingForPhone >= MAX_PENDING_PER_PHONE) {
+      return NextResponse.json(
+        { success: false, error: 'You already have booking requests waiting for the clinic to confirm. Please contact the clinic.' },
+        { status: 429 }
+      );
+    }
+
     const limitCheck = await checkSubscriptionLimit(tenantId, 'createAppointment');
     if (!limitCheck.allowed) {
       return NextResponse.json(
@@ -217,10 +247,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // An existing patient is linked by email but never modified from this unauthenticated
-    // endpoint: changing their phone here would let anyone take over the OTP login.
-    // The booking stays "pending" until staff confirm it.
-    let patient = await Patient.findOne({ email: body.patientEmail, tenantIds: tenantId }).select('_id phone firstName lastName');
+    // An existing patient is reused only when both email and phone match, so typing someone
+    // else's email can't file a booking under their record; otherwise a new (self-registered)
+    // record is created for staff to merge. Existing records are never modified from this
+    // unauthenticated endpoint. The booking stays "pending" until staff confirm it.
+    let patient = await Patient.findOne({
+      email: body.patientEmail,
+      phone: { $in: phoneVariants(phone) },
+      tenantIds: tenantId,
+    }).select('_id phone firstName lastName');
     if (!patient) {
       const patientLimit = await checkSubscriptionLimit(tenantId, 'createPatient');
       if (!patientLimit.allowed) {
@@ -240,6 +275,7 @@ export async function POST(request: NextRequest) {
         sex: body.sex,
         patientCode: await nextPatientCode(),
         tenantIds: [tenantId],
+        selfRegistered: true,
       });
       await patient.save({ validateBeforeSave: !!(body.dateOfBirth && body.sex) });
     }

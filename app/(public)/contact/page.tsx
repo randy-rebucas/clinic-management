@@ -74,7 +74,7 @@ export default function ContactPage() {
               </p>
               <SupportHours />
               <p className="mt-4 border-t border-gray-200 pt-4 text-xs text-gray-500">
-                <span className="font-semibold text-gray-700">Enterprise plans:</span> 24/7 support.
+                <span className="font-semibold text-gray-700">Enterprise plans:</span> support terms agreed in your contract.
               </p>
             </div>
           </aside>

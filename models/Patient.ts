@@ -122,6 +122,12 @@ export interface IPatient extends Document {
    */
   accountId?: Types.ObjectId;
   /**
+   * Created from a public form (online booking, self-registration) with a phone nobody verified.
+   * Kept out of eMCR claim matching and cross-clinic linking until clinic staff save the record,
+   * so a stranger can't plant allergies or conditions into someone else's linked records.
+   */
+  selfRegistered?: boolean;
+  /**
    * People who may manage this record from their own app login (family accounts). `patient` is
    * the guardian's record. `source: 'phone'` was added by the guardian for a minor registered
    * with the guardian's verified phone and lapses at 18; `source: 'clinic'` was added by staff
@@ -397,6 +403,9 @@ const PatientSchema: Schema = new Schema(
       type: Schema.Types.ObjectId,
       index: true,
       sparse: true,
+    },
+    selfRegistered: {
+      type: Boolean,
     },
     // Family accounts: who may manage this record from their own login.
     guardians: {

@@ -152,7 +152,7 @@ const categories: Category[] = [
         title: 'Documents',
         description: 'Upload, organize, and find medical documents and images in seconds.',
         icon: icons.document,
-        points: ['Secure storage', 'Categories', 'Search', 'File sharing', 'Versioning'],
+        points: ['Secure storage', 'Categories', 'Search', 'File sharing'],
       },
       {
         title: 'Reports & Analytics',
@@ -195,13 +195,13 @@ const categories: Category[] = [
         title: 'SMS',
         description: 'Automated reminders, confirmations, and bulk messages straight to patients’ phones.',
         icon: icons.chat,
-        points: ['Reminders', 'Confirmations', 'Bulk sending', 'Templates', 'Delivery tracking'],
+        points: ['Reminders', 'Confirmations', 'Bulk sending', 'Templates'],
       },
       {
         title: 'Email',
         description: 'Appointment, result, and invoice emails from templates you control.',
         icon: icons.mail,
-        points: ['Appointment emails', 'Result emails', 'Invoice emails', 'Templates', 'Delivery tracking'],
+        points: ['Appointment emails', 'Result emails', 'Invoice emails', 'Templates'],
       },
       {
         title: 'Rooms',

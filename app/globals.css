@@ -100,6 +100,13 @@ html {
   animation: fade-up-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up-in {
+    animation: mark-in 0.2s ease-out both;
+    animation-delay: 0s !important;
+  }
+}
+
 /*
  * Dashboard motion. One authored moment: the clinic day's elapsed wash and now-line
  * sweep from opening time to the present, and the day's bookings arrive in time order

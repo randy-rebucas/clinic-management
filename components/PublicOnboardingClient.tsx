@@ -4,7 +4,8 @@ import { useState, FormEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toDateKey } from './utils/dateKey';
-import QRCode from 'react-qr-code';
+import { SUPPORT_EMAIL } from '@/lib/seo';
+import TurnstileWidget, { TURNSTILE_SITE_KEY } from './TurnstileWidget';
 
 interface AllergyEntry {
   substance: string;
@@ -59,13 +60,38 @@ const STEPS = [
   { id: 4, title: 'Medical Info', description: 'Health information' },
 ];
 
-export default function PublicOnboardingClient() {
+/** `subdomain` is the clinic subdomain the server resolved from ROOT_DOMAIN, '' on the root domain. */
+export default function PublicOnboardingClient({ subdomain }: { subdomain: string }) {
   const [currentStep, setCurrentStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [patientCode, setPatientCode] = useState<string | null>(null);
-  const [loginQrData, setLoginQrData] = useState<string | null>(null);
+  // On a clinic's subdomain the API knows the clinic; on the root domain the visitor picks one.
+  const needsClinic = subdomain === '';
+  const [clinics, setClinics] = useState<{ _id: string; name: string; displayName?: string; address?: { city?: string } }[]>([]);
+  const [clinicsLoaded, setClinicsLoaded] = useState(false);
+  const [clinicId, setClinicId] = useState('');
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  // Turnstile tokens are single-use: bumping this remounts the widget after each attempt.
+  const [captchaKey, setCaptchaKey] = useState(0);
+
+  useEffect(() => {
+    if (!needsClinic) return;
+    let cancelled = false;
+    fetch('/api/tenants/public')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.success && Array.isArray(data.tenants)) setClinics(data.tenants);
+      })
+      .catch((err) => console.error('Failed to fetch clinics:', err))
+      .finally(() => {
+        if (!cancelled) setClinicsLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [needsClinic]);
 
   const [formData, setFormData] = useState<PatientFormData>({
     firstName: '',
@@ -104,7 +130,7 @@ export default function PublicOnboardingClient() {
   const validateStep = (step: number): boolean => {
     switch (step) {
       case 0:
-        return !!(formData.firstName && formData.lastName && formData.dateOfBirth);
+        return !!(formData.firstName && formData.lastName && formData.dateOfBirth && (!needsClinic || clinicId));
       case 1:
         return !!(
           formData.phone &&
@@ -177,6 +203,8 @@ export default function PublicOnboardingClient() {
         emergencyContact: formData.emergencyContact,
         allergies: allergiesArray,
       };
+      if (needsClinic) payload.tenantId = clinicId;
+      if (captchaToken) payload.turnstileToken = captchaToken;
 
       // Add email only if provided
       if (formData.email && formData.email.trim()) {
@@ -267,7 +295,6 @@ export default function PublicOnboardingClient() {
         if (data.data && data.data.patientCode) {
           setSuccess(true);
           setPatientCode(data.data.patientCode);
-          setLoginQrData(typeof data.data.qrData === 'string' && data.data.qrData ? data.data.qrData : null);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         } else {
           console.error('API response missing patient data:', data);
@@ -284,6 +311,7 @@ export default function PublicOnboardingClient() {
       setError(`Failed to register: ${error.message || 'Unknown error'}`);
     } finally {
       setSubmitting(false);
+      setCaptchaKey((k) => k + 1);
     }
   };
 
@@ -392,33 +420,6 @@ export default function PublicOnboardingClient() {
                       <p className="text-xs text-gray-500 mt-2">
                         Please save this code for future reference when booking appointments or accessing your records.
                       </p>
-                    </div>
-                  )}
-                  
-                  {/* QR Code for Patient Login */}
-                  {loginQrData && (
-                    <div className="bg-white rounded-lg p-4 sm:p-6 mb-3 border border-green-200">
-                      <h4 className="text-sm sm:text-base font-semibold text-gray-900 mb-2 text-center">
-                        Your Patient QR Code
-                      </h4>
-                      <p className="text-xs text-gray-600 mb-3 text-center">
-                        Scan this QR code to quickly sign in to the mobile app
-                      </p>
-                      <div className="flex justify-center mb-3">
-                        <div className="p-3 bg-white border-2 border-gray-200 rounded-lg inline-block">
-                          <QRCode
-                            value={loginQrData}
-                            size={200}
-                            style={{ height: 'auto', maxWidth: '100%', width: '100%' }}
-                            viewBox="0 0 256 256"
-                          />
-                        </div>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-xs text-gray-500">
-                          Save this QR code — scan it in the MyClinicSoft mobile app to sign in
-                        </p>
-                      </div>
                     </div>
                   )}
                   
@@ -558,6 +559,30 @@ export default function PublicOnboardingClient() {
                       </div>
                       <div className="md:col-span-2">
                         <div className="space-y-4">
+                          {needsClinic && (
+                            <div>
+                              <label htmlFor="onboard-clinic" className="block text-sm font-medium text-gray-700 mb-1.5">
+                                Clinic <span className="text-red-500">*</span>
+                              </label>
+                              <select
+                                id="onboard-clinic"
+                                required
+                                value={clinicId}
+                                onChange={(e) => setClinicId(e.target.value)}
+                                disabled={!clinicsLoaded || clinics.length === 0}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal focus:border-brand-teal outline-none text-base transition-colors bg-white hover:border-gray-400 disabled:bg-gray-50"
+                              >
+                                <option value="">
+                                  {!clinicsLoaded ? 'Loading clinics…' : clinics.length === 0 ? 'No clinics are accepting registrations yet' : 'Choose the clinic you visit'}
+                                </option>
+                                {clinics.map((c) => (
+                                  <option key={c._id} value={c._id}>
+                                    {(c.displayName || c.name) + (c.address?.city ? ` — ${c.address.city}` : '')}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                               <label htmlFor="onboard-first-name" className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -1148,14 +1173,20 @@ export default function PublicOnboardingClient() {
                     </div>
                   )}
 
+                  {TURNSTILE_SITE_KEY && currentStep === STEPS.length - 1 && (
+                    <div className="pt-6">
+                      <TurnstileWidget key={captchaKey} onToken={setCaptchaToken} />
+                    </div>
+                  )}
+
                   {/* Navigation Buttons */}
                   <div className="flex flex-col sm:flex-row justify-between gap-3 sm:gap-4 pt-6 border-t border-gray-200 mt-6">
                     <button
                       type="button"
                       onClick={prevStep}
-                      disabled={currentStep === 1}
+                      disabled={currentStep === 0}
                       className={`px-6 py-3 rounded-md font-semibold transition-colors ${
-                        currentStep === 1
+                        currentStep === 0
                           ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                           : 'bg-white border border-gray-300 hover:border-gray-900 text-gray-900'
                       }`}
@@ -1183,7 +1214,7 @@ export default function PublicOnboardingClient() {
                     ) : (
                       <button
                         type="submit"
-                        disabled={submitting}
+                        disabled={submitting || (Boolean(TURNSTILE_SITE_KEY) && !captchaToken)}
                         className="px-6 sm:px-8 py-3 bg-brand-teal hover:bg-brand-teal-dark disabled:bg-brand-teal-light text-white rounded-md font-semibold transition-colors flex-1 sm:flex-initial disabled:cursor-not-allowed"
                       >
                         {submitting ? (
@@ -1218,14 +1249,14 @@ export default function PublicOnboardingClient() {
                   Book an appointment
                 </Link>
                 {' '}or{' '}
-                <Link href="/login" className="text-brand-teal hover:text-brand-teal-dark font-medium">
-                  Login
+                <Link href="/download" className="text-brand-teal hover:text-brand-teal-dark font-medium">
+                  get the eMCR app
                 </Link>
               </p>
               <p className="mt-2">
                 Need help? Contact us at{' '}
-                <a href="mailto:support@clinic.com" className="text-brand-teal hover:text-brand-teal-dark font-medium">
-                  support@clinic.com
+                <a href={`mailto:${SUPPORT_EMAIL}`} className="text-brand-teal hover:text-brand-teal-dark font-medium">
+                  {SUPPORT_EMAIL}
                 </a>
               </p>
             </div>

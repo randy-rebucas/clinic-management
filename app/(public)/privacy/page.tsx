@@ -8,16 +8,42 @@ export const metadata: Metadata = pageMetadata({
   description: 'How MyClinicSoft collects, uses, and protects personal and health information, in line with the Philippine Data Privacy Act of 2012.',
 });
 
+const subprocessors: [string, string][] = [
+  ['Vercel', 'Application hosting'],
+  ['MongoDB Atlas', 'Database hosting'],
+  ['Cloudinary', 'Storage of uploaded files and documents'],
+  ['Twilio', 'SMS reminders and one-time sign-in codes'],
+  ['Email delivery provider', 'Transactional email (sign-in links, reminders, receipts)'],
+  ['Anthropic', 'AI scribe drafts, only when a clinic turns the scribe on'],
+  ['Jitsi (meet.jit.si)', 'Video for teleconsultations, only when a clinic uses them'],
+  ['PayMongo and PayPal', 'Subscription and patient bill payments'],
+  ['Expo and web push services', 'Mobile and browser notifications'],
+  ['Sentry', 'Error monitoring'],
+];
+
 const sections: LegalSection[] = [
   {
     id: 'introduction',
-    title: 'Introduction',
+    title: 'Who We Are',
     body: (
-      <P>
-        MyClinicSoft (&quot;we,&quot; &quot;our,&quot; or &quot;us&quot;) is committed to protecting your privacy.
-        This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our
-        clinic management software and services.
-      </P>
+      <>
+        <P>
+          MyClinicSoft and the eMCR patient app are provided by DevCom Digital, a business registered in the
+          Philippines (&quot;we,&quot; &quot;us&quot;). This policy explains what personal information we handle, why,
+          and the choices you have under the Data Privacy Act of 2012 (RA 10173).
+        </P>
+        <H3>Clinics and patients</H3>
+        <P>
+          When a clinic records information about its patients in MyClinicSoft, the clinic is the personal information
+          controller for those records and decides how they are used. We act as its personal information processor: we
+          store and process the records only to run the Service for that clinic. Patients who want to access, correct,
+          or delete clinic records should contact the clinic first; we will help the clinic respond.
+        </P>
+        <P>
+          We are the controller for clinic staff accounts, eMCR accounts, billing information, and enquiries sent to
+          us.
+        </P>
+      </>
     ),
   },
   {
@@ -25,23 +51,31 @@ const sections: LegalSection[] = [
     title: 'Information We Collect',
     body: (
       <>
-        <H3>Information you provide</H3>
+        <H3>From clinics and their staff</H3>
         <List
           items={[
-            'Account information (name, email, phone number)',
-            'Clinic information and settings',
-            'Patient data entered into the system',
-            'Payment and billing information',
-            'Support communications',
+            'Staff account details: name, email, phone, role, and sign-in security settings',
+            'Clinic details and settings',
+            'Patient records the clinic enters, which can include health information such as consultations, diagnoses, prescriptions, lab results, and documents',
+            'Billing records for the clinic’s subscription',
           ]}
         />
-        <H3>Automatically collected information</H3>
+        <H3>From patients using eMCR or online booking</H3>
         <List
           items={[
-            'Usage data and analytics',
-            'Device information',
-            'IP addresses and location data',
-            'Cookies and similar tracking technologies',
+            'Mobile number, verified with a one-time code',
+            'Name and date of birth, used to match you to records your clinics hold',
+            'Dependents you add, such as children',
+            'Booking requests and check-ins',
+            'Device push-notification tokens',
+          ]}
+        />
+        <H3>Collected automatically</H3>
+        <List
+          items={[
+            'IP address and browser or device information, used for security and rate limiting',
+            'Audit logs of who viewed or changed records',
+            'Error reports when something breaks',
           ]}
         />
       </>
@@ -49,21 +83,24 @@ const sections: LegalSection[] = [
   },
   {
     id: 'use',
-    title: 'How We Use Your Information',
+    title: 'How We Use Information',
     body: (
       <>
-        <P>We use the information we collect to:</P>
+        <P>We use personal information to:</P>
         <List
           items={[
-            'Provide, maintain, and improve our services',
-            'Process transactions and send related information',
-            'Send technical notices and support messages',
-            'Respond to your comments and questions',
-            'Monitor and analyze usage patterns',
-            'Detect, prevent, and address technical issues',
+            'Provide the Service: records, scheduling, billing, reminders, and patient access through eMCR',
+            'Verify identity and keep accounts secure',
+            'Send service messages, such as reminders, sign-in codes, and receipts',
+            'Provide support and respond to enquiries',
+            'Detect and fix errors and misuse',
             'Comply with legal obligations',
           ]}
         />
+        <P>
+          Clinic patient data is processed on the clinic&apos;s instructions. We do not use it for our own marketing, we
+          do not sell it, and we do not use it to train AI models.
+        </P>
       </>
     ),
   },
@@ -72,46 +109,57 @@ const sections: LegalSection[] = [
     title: 'Data Protection & Security',
     body: (
       <>
-        <P>We implement industry-standard security measures to protect your data:</P>
+        <P>Measures we use include:</P>
         <List
           items={[
-            'Encryption for data in transit (TLS)',
-            'Encryption at rest for stored data',
-            'Role-based access controls',
-            'Regular security audits and assessments',
-            'Comprehensive audit logging',
-            'Secure data centers with physical security',
+            'TLS encryption for data in transit',
+            'Additional AES-256 encryption of sensitive fields',
+            'Role-based access controls and two-factor authentication for staff',
+            'Audit logs of access to and changes in patient records',
+            'Rate limiting on sign-in and public forms',
+            'Regular backups',
           ]}
         />
+        <P>
+          If a personal data breach is likely to put people at real risk, we will notify the affected clinics and,
+          where the law requires, the National Privacy Commission, within the periods set by its rules.
+        </P>
       </>
     ),
   },
   {
-    id: 'compliance',
-    title: 'Compliance',
-    body: (
-      <P>
-        MyClinicSoft is built to help clinics comply with the <strong className="font-semibold text-gray-900">Data
-        Privacy Act of 2012 (Republic Act No. 10173)</strong> and its implementing rules, along with other applicable
-        Philippine data protection regulations.
-      </P>
-    ),
-  },
-  {
     id: 'sharing',
-    title: 'Data Sharing & Disclosure',
+    title: 'Service Providers & Disclosure',
     body: (
       <>
-        <P>We do not sell your data. We may share information only in the following circumstances:</P>
-        <List
-          items={[
-            'With your explicit consent',
-            'To comply with legal obligations',
-            'To protect our rights and safety',
-            'With service providers who assist in operations (under strict confidentiality agreements)',
-            'In connection with a business transfer (merger, acquisition, etc.)',
-          ]}
-        />
+        <P>
+          We share personal information only with the service providers below, which process it for us under
+          contract, or when the law requires it. Some are based outside the Philippines, mainly in the United States,
+          so information may be transferred and stored abroad; we choose providers that keep it protected to a
+          standard comparable to the Data Privacy Act.
+        </P>
+        <div className="mt-4 overflow-x-auto rounded-lg border border-gray-200">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 text-gray-600">
+              <tr>
+                <th scope="col" className="px-4 py-2.5 font-semibold">Provider</th>
+                <th scope="col" className="px-4 py-2.5 font-semibold">Purpose</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 text-gray-700">
+              {subprocessors.map(([name, purpose]) => (
+                <tr key={name}>
+                  <td className="px-4 py-2.5 font-medium text-gray-900">{name}</td>
+                  <td className="px-4 py-2.5">{purpose}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <P>
+          We may also disclose information to comply with a law, court order, or lawful request from authorities, or as
+          part of a merger or sale of the business, in which case this policy continues to apply.
+        </P>
       </>
     ),
   },
@@ -120,17 +168,23 @@ const sections: LegalSection[] = [
     title: 'Your Rights',
     body: (
       <>
-        <P>You have the right to:</P>
+        <P>Under the Data Privacy Act you have the right to:</P>
         <List
           items={[
-            'Access your personal data',
-            'Correct inaccurate data',
-            'Request deletion of your data',
-            'Export your data',
-            'Object to processing of your data',
-            'Withdraw consent where applicable',
+            'Be informed about how your personal information is processed',
+            'Access your personal information',
+            'Object to processing, and withdraw consent where processing relies on it',
+            'Have inaccurate information corrected',
+            'Have information erased or blocked where the law allows',
+            'Receive your information in a portable electronic format',
+            'Claim damages for harm caused by unlawful processing',
+            'File a complaint with the National Privacy Commission (privacy.gov.ph)',
           ]}
         />
+        <P>
+          To use these rights, contact the clinic for clinic records, or our Data Protection Officer for anything we
+          control. We may need to verify your identity first.
+        </P>
       </>
     ),
   },
@@ -138,10 +192,17 @@ const sections: LegalSection[] = [
     id: 'retention',
     title: 'Data Retention',
     body: (
-      <P>
-        We retain your data for as long as your account is active or as needed to provide services. After account
-        termination, we retain data for 30 days, then permanently delete it unless required by law to retain it longer.
-      </P>
+      <>
+        <P>
+          Clinic records are kept for as long as the clinic&apos;s account is active, and the clinic decides its own
+          retention periods for patient records within the law. After a clinic closes its account, we delete its data
+          within 30 days of a written request from a clinic administrator, except for anything the law requires us to
+          keep.
+        </P>
+        <P>
+          eMCR accounts are kept until you ask us to close them. Backups and logs are overwritten on a rolling basis.
+        </P>
+      </>
     ),
   },
   {
@@ -149,18 +210,18 @@ const sections: LegalSection[] = [
     title: 'Cookies',
     body: (
       <P>
-        We use cookies and similar technologies to enhance your experience, analyze usage, and assist in marketing
-        efforts. You can control cookies through your browser settings.
+        We use only cookies needed to run the Service, such as keeping you signed in and protecting forms. We do not
+        use advertising or third-party analytics cookies.
       </P>
     ),
   },
   {
     id: 'children',
-    title: 'Children’s Privacy',
+    title: 'Minors',
     body: (
       <P>
-        Our services are not intended for individuals under 18 years of age. We do not knowingly collect personal
-        information from children.
+        Clinics may keep records of patients under 18, and a parent or guardian may add a child as a dependent in
+        eMCR. Accounts in eMCR are held by adults; a dependent&apos;s access passes to them when they turn 18.
       </P>
     ),
   },
@@ -169,17 +230,17 @@ const sections: LegalSection[] = [
     title: 'Changes to This Policy',
     body: (
       <P>
-        We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new
-        policy on this page and updating the &quot;Last updated&quot; date.
+        We may update this policy. We will post the new version here with a new date and tell clinic administrators
+        about material changes by email or in the Service.
       </P>
     ),
   },
   {
     id: 'contact',
-    title: 'Contact Us',
+    title: 'Data Protection Officer',
     body: (
       <>
-        <P>If you have questions about this Privacy Policy, please contact us:</P>
+        <P>For privacy questions or to exercise your rights, contact our Data Protection Officer:</P>
         <ContactCard email="privacy@myclinicsoft.solutions" />
       </>
     ),

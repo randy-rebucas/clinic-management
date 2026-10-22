@@ -163,7 +163,7 @@ export default function IntegrationsPage() {
                       {e.method}
                     </span>
                     <span className="font-mono text-sm text-gray-900">{e.path}</span>
-                    <span className="col-start-2 sm:col-start-auto font-mono text-xs text-gray-400">{e.scope}</span>
+                    <span className="col-start-2 sm:col-start-auto font-mono text-xs text-gray-500">{e.scope}</span>
                   </li>
                 ))}
               </ul>
