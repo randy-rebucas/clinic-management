@@ -10,6 +10,7 @@ import { useMoney } from './invoices/shared';
 import { STOCK_STATE, categoryLabel, qty } from './inventory/shared';
 import { MAX_CUSTOM_DAYS, REPORTS, type ReportKey, type ReportPeriod } from '@/lib/reports';
 import type { StockStatus } from '@/lib/inventory';
+import { csvCell } from '@/lib/csv';
 
 // ---------------------------------------------------------------------------
 // Report shapes (as the /api/reports routes return them)
@@ -157,7 +158,7 @@ export default function ReportsPageClient({ allowed, initial }: { allowed: Repor
 
   const download = () => {
     if (!body || !meta) return;
-    const csv = body.csv.map((row) => row.map((c) => (/[",\n]/.test(String(c)) ? `"${String(c).replace(/"/g, '""')}"` : String(c))).join(',')).join('\r\n');
+    const csv = body.csv.map((row) => row.map(csvCell).join(',')).join('\r\n');
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     const suffix = body.range ? `${body.range.start.slice(0, 10)}-to-${body.range.end.slice(0, 10)}` : localKey(new Date());
