@@ -5,6 +5,7 @@ import { applyAuthRateLimits, applyRateLimit, rateLimiters } from '@/lib/middlew
 import { issuePatientToken, PATIENT_TOKEN_TTL_SECONDS, type PatientTokenClaims } from '@/app/lib/dal';
 import { issueRefreshToken, REFRESH_TOKEN_TTL_SECONDS } from '@/app/lib/refresh-tokens';
 import { linkRecordsByVerifiedPhone } from '../../me/_lib/linked-records';
+import { otpSignInScope } from '../otp-scope';
 import {
   authenticatePatientPassword,
   consumePatientOtp,
@@ -193,15 +194,19 @@ async function handleOtpLogin(request: NextRequest, body: Record<string, unknown
 
     const result = await consumePatientOtp(filter, otp);
     if (!result.ok) return otpFailureResponse(result.reason);
+    const scope = otpSignInScope(result.patient, phone, tenant.tenantId);
+    if (!scope) return otpFailureResponse('invalid');
 
     // The phone is now proven: join this person's records at other clinics to this login.
-    await linkRecordsByVerifiedPhone(result.patient._id.toString(), phone).catch((error) =>
-      logger.error('Linking patient records by phone failed', error as Error, { patientId: result.patient._id.toString() })
-    );
+    if (scope.linkRecords) {
+      await linkRecordsByVerifiedPhone(result.patient._id.toString(), phone).catch((error) =>
+        logger.error('Linking patient records by phone failed', error as Error, { patientId: result.patient._id.toString() })
+      );
+    }
 
-    logger.info('Patient Bearer token issued (OTP)', { patientId: result.patient._id.toString() });
-    // An OTP proves the patient's own phone: the session is not limited to one clinic.
-    return await tokenResponse(result.patient, { amr: 'otp' });
+    logger.info('Patient Bearer token issued (OTP)', { patientId: result.patient._id.toString(), viaContact: !scope.linkRecords });
+    // An OTP to the patient's own phone is not limited to one clinic; a contact number's is.
+    return await tokenResponse(result.patient, scope.claims);
   } catch (error: any) {
     logger.error('Error in patient token (OTP)', error as Error);
     return NextResponse.json(

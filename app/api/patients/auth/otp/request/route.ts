@@ -7,6 +7,7 @@ import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { sendSMS } from '@/lib/sms';
 import { normalizePhone } from '@/lib/phone';
+import { isMinor } from '@/lib/patient-family';
 import {
   invalidTenantResponse,
   maskPhone,
@@ -68,10 +69,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Prefer an active record whose own phone this is (sign-in then links the person's records at
-    // other clinics); fall back to one listing it as a contact number.
+    // other clinics); fall back to a minor's record listing it as a contact number (a parent
+    // signing in for a child with no phone). An adult's contact number never signs in as them.
     const ownPhone: Record<string, unknown> = { phone: { $in: phoneVariants(phone) }, active: { $ne: false } };
     if (tenant.tenantId) ownPhone.tenantIds = tenant.tenantId;
-    const patient = (await Patient.findOne(ownPhone).sort({ updatedAt: -1 })) ?? (await Patient.findOne(query));
+    let patient = await Patient.findOne(ownPhone).sort({ updatedAt: -1 });
+    if (!patient) {
+      const contact = await Patient.findOne(query);
+      if (contact && isMinor(contact.dateOfBirth)) patient = contact;
+    }
 
     // Always respond with success to avoid phone number enumeration
     const genericResponse = NextResponse.json({
