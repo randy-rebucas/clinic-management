@@ -282,7 +282,8 @@ export async function applyAccountEvent(account: IPaymentAccount, event: Gateway
   const creds = await loadCredentials(account);
   if (!adapter || !creds) return { ok: false, retry: true, error: 'Account keys unavailable' };
   const state = await adapter.retrieveCheckout(creds, event.checkoutId);
-  if (state.metadata.tenantId !== String(tid) || state.metadata.accountId !== String(account._id) || state.metadata.invoiceId !== String(invoice._id)) {
+  const m = state.metadata;
+  if (m && (m.tenantId !== String(tid) || m.accountId !== String(account._id) || m.invoiceId !== String(invoice._id))) {
     return { ok: true, detail: 'checkout details do not match' };
   }
   if (state.paid <= 0 || !state.paymentId) return { ok: true, detail: 'not paid' };

@@ -11,6 +11,8 @@ export interface GatewayCredentials {
   webhookSecret?: string;
   /** Maya: the public key checkouts are created with. */
   publicKey?: string;
+  /** Which of the provider's environments the keys belong to (Maya's keys don't say). */
+  mode?: 'live' | 'test';
 }
 
 export interface CheckoutRequest {
@@ -31,7 +33,11 @@ export interface CheckoutState {
   paid: number;
   paymentId?: string;
   method?: string;
-  metadata: Record<string, string>;
+  /**
+   * What we attached at creation, read back from the provider; null when the provider keeps no
+   * such data (Maya), and the checkout is then matched by the invoice's own pay-link record only.
+   */
+  metadata: Record<string, string> | null;
 }
 
 export type GatewayEvent =

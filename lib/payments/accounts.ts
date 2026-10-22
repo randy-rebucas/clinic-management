@@ -110,13 +110,14 @@ export async function canManage(
 }
 
 /** The account with its decrypted credentials, for a server-side call to its provider. */
-export async function loadCredentials(acct: Pick<IPaymentAccount, 'secretKeyEnc' | 'webhookSecretEnc' | 'publicKey'>): Promise<GatewayCredentials | null> {
+export async function loadCredentials(acct: Pick<IPaymentAccount, 'secretKeyEnc' | 'webhookSecretEnc' | 'publicKey' | 'mode'>): Promise<GatewayCredentials | null> {
   if (!acct.secretKeyEnc) return null;
   try {
     return {
       secretKey: decryptData(acct.secretKeyEnc),
       webhookSecret: acct.webhookSecretEnc ? decryptData(acct.webhookSecretEnc) : undefined,
       publicKey: acct.publicKey,
+      mode: acct.mode,
     };
   } catch (error) {
     console.error(`Payment account ${(acct as any)._id}: keys could not be decrypted`, error);
@@ -135,6 +136,7 @@ export async function applyAccountInput(acct: IPaymentAccount, input: AccountInp
     const adapter = adapterFor(acct.provider);
     if (!adapter) return 'This provider can’t be connected yet.';
     if (input.publicKey !== undefined) acct.publicKey = input.publicKey || undefined;
+    if (acct.provider === 'maya' && !acct.publicKey) return 'Enter the Maya public key (pk-…).';
     if (input.secretKey) {
       const test = await adapter.testConnection({ secretKey: input.secretKey, publicKey: acct.publicKey });
       if (!test.ok) return test.error;

@@ -103,7 +103,8 @@ export default function PaymentAccountsClient({
                 {a.online && (
                   <div className="mt-2 text-xs text-gray-600">
                     <p>
-                      Webhook URL{a.webhookSecretSet ? '' : <span className="font-semibold text-amber-700"> (no webhook secret yet: payments won’t be recorded automatically)</span>}:
+                      Webhook URL
+                      {a.webhookSecretSet || a.provider === 'maya' ? '' : <span className="font-semibold text-amber-700"> (no webhook secret yet: payments won’t be recorded automatically)</span>}:
                     </p>
                     <p className="mt-0.5 flex flex-wrap items-center gap-2">
                       <span className="break-all font-mono text-gray-800">{a.webhookUrl}</span>
@@ -112,6 +113,8 @@ export default function PaymentAccountsClient({
                       </button>
                     </p>
                     {a.provider === 'paymongo' && <p className="mt-0.5 text-gray-500">Register it in PayMongo for checkout_session.payment.paid and payment.refunded.</p>}
+                    {a.provider === 'xendit' && <p className="mt-0.5 text-gray-500">Register it in Xendit for payment session events (payment_session.completed).</p>}
+                    {a.provider === 'maya' && <p className="mt-0.5 text-gray-500">Register it in Maya Business Manager for PAYMENT_SUCCESS.</p>}
                   </div>
                 )}
                 {a.manual && (
@@ -184,6 +187,7 @@ function AccountForm({
   const [owner, setOwner] = useState(existing ? (existing.ownerType === 'doctor' ? existing.doctorId ?? '' : 'clinic') : scope === 'mine' ? 'mine' : 'clinic');
   const [secretKey, setSecretKey] = useState('');
   const [webhookSecret, setWebhookSecret] = useState('');
+  const [publicKey, setPublicKey] = useState(existing?.publicKey ?? '');
   const [accountName, setAccountName] = useState(existing?.manual?.accountName ?? '');
   const [number, setNumber] = useState(existing?.manual?.number ?? '');
   const [bankName, setBankName] = useState(existing?.manual?.bankName ?? '');
@@ -210,7 +214,7 @@ function AccountForm({
     const common = {
       label,
       ...(online
-        ? { ...(secretKey ? { secretKey } : {}), ...(webhookSecret ? { webhookSecret } : {}) }
+        ? { ...(secretKey ? { secretKey } : {}), ...(webhookSecret ? { webhookSecret } : {}), ...(provider === 'maya' ? { publicKey } : {}) }
         : { manual: { accountName, number, bankName, instructions, ...(qrImage !== undefined ? { qrImage } : {}) } }),
     };
     const r = existing
@@ -260,11 +264,23 @@ function AccountForm({
             <input id="pa-sk" type="password" autoComplete="off" required={!existing} value={secretKey} onChange={(e) => setSecretKey(e.target.value)} className={FIELD} />
             <p className="mt-1 text-xs text-gray-500">{hint}{existing ? '; blank keeps the current key' : ''}. Checked with the provider before it is saved.</p>
           </div>
-          <div>
-            <label htmlFor="pa-wh" className={LABEL}>Webhook secret</label>
-            <input id="pa-wh" type="password" autoComplete="off" value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} className={FIELD} />
-            <p className="mt-1 text-xs text-gray-500">Shown by the provider when you register this account&rsquo;s webhook URL (you&rsquo;ll see it after saving).</p>
-          </div>
+          {provider === 'maya' ? (
+            <div>
+              <label htmlFor="pa-pk" className={LABEL}>Public key</label>
+              <input id="pa-pk" required autoComplete="off" value={publicKey} onChange={(e) => setPublicKey(e.target.value)} placeholder="pk-…" className={FIELD} />
+              <p className="mt-1 text-xs text-gray-500">Maya needs both keys. It doesn&rsquo;t sign its notices, so payments are checked with Maya before they&rsquo;re recorded.</p>
+            </div>
+          ) : (
+            <div>
+              <label htmlFor="pa-wh" className={LABEL}>{provider === 'xendit' ? 'Webhook verification token' : 'Webhook secret'}</label>
+              <input id="pa-wh" type="password" autoComplete="off" value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} className={FIELD} />
+              <p className="mt-1 text-xs text-gray-500">
+                {provider === 'xendit'
+                  ? 'From Xendit → Settings → Webhooks. Register this account’s webhook URL (shown after saving) for payment session events.'
+                  : 'Shown by the provider when you register this account’s webhook URL (you’ll see it after saving).'}
+              </p>
+            </div>
+          )}
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
