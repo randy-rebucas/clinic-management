@@ -95,7 +95,8 @@ export async function sendLabResultNotification(options: LabNotificationOptions)
       try {
         const pushResult = await sendPushToPatientDevices(patient._id.toString(), {
           title: 'Lab Results Available',
-          body: `Your results for ${testType} are ready to view.`,
+          // Never the test name: it shows on the lock screen and goes through Apple/Google.
+          body: 'A new lab result is ready to view in the app.',
           tag: `lab-result-${labResult._id}`,
           url: `/lab-results/${labResult._id}`,
         }, { tenantId });

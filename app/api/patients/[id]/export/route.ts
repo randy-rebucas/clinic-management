@@ -3,7 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import Visit from '@/models/Visit';
 import Prescription from '@/models/Prescription';
-import { requirePermission } from '@/app/lib/auth-helpers';
+import { hasPermission, requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, patientTenantFilter, tenantFilter } from '@/lib/api/tenant-session';
 import { logDataExport } from '@/lib/audit';
 import {
@@ -22,7 +22,8 @@ import { Types } from 'mongoose';
  * - format=fhir  → FHIR R4 Bundle (default)
  * - format=json  → Raw JSON (legacy, same as compliance export)
  *
- * Requires staff authentication + patients:read permission.
+ * Requires staff authentication + patients:read permission. Visits and prescriptions are only
+ * included for a role that may read them (an accountant exports demographics, not SOAP notes).
  */
 export async function GET(
   request: NextRequest,
@@ -52,9 +53,13 @@ export async function GET(
 
     const patientQuery = tenantFilter(tenantId, { patient: new Types.ObjectId(id) });
 
+    const [canVisits, canPrescriptions] = await Promise.all([
+      hasPermission(session, 'visits', 'read'),
+      hasPermission(session, 'prescriptions', 'read'),
+    ]);
     const [visits, prescriptions] = await Promise.all([
-      Visit.find(patientQuery).lean(),
-      Prescription.find(patientQuery).lean(),
+      canVisits ? Visit.find(patientQuery).lean() : [],
+      canPrescriptions ? Prescription.find(patientQuery).lean() : [],
     ]);
 
     // Audit log
@@ -68,7 +73,8 @@ export async function GET(
       {
         exportType: format === 'fhir' ? 'fhir_r4' : 'json',
         recordCount: { visits: visits.length, prescriptions: prescriptions.length },
-      }
+      },
+      tenantId
     );
 
     if (format === 'json') {

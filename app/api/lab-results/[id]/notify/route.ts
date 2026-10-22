@@ -108,7 +108,8 @@ export async function POST(
       const { sendPushToPatientDevices } = await import('@/lib/push-notifications');
       await sendPushToPatientDevices(
         String(patient._id),
-        { title: 'Lab result available', body: `Your ${labResult.request.testType} result is ready.`, tag: `lab-result-${labResult._id}` },
+        // Never the test name: it shows on the lock screen and goes through Apple/Google.
+        { title: 'Lab result available', body: 'A new lab result is ready to view in the app.', tag: `lab-result-${labResult._id}` },
         { tenantId: tenantObjectId }
       );
     } catch (error: any) {

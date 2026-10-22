@@ -7,11 +7,7 @@ import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { createAuditLog } from '@/lib/audit';
 import { PHILHEALTH_STATUS, philhealthSettingsOf } from '@/lib/philhealth';
 import { exportClaims } from '@/lib/philhealth-claims';
-
-const cell = (v: unknown) => {
-  const s = v === undefined || v === null ? '' : String(v);
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
+import { csvCell as cell } from '@/lib/csv';
 
 /**
  * GET: every PhilHealth claim as CSV (newest 10,000 visits at most). It carries members' PhilHealth

@@ -8,9 +8,6 @@ import { Types } from 'mongoose';
 
 const MAX_EXPORT = 1000;
 
-const SENSITIVE_FIELDS_PROJECTION =
-  '-password -otp -otpExpiry -otpAttempts -sessionVersion -loginQrTokenHash -loginQrTokenExpiry -readNotificationIds -attachments';
-
 const EXPORTABLE_COLUMNS = new Set([
   'patientCode', 'firstName', 'middleName', 'lastName', 'suffix', 'dateOfBirth', 'sex', 'civilStatus',
   'nationality', 'occupation', 'email', 'phone', 'address.street', 'address.city', 'address.state',
@@ -80,7 +77,8 @@ export async function POST(request: NextRequest) {
     const patients = await Patient.find(
       patientTenantFilter(tenantId, { _id: { $in: validIds.map((id) => new Types.ObjectId(id)) } })
     )
-      .select(SENSITIVE_FIELDS_PROJECTION)
+      // Only the exportable columns, in JSON too: never guardians, account links or auth fields.
+      .select(columns?.length ? columns.join(' ') : [...EXPORTABLE_COLUMNS].join(' '))
       .lean();
 
     if (patients.length === 0) {
@@ -102,7 +100,8 @@ export async function POST(request: NextRequest) {
         exportType: format,
         patientCount: patients.length,
         columnCount: columns?.length ?? 'all',
-      }
+      },
+      tenantId
     );
 
     if (format === 'json') {
