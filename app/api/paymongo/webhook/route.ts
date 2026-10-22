@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyPaymongoSignature, type CheckoutSession } from '@/lib/paymongo';
 import { applyPaidCheckout } from '@/lib/paymongo-apply';
 import { reverseSubscriptionPayment } from '@/lib/subscription';
+import { getPlatformPaymongoKeys } from '@/lib/platform-config';
 
 /**
  * PayMongo webhook (register it for checkout_session.payment.paid and payment.refunded). The signature is checked
@@ -10,9 +11,10 @@ import { reverseSubscriptionPayment } from '@/lib/subscription';
  */
 export async function POST(request: NextRequest) {
   const raw = await request.text();
-  const secret = process.env.PAYMONGO_WEBHOOK_SECRET;
+  // The platform account's webhook secret (Platform → Configuration, else env PAYMONGO_WEBHOOK_SECRET).
+  const secret = (await getPlatformPaymongoKeys())?.webhookSecret;
   if (!secret) {
-    console.error('PAYMONGO_WEBHOOK_SECRET not set — refusing PayMongo webhook');
+    console.error('Platform PayMongo webhook secret not set — refusing PayMongo webhook');
     return NextResponse.json({ error: 'Webhook not configured' }, { status: 503 });
   }
 

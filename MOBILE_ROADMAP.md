@@ -113,7 +113,7 @@ Mapped directly to what already exists in the domain layer (`models/Patient.ts`,
 3. Live queue position (reuse existing QR/queue model — via polling; see §7 offline note)
 4. Lab results — read-only, PDF/document view via existing Cloudinary-backed `Document` model
 5. Prescriptions — view active/past e-prescriptions
-6. Invoices — view + pay (reuse existing PayPal integration, `lib/paypal.ts`)
+6. Invoices — view + pay (through the clinic's own payment account; PayPal was removed)
 7. Push notifications — appointment reminders, result-ready alerts, queue-turn alerts
 8. Profile — basic demographic edit, consent/PH DPA acknowledgments
 
@@ -130,7 +130,7 @@ Deliberately excluded from MVP: booking new appointments (needs conflict/room lo
 | 2. Expo app shell + auth | RN/Expo project, login/biometric, secure token storage (`expo-secure-store`), navigation shell | 2–3 weeks (parallel with Phase 1 backend) |
 | 3. Core patient features | Appointments, queue view, lab results, prescriptions (read paths first) | 4–6 weeks |
 | 4. Push notifications | APNs/FCM via Expo push service, backend fan-out extending existing `lib/push-notifications.ts` (currently web-push/VAPID only) | 2–3 weeks, overlaps Phase 3 |
-| 5. Payments + documents | PayPal in-app flow, secure document viewing (signed Cloudinary URLs, short TTL) | 2–3 weeks |
+| 5. Payments + documents | Clinic payment-account flow, secure document viewing (signed Cloudinary URLs, short TTL) | 2–3 weeks |
 | 6. Offline-first pass | Cache last-known appointments/queue/results for offline viewing; sync-on-reconnect | 3–4 weeks |
 | 7. Beta + store submission | TestFlight/Play internal testing, App Store/Play Store review prep | 2–4 weeks (store review is often the long pole) |
 | 8. (Optional) Staff quick-access app | Narrow-scope RN app for queue/schedule/lookup | Separate track, post-Phase-7 |
@@ -174,7 +174,7 @@ Total to patient-app GA, excluding Phase 8: roughly 4–5 months with one focuse
 4. Stand up the Expo app shell with login + secure token storage against that new auth API (nothing else yet — prove the auth loop end-to-end first).
 5. Build out read-path features (appointments, queue, results, prescriptions) before any write paths.
 6. Wire push via Expo's push service, extending `lib/notifications.ts` with a channel abstraction rather than a parallel system.
-7. Add PayPal payment flow and secure document viewing.
+7. Add the clinic payment-account flow and secure document viewing.
 8. Offline read-cache pass, then beta + store submission prep.
 
 ---

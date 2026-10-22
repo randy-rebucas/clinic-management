@@ -1,0 +1,196 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`birInvoiceHTML > renders the clinic sales invoice unchanged (VAT) 1`] = `
+"<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Sales Invoice A-000123</title>
+<!--head-->
+<style>
+  @media print { @page { size: A5; margin: 10mm; } .no-print { display: none; } body { padding: 0; } }
+  body { font-family: Arial, Helvetica, sans-serif; color: #111827; max-width: 760px; margin: 0 auto; padding: 20px; font-size: 13px; line-height: 1.45; }
+  .seller { text-align: center; border-bottom: 2px solid #111827; padding-bottom: 10px; }
+  .seller h1 { font-size: 18px; margin: 0; letter-spacing: 0.02em; }
+  .seller p { margin: 2px 0; }
+  .title { display: flex; justify-content: space-between; align-items: baseline; margin: 14px 0 8px; }
+  .title h2 { font-size: 20px; margin: 0; letter-spacing: 0.08em; }
+  .serial { font-family: 'Courier New', monospace; font-size: 16px; font-weight: bold; color: #b91c1c; }
+  .buyer { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+  .buyer td { padding: 3px 0; vertical-align: top; }
+  .buyer td.k { width: 120px; color: #4b5563; }
+  .line { border-bottom: 1px solid #9ca3af; min-width: 160px; display: inline-block; }
+  table.items { width: 100%; border-collapse: collapse; margin: 6px 0 10px; }
+  table.items th, table.items td { border: 1px solid #d1d5db; padding: 5px 7px; }
+  table.items th { background: #f3f4f6; text-align: left; font-size: 12px; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .totals { display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; }
+  .totals table { border-collapse: collapse; }
+  .totals td { padding: 3px 6px; }
+  .totals .sum { min-width: 280px; }
+  .totals tr.strong td { border-top: 2px solid #111827; font-weight: bold; font-size: 15px; }
+  table.vat { font-size: 12px; color: #374151; }
+  .sc { margin-top: 12px; border: 1px dashed #9ca3af; padding: 8px 10px; }
+  .sc td { padding: 3px 8px 3px 0; }
+  .legend { margin-top: 12px; text-align: center; font-weight: bold; letter-spacing: 0.04em; }
+  .foot { margin-top: 18px; border-top: 1px solid #d1d5db; padding-top: 8px; font-size: 11px; color: #4b5563; }
+  .pays { margin-top: 10px; font-size: 12px; color: #374151; }
+  .print-button { text-align: center; margin-bottom: 14px; }
+  .print-button button { padding: 10px 22px; background: #0f766e; color: #fff; border: 0; border-radius: 6px; font-size: 15px; cursor: pointer; }
+</style>
+</head>
+<body>
+<!--wm-->
+<div class="no-print print-button"><button data-print>Print sales invoice</button></div>
+<!--banner-->
+
+<div class="seller">
+  <h1>Sunrise Clinic</h1>
+  
+  <p>Cebu City</p>
+  <p><strong>VAT REG TIN:</strong> 123-456-789-00000</p>
+  <p>0917 000 0000 · hi@sunrise.ph</p>
+</div>
+
+<div class="title">
+  <h2>SALES INVOICE</h2>
+  <div>No. <span class="serial">A-000123</span></div>
+</div>
+
+<table class="buyer">
+  <tr><td class="k">Date</td><td>October 1, 2026</td><td class="k">Reference</td><td>INV-0001</td></tr>
+  <tr><td class="k">Sold to</td><td colspan="3">Ana Cruz</td></tr>
+  <tr><td class="k">Address</td><td colspan="3">1 Main, Cebu, Cebu 6000</td></tr>
+  <tr><td class="k">TIN</td><td colspan="3"><span class="line">&nbsp;</span></td></tr>
+</table>
+
+<table class="items">
+  <thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Amount</th></tr></thead>
+  <tbody>
+    <tr><td>Consultation</td><td class="num">1</td><td class="num">₱500.00</td><td class="num">₱500.00</td></tr>
+    <tr><td>Professional fee</td><td class="num">1</td><td class="num">₱300.00</td><td class="num">₱300.00</td></tr>
+  </tbody>
+</table>
+
+<div class="totals">
+  <table class="vat">
+        <tr><td>VATable sales</td><td class="num">₱714.29</td></tr>
+        <tr><td>VAT-exempt sales</td><td class="num">₱0.00</td></tr>
+        <tr><td>Zero-rated sales</td><td class="num">₱0.00</td></tr>
+        <tr><td>VAT amount (12%)</td><td class="num">₱85.71</td></tr>
+      </table>
+  <table class="sum"><tr><td>Total sales</td><td class="num">₱800.00</td></tr><tr class="strong"><td>Total amount due</td><td class="num">₱800.00</td></tr></table>
+</div>
+
+
+
+<div class="pays">Received ₱640.00: GCash ₱640.00 (ref R1).</div>
+
+
+
+<!--seal-->
+
+<div class="foot">
+  <p>BIR permit / acknowledgment certificate no. PTU-9. Approved series from 1.</p>
+  <p>Printed 10/2/2026, 8:00:00 AM. Reprints carry the same serial.</p>
+</div>
+</body>
+</html>"
+`;
+
+exports[`birInvoiceHTML > renders the clinic sales invoice unchanged (non-VAT, senior discount) 1`] = `
+"<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Sales Invoice A-000123</title>
+<!--head-->
+<style>
+  @media print { @page { size: A5; margin: 10mm; } .no-print { display: none; } body { padding: 0; } }
+  body { font-family: Arial, Helvetica, sans-serif; color: #111827; max-width: 760px; margin: 0 auto; padding: 20px; font-size: 13px; line-height: 1.45; }
+  .seller { text-align: center; border-bottom: 2px solid #111827; padding-bottom: 10px; }
+  .seller h1 { font-size: 18px; margin: 0; letter-spacing: 0.02em; }
+  .seller p { margin: 2px 0; }
+  .title { display: flex; justify-content: space-between; align-items: baseline; margin: 14px 0 8px; }
+  .title h2 { font-size: 20px; margin: 0; letter-spacing: 0.08em; }
+  .serial { font-family: 'Courier New', monospace; font-size: 16px; font-weight: bold; color: #b91c1c; }
+  .buyer { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+  .buyer td { padding: 3px 0; vertical-align: top; }
+  .buyer td.k { width: 120px; color: #4b5563; }
+  .line { border-bottom: 1px solid #9ca3af; min-width: 160px; display: inline-block; }
+  table.items { width: 100%; border-collapse: collapse; margin: 6px 0 10px; }
+  table.items th, table.items td { border: 1px solid #d1d5db; padding: 5px 7px; }
+  table.items th { background: #f3f4f6; text-align: left; font-size: 12px; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .totals { display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; }
+  .totals table { border-collapse: collapse; }
+  .totals td { padding: 3px 6px; }
+  .totals .sum { min-width: 280px; }
+  .totals tr.strong td { border-top: 2px solid #111827; font-weight: bold; font-size: 15px; }
+  table.vat { font-size: 12px; color: #374151; }
+  .sc { margin-top: 12px; border: 1px dashed #9ca3af; padding: 8px 10px; }
+  .sc td { padding: 3px 8px 3px 0; }
+  .legend { margin-top: 12px; text-align: center; font-weight: bold; letter-spacing: 0.04em; }
+  .foot { margin-top: 18px; border-top: 1px solid #d1d5db; padding-top: 8px; font-size: 11px; color: #4b5563; }
+  .pays { margin-top: 10px; font-size: 12px; color: #374151; }
+  .print-button { text-align: center; margin-bottom: 14px; }
+  .print-button button { padding: 10px 22px; background: #0f766e; color: #fff; border: 0; border-radius: 6px; font-size: 15px; cursor: pointer; }
+</style>
+</head>
+<body>
+<!--wm-->
+<div class="no-print print-button"><button data-print>Print sales invoice</button></div>
+<!--banner-->
+
+<div class="seller">
+  <h1>Sunrise Medical Inc.</h1>
+  <p>Sunrise Clinic</p>
+  <p>Cebu City</p>
+  <p><strong>NON-VAT REG TIN:</strong> 123-456-789-00001</p>
+  <p>0917 000 0000 · hi@sunrise.ph</p>
+</div>
+
+<div class="title">
+  <h2>SALES INVOICE</h2>
+  <div>No. <span class="serial">A-000123</span></div>
+</div>
+
+<table class="buyer">
+  <tr><td class="k">Date</td><td>October 1, 2026</td><td class="k">Reference</td><td>INV-0001</td></tr>
+  <tr><td class="k">Sold to</td><td colspan="3">Ana Cruz</td></tr>
+  <tr><td class="k">Address</td><td colspan="3">1 Main, Cebu, Cebu 6000</td></tr>
+  <tr><td class="k">TIN</td><td colspan="3"><span class="line">&nbsp;</span></td></tr>
+</table>
+
+<table class="items">
+  <thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Amount</th></tr></thead>
+  <tbody>
+    <tr><td>Consultation</td><td class="num">1</td><td class="num">₱500.00</td><td class="num">₱500.00</td></tr>
+    <tr><td>Professional fee</td><td class="num">1</td><td class="num">₱300.00</td><td class="num">₱300.00</td></tr>
+  </tbody>
+</table>
+
+<div class="totals">
+  
+  <table class="sum"><tr><td>Total sales</td><td class="num">₱800.00</td></tr><tr><td>Amount net of VAT</td><td class="num">₱800.00</td></tr><tr><td>Less: Senior citizen discount (20%)</td><td class="num">−₱160.00</td></tr><tr class="strong"><td>Amount due</td><td class="num">₱640.00</td></tr></table>
+</div>
+
+<div class="sc"><table>
+        <tr><td>Senior citizen name</td><td>Ana Cruz</td></tr>
+        <tr><td>OSCA ID no.</td><td>OSCA-1</td></tr>
+        <tr><td>Signature</td><td><span class="line" style="min-width:220px">&nbsp;</span></td></tr>
+      </table></div>
+
+<div class="pays">Received ₱640.00: GCash ₱640.00 (ref R1).</div>
+
+<p class="legend">THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX.</p>
+
+<!--seal-->
+
+<div class="foot">
+  <p>BIR permit / acknowledgment certificate no. PTU-9, issued 2026-01-01. Approved series 1 to 5000.</p>
+  <p>Printed 10/2/2026, 8:00:00 AM. Reprints carry the same serial.</p>
+</div>
+</body>
+</html>"
+`;

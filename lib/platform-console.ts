@@ -5,12 +5,13 @@ import Tenant from '@/models/Tenant';
 import User from '@/models/User';
 import SupportRequest, { type SupportStatus, type SupportCategory, type SupportReplyAuthor } from '@/models/SupportRequest';
 import { escapeRegex } from '@/lib/api/validate';
-import { gatewayCurrency, subscriptionGateway } from '@/lib/payment-gateway';
+import { getPlanPricing } from '@/lib/platform-config';
+import PlatformInvoice from '@/models/PlatformInvoice';
 import {
   computePlatformMetrics,
   lifecycleOf,
   monthlyValue,
-  mrrCurrency,
+  MRR_CURRENCY,
   type PlatformMetrics,
   type PlatformTenantRow,
   type TenantLifecycle,
@@ -22,9 +23,6 @@ const TENANT_FIELDS =
   'name displayName subdomain status createdAt email phone subscription.plan subscription.status subscription.billingCycle subscription.expiresAt subscription.paymentHistory';
 
 const iso = (d: Date | string | null | undefined) => (d ? new Date(d).toISOString() : null);
-
-/** MRR is valued at the prices clinics are charged now, so in pesos when PayMongo is set up. */
-const priceCurrency = () => gatewayCurrency(subscriptionGateway());
 
 async function allTenants(): Promise<(PlatformTenantRow & { displayName?: string })[]> {
   await connectDB();
@@ -57,7 +55,7 @@ export async function loadPlatformOverview(): Promise<PlatformOverview> {
       createdAt: iso(t.createdAt)!,
       lifecycle: lifecycleOf(t, now),
     }));
-  return { metrics: computePlatformMetrics(tenants, now, 6, priceCurrency()),recentSignups, support: { open, waiting } };
+  return { metrics: computePlatformMetrics(tenants, now, 6, await getPlanPricing()), recentSignups, support: { open, waiting } };
 }
 
 // ── Clinics list ──────────────────────────────────────────────────────────────
@@ -88,9 +86,9 @@ export interface PlatformTenantList {
 
 export async function loadPlatformTenants(opts: { q?: string; lifecycle?: TenantLifecycle | ''; page?: number }): Promise<PlatformTenantList> {
   const now = new Date();
-  const cur = priceCurrency();
   const pageSize = 25;
   const page = Math.max(1, opts.page ?? 1);
+  const pricing = await getPlanPricing();
   let tenants = await allTenants();
 
   const q = opts.q?.trim();
@@ -124,7 +122,7 @@ export async function loadPlatformTenants(opts: { q?: string; lifecycle?: Tenant
       plan: t.subscription?.plan || 'trial',
       billingCycle: t.subscription?.billingCycle ?? null,
       lifecycle: life,
-      mrr: monthlyValue(t, now, cur),
+      mrr: monthlyValue(t, now, pricing),
       expiresAt: iso(t.subscription?.expiresAt),
       createdAt: iso(t.createdAt)!,
       staff: staffBy.get(t._id)?.staff ?? 0,
@@ -134,7 +132,7 @@ export async function loadPlatformTenants(opts: { q?: string; lifecycle?: Tenant
     page,
     pageSize,
     counts,
-    currency: mrrCurrency(cur),
+    currency: MRR_CURRENCY,
   };
 }
 
@@ -158,7 +156,17 @@ export interface PlatformTenantDetail {
     billingCycle: string | null;
     expiresAt: string | null;
   };
-  payments: Array<{ transactionId: string; amount: number; currency: string; plan: string; billingCycle: string; status: string; paidAt: string }>;
+  payments: Array<{
+    transactionId: string;
+    amount: number;
+    currency: string;
+    plan: string;
+    billingCycle: string;
+    status: string;
+    paidAt: string;
+    /** DevCom Digital's sales invoice for it: issued, cancelled, or waiting (held, with why). */
+    invoice: { id: string; serialNo: string | null; status: string; heldReason: string | null; emailedAt: string | null } | null;
+  }>;
   usage: { staff: number; patients: number; appointments30d: number };
   admins: Array<{ id: string; name: string; email: string; lastLogin: string | null }>;
   tickets: Array<{ id: string; subject: string; status: SupportStatus; lastActivityAt: string }>;
@@ -178,7 +186,7 @@ export async function loadPlatformTenant(id: string): Promise<PlatformTenantDeta
   const Role = (await import('@/models/Role')).default;
   const adminRoles = await Role.find({ tenantId, name: { $in: ['admin', 'owner'] } }).select('_id').lean<{ _id: Types.ObjectId }[]>();
 
-  const [staff, patients, appointments30d, admins, tickets] = await Promise.all([
+  const [staff, patients, appointments30d, admins, tickets, invoices] = await Promise.all([
     User.countDocuments({ tenantId, status: 'active' }),
     Patient.countDocuments({ tenantIds: tenantId }),
     Appointment.countDocuments({ tenantId, createdAt: { $gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) } }),
@@ -188,7 +196,9 @@ export async function loadPlatformTenant(id: string): Promise<PlatformTenantDeta
       .limit(10)
       .lean<any[]>(),
     SupportRequest.find({ tenantId }).select('subject status lastActivityAt createdAt').sort({ createdAt: -1 }).limit(10).lean<any[]>(),
+    PlatformInvoice.find({ tenantId }).select('orderId serialNo status heldReason emailedAt').lean<any[]>(),
   ]);
+  const invoiceByOrder = new Map(invoices.map((inv) => [inv.orderId, inv]));
 
   return {
     id,
@@ -200,8 +210,8 @@ export async function loadPlatformTenant(id: string): Promise<PlatformTenantDeta
     status: t.status,
     createdAt: iso(t.createdAt)!,
     lifecycle: lifecycleOf(row, now),
-    mrr: monthlyValue(row, now, priceCurrency()),
-    mrrCurrency: mrrCurrency(priceCurrency()),
+    mrr: monthlyValue(row, now, await getPlanPricing()),
+    mrrCurrency: MRR_CURRENCY,
     subscription: {
       plan: t.subscription?.plan || 'trial',
       status: t.subscription?.status || 'active',
@@ -218,6 +228,12 @@ export async function loadPlatformTenant(id: string): Promise<PlatformTenantDeta
         billingCycle: p.billingCycle,
         status: p.status || 'completed',
         paidAt: iso(p.paidAt)!,
+        invoice: (() => {
+          const inv = invoiceByOrder.get(p.orderId);
+          return inv
+            ? { id: String(inv._id), serialNo: inv.serialNo ?? null, status: inv.status, heldReason: inv.heldReason ?? null, emailedAt: iso(inv.emailedAt) }
+            : null;
+        })(),
       })),
     usage: { staff, patients, appointments30d },
     admins: admins.map((u) => ({ id: String(u._id), name: u.name, email: u.email, lastLogin: iso(u.lastLogin) })),

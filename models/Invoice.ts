@@ -90,6 +90,34 @@ export interface IInvoice extends Document {
     referenceNo?: string; // For GCash, bank transfer, etc.
     processedBy?: Types.ObjectId; // User who processed the payment
     notes?: string;
+    /** The clinic's or doctor's PaymentAccount an online payment went into. */
+    accountId?: Types.ObjectId;
+    /** Set when the payment provider reports a refund (the money left the account). */
+    refundedAt?: Date;
+    refundedAmount?: number;
+  }>;
+  /** Online checkouts started for this invoice, so a provider's notice can be matched to one. */
+  payLinks?: Array<{
+    checkoutId: string;
+    accountId: Types.ObjectId;
+    provider: string;
+    amount: number;
+    createdAt: Date;
+  }>;
+  /** "I've paid" notices from the patient's pay page (GCash/Maya QR, bank transfer), for staff to confirm. */
+  paymentClaims?: Array<{
+    _id?: Types.ObjectId;
+    accountId?: Types.ObjectId;
+    method: 'gcash' | 'bank_transfer' | 'other';
+    amount: number;
+    referenceNo: string;
+    payerName?: string;
+    note?: string;
+    status: 'pending' | 'confirmed' | 'rejected';
+    submittedAt: Date;
+    decidedAt?: Date;
+    decidedBy?: Types.ObjectId;
+    reason?: string;
   }>;
   // Insurance/HMO Information
   insurance?: {
@@ -250,8 +278,44 @@ const InvoiceSchema: Schema = new Schema(
         referenceNo: String, // For GCash, bank transfer, etc.
         processedBy: { type: Schema.Types.ObjectId, ref: 'User' },
         notes: String,
+        accountId: { type: Schema.Types.ObjectId, ref: 'PaymentAccount' },
+        refundedAt: Date,
+        refundedAmount: Number,
       },
     ],
+    payLinks: {
+      type: [
+        new Schema(
+          {
+            checkoutId: { type: String, required: true },
+            accountId: { type: Schema.Types.ObjectId, ref: 'PaymentAccount', required: true },
+            provider: { type: String, required: true },
+            amount: { type: Number, required: true },
+            createdAt: { type: Date, default: Date.now },
+          },
+          { _id: false }
+        ),
+      ],
+      default: undefined,
+    },
+    paymentClaims: {
+      type: [
+        new Schema({
+          accountId: { type: Schema.Types.ObjectId, ref: 'PaymentAccount' },
+          method: { type: String, enum: ['gcash', 'bank_transfer', 'other'], required: true },
+          amount: { type: Number, required: true },
+          referenceNo: { type: String, required: true, maxlength: 100 },
+          payerName: { type: String, maxlength: 150 },
+          note: { type: String, maxlength: 500 },
+          status: { type: String, enum: ['pending', 'confirmed', 'rejected'], default: 'pending' },
+          submittedAt: { type: Date, default: Date.now },
+          decidedAt: Date,
+          decidedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+          reason: { type: String, maxlength: 300 },
+        }),
+      ],
+      default: undefined,
+    },
     insurance: {
       provider: String,
       policyNumber: String,
