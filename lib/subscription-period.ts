@@ -62,13 +62,35 @@ export function monthsSavedYearly(plan: PaidPlan, currency?: 'PHP'): number {
 /**
  * Where a payment made now ends: one month or year after the later of now and the current
  * paid-for end, so days already paid for aren't lost. A cancelled or ended plan starts from now.
+ *
+ * Switching plans carries the unused time over at its value, not its length: the days left on
+ * the old plan are converted at the two plans' daily prices. Otherwise a year of Basic followed
+ * by one month of Enterprise would buy thirteen months of Enterprise.
  */
 export function periodEndAfterPayment(
-  current: { status?: string | null; expiresAt?: Date | string | null } | null | undefined,
+  current: {
+    status?: string | null;
+    expiresAt?: Date | string | null;
+    plan?: string | null;
+    billingCycle?: string | null;
+  } | null | undefined,
   cycle: BillingCycle,
-  now = new Date()
+  now = new Date(),
+  next?: { plan: PaidPlan; currency?: 'PHP' }
 ): Date {
   const currentEnd = current?.expiresAt ? new Date(current.expiresAt) : null;
-  const base = current?.status === 'active' && currentEnd && currentEnd > now ? currentEnd : now;
+  const active = current?.status === 'active' && !!currentEnd && currentEnd > now;
+  let base = active ? (currentEnd as Date) : now;
+  if (active && next && current?.plan !== next.plan) {
+    const oldPlan = current?.plan;
+    const oldCycle: BillingCycle = current?.billingCycle === 'yearly' ? 'yearly' : 'monthly';
+    // A plan that was never bought (trial) is worth nothing to carry.
+    const ratio = isPaidPlan(oldPlan) ? dailyPrice(oldPlan, oldCycle, next.currency) / dailyPrice(next.plan, cycle, next.currency) : 0;
+    base = new Date(now.getTime() + ((currentEnd as Date).getTime() - now.getTime()) * ratio);
+  }
   return cycle === 'yearly' ? addYears(base, 1) : addMonths(base, 1);
+}
+
+function dailyPrice(plan: PaidPlan, cycle: BillingCycle, currency?: 'PHP'): number {
+  return planPrice(plan, cycle, currency).amount / (cycle === 'yearly' ? 365 : 30);
 }

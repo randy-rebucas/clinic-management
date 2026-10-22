@@ -189,7 +189,7 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
 
   // --- What each plan allows, costs, and would run to --------------------------------------
   // Activation extends from the current end only while the plan is active; mirror it exactly.
-  const current = { status: sub?.status, expiresAt: sub?.expiresAt };
+  const current = { status: sub?.status, expiresAt: sub?.expiresAt, plan: sub?.plan, billingCycle: sub?.billingCycle };
   const gateway = subscriptionGateway();
   const cur = gatewayCurrency(gateway);
   const offers: PlanOffer[] = PAID_PLANS.map((p) => {
@@ -200,8 +200,8 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
       label: planLabel(p),
       limits: planLimits(p),
       support: SUPPORT[SUBSCRIPTION_PACKAGES[p].features.supportLevel] ?? SUBSCRIPTION_PACKAGES[p].features.supportLevel,
-      monthly: { ...monthly, paidUntil: day(periodEndAfterPayment(current, 'monthly', now)) },
-      yearly: { ...yearly, paidUntil: day(periodEndAfterPayment(current, 'yearly', now)), monthsSaved: monthsSavedYearly(p, cur) },
+      monthly: { ...monthly, paidUntil: day(periodEndAfterPayment(current, 'monthly', now, { plan: p, currency: cur })) },
+      yearly: { ...yearly, paidUntil: day(periodEndAfterPayment(current, 'yearly', now, { plan: p, currency: cur })), monthsSaved: monthsSavedYearly(p, cur) },
     };
   });
 
