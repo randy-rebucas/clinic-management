@@ -3,7 +3,7 @@
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import BrandLogo from "@/components/BrandLogo";
 
 interface PublicLayoutProps {
@@ -90,13 +90,23 @@ const isActive = (pathname: string, href: string) => pathname === href || pathna
 export default function PublicLayout({ children }: PublicLayoutProps) {
   const pathname = usePathname() ?? '';
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const closeMenu = () => setMobileMenuOpen(false);
 
-  // Escape closes the mobile menu.
+  // Any navigation closes the menu, including browser back/forward (link clicks close it too).
+  const [menuPathname, setMenuPathname] = useState(pathname);
+  if (menuPathname !== pathname) {
+    setMenuPathname(pathname);
+    setMobileMenuOpen(false);
+  }
+
+  // Escape closes the mobile menu and returns focus to its toggle.
   useEffect(() => {
     if (!mobileMenuOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMobileMenuOpen(false);
+      if (e.key !== 'Escape') return;
+      setMobileMenuOpen(false);
+      menuButtonRef.current?.focus();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -105,6 +115,12 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
   return (
     <ErrorBoundary>
       <div className="min-h-screen flex flex-col">
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-md focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-brand-teal-dark focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-brand-teal"
+        >
+          Skip to content
+        </a>
         {/* Header */}
         <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-200">
           <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -153,6 +169,7 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
 
               {/* Mobile Menu Button */}
               <button
+                ref={menuButtonRef}
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="lg:hidden -mr-2 p-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
                 type="button"
@@ -185,7 +202,7 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
                 <nav aria-label="Mobile" className="space-y-5">
                   {mobileGroups.map((group) => (
                     <div key={group.title}>
-                      <p className="px-3 mb-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">
+                      <p className="px-3 mb-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">
                         {group.title}
                       </p>
                       <ul>
@@ -232,7 +249,7 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
         </header>
 
         {/* Main Content - Full Width */}
-        <main className="flex-1 w-full">
+        <main id="main" tabIndex={-1} className="flex-1 w-full focus:outline-none">
           {children}
         </main>
 
@@ -263,7 +280,7 @@ export default function PublicLayout({ children }: PublicLayoutProps) {
                     <svg className="w-3.5 h-3.5 text-brand-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                     </svg>
-                    PH DPA compliant
+                    Built for the PH DPA
                   </Link>
                 </div>
               </div>

@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useSyncExternalStore, FormEvent } from 'react';
 import Link from 'next/link';
+import { getHostSubdomain, subscribeNoop } from './utils/hostSubdomain';
 import { toDateKey } from './utils/dateKey';
+import TurnstileWidget, { TURNSTILE_SITE_KEY } from './TurnstileWidget';
 
 interface Clinic {
   _id: string;
@@ -43,20 +45,6 @@ interface BookedSummary {
   doctor: string;
   date: string;
   time: string;
-}
-
-const subscribeNoop = () => () => {};
-
-/** Clinic subdomain from the current hostname, '' on the root domain (incl. www); not called during SSR. */
-function getHostSubdomain(): string {
-  const parts = window.location.hostname.split('.');
-  const firstPart = parts[0]?.toLowerCase() ?? '';
-  const isWww = firstPart === 'www';
-  const hasSubdomain = !isWww && (
-    (parts.length > 2) ||
-    (parts.length === 2 && firstPart !== 'localhost')
-  );
-  return hasSubdomain ? firstPart : '';
 }
 
 function Icon({ d, className = 'w-5 h-5' }: { d: string; className?: string }) {
@@ -178,6 +166,9 @@ export default function PublicBookingClient() {
     room: '',
   });
   const [booked, setBooked] = useState<BookedSummary | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  // Turnstile tokens are single-use: bumping this remounts the widget after each attempt.
+  const [captchaKey, setCaptchaKey] = useState(0);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -317,6 +308,7 @@ export default function PublicBookingClient() {
         ...formData,
         doctorId: selectedDoctor,
         appointmentDate: selectedDate,
+        turnstileToken: captchaToken ?? undefined,
       };
 
       if (selectedClinic) {
@@ -360,6 +352,7 @@ export default function PublicBookingClient() {
       setError('Failed to submit appointment request. Please try again.');
     } finally {
       setSubmitting(false);
+      setCaptchaKey((k) => k + 1);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
@@ -719,13 +712,18 @@ export default function PublicBookingClient() {
                 />
               </fieldset>
 
+              {TURNSTILE_SITE_KEY && (
+                <div className="px-5 pt-5 sm:px-7">
+                  <TurnstileWidget key={captchaKey} onToken={setCaptchaToken} />
+                </div>
+              )}
               <div className="flex flex-col gap-4 p-5 sm:p-7 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-gray-500">
                   <span className="text-red-500">*</span> Required. The clinic will confirm your request.
                 </p>
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || (Boolean(TURNSTILE_SITE_KEY) && !captchaToken)}
                   className="group inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-md bg-brand-teal px-6 py-3 font-semibold text-white shadow-[0_6px_20px_rgba(14,165,164,0.3)] transition-colors duration-150 hover:bg-brand-teal-dark disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
                 >
                   {submitting ? (

@@ -11,6 +11,8 @@ import { Types } from 'mongoose';
 import { isValidId } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId, zEmail, zPhone, zShortText } from '@/lib/api/validate';
 import { normalizePhone } from '@/lib/phone';
+import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
+import { turnstileRejection } from '@/lib/turnstile';
 import { nextPatientCode } from '@/lib/patient-schema';
 import { checkSubscriptionLimit } from '@/lib/subscription-limits';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
@@ -146,17 +148,27 @@ const publicBookingSchema = z.object({
   dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   sex: z.enum(['male', 'female', 'other']).optional(),
   tenantId: zObjectId.optional(),
+  turnstileToken: z.string().max(2048).optional(),
 });
 
 const SLOT_TAKEN = 'This time slot is already booked. Please choose another time.';
 
+/** Open online requests one phone number may hold at a clinic before staff act on them. */
+const MAX_PENDING_PER_PHONE = 3;
+
 // Public endpoint for patient booking (no authentication required)
 export async function POST(request: NextRequest) {
+  const ipLimited = await applyRateLimit(request, rateLimiters.publicWrite);
+  if (ipLimited) return ipLimited;
+
   try {
     await connectDB();
     const parsed = await parseBody(request, publicBookingSchema);
     if (isValidationError(parsed)) return parsed;
     const body = parsed.data;
+
+    const captchaRejected = await turnstileRejection(request, body.turnstileToken);
+    if (captchaRejected) return captchaRejected;
 
     const tenantId = await resolvePublicTenant(body.tenantId);
     if (!tenantId) {
@@ -172,6 +184,8 @@ export async function POST(request: NextRequest) {
     if (!phone) {
       return NextResponse.json({ success: false, error: 'Invalid phone number' }, { status: 400 });
     }
+    const phoneLimited = await applyRateLimit(request, rateLimiters.publicWritePhone, phone);
+    if (phoneLimited) return phoneLimited;
 
     const doctor = await Doctor.findOne({ _id: body.doctorId, status: 'active', tenantId })
       .select('firstName lastName schedule availabilityOverrides')
@@ -207,6 +221,21 @@ export async function POST(request: NextRequest) {
     });
     if (conflict) {
       return NextResponse.json({ success: false, error: SLOT_TAKEN }, { status: 409 });
+    }
+
+    // Durable backstop to the rate limits: pending slots block real patients, so one number
+    // can't hold more than a few at once. The note line is written below.
+    const pendingForPhone = await Appointment.countDocuments({
+      tenantId,
+      status: 'pending',
+      isWalkIn: false,
+      notes: new RegExp(`^Submitted phone: \\+${phone.slice(1)}$`, 'm'),
+    });
+    if (pendingForPhone >= MAX_PENDING_PER_PHONE) {
+      return NextResponse.json(
+        { success: false, error: 'You already have booking requests waiting for the clinic to confirm. Please contact the clinic.' },
+        { status: 429 }
+      );
     }
 
     const limitCheck = await checkSubscriptionLimit(tenantId, 'createAppointment');

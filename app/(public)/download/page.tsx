@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { EMCR_APP_STORE_URL, EMCR_PLAY_STORE_URL, NO_INDEX } from '@/lib/seo';
+import IpadStoreRedirect from '@/components/IpadStoreRedirect';
 
 /**
  * Target of the eMCR download QR code: sends the scanner straight to their platform's store.
@@ -27,6 +28,7 @@ export default async function DownloadPage() {
 
   return (
     <section className="flex min-h-[60vh] items-center justify-center px-4 py-16">
+      {EMCR_APP_STORE_URL && <IpadStoreRedirect appStoreUrl={EMCR_APP_STORE_URL} />}
       <div className="max-w-md text-center">
         <h1 className="mb-3 text-2xl font-bold text-gray-900">Your device is not yet supported</h1>
         <p className="text-gray-600">

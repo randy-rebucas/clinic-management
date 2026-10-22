@@ -93,7 +93,7 @@ const basicPrice = PHP_MONTHLY.basic.toLocaleString('en-PH');
 const vendorQuestions = [
   { q: 'Is it built for Philippine clinics?', a: 'Yes — PhilHealth and HMO claims and the Data Privacy Act are built in, not bolted on.' },
   { q: 'Can patients use it too?', a: 'Yes — the eMCR app gives patients bookings, a live queue, and their results.' },
-  { q: 'Can I try it before paying?', a: '14 days free with full access. No credit card needed.' },
+  { q: 'Can I try it before paying?', a: '14 days free on the trial plan. No credit card needed.' },
   { q: 'Is the pricing public?', a: `Yes. Plans start at ₱${basicPrice} a month, and annual billing gets 2 months free.` },
   { q: 'Can I take my data with me?', a: 'Yes — paid plans include data export, so your records are never locked in.' },
   { q: 'Can it connect to other systems?', a: 'Professional and Enterprise plans include a REST API and signed webhooks.' },
@@ -102,7 +102,7 @@ const vendorQuestions = [
 const switchSteps = [
   { title: 'Start your free trial', description: 'Set up your clinic, doctors, and schedules in minutes.' },
   { title: 'Bring your records over', description: 'Send us your existing spreadsheets and we’ll help import them.' },
-  { title: 'Go live', description: 'Most clinics are fully running within 1–2 weeks.' },
+  { title: 'Go live', description: 'Start the same day; bringing over old records takes longer the more you have.' },
 ];
 
 export default function ComparePage() {

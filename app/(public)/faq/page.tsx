@@ -28,7 +28,7 @@ const faqCategories = [
       },
       {
         q: 'Can I try MyClinicSoft before purchasing?',
-        a: 'Yes. We offer a 14-day free trial with full access to all features. No credit card is required to start.',
+        a: 'Yes. Every clinic starts with a 14-day free trial of the core features, with the patient and staff limits shown on the pricing page. No credit card is required to start.',
       },
     ],
   },
@@ -64,15 +64,15 @@ const faqCategories = [
       },
       {
         q: 'Can I change my plan later?',
-        a: 'Yes, you can upgrade or downgrade your plan at any time. Changes take effect immediately, and we’ll prorate any charges or credits.',
+        a: 'Yes. You can switch plans from your clinic’s subscription page. The new plan starts when it’s paid; time left on the old plan isn’t prorated or refunded.',
       },
       {
         q: 'Do you offer refunds?',
-        a: 'Yes, we offer a 30-day money-back guarantee on all paid plans. If you’re not satisfied, contact us within 30 days for a full refund.',
+        a: 'No. Payments are non-refundable, as set out in our Terms of Service. Use the 14-day free trial to make sure MyClinicSoft fits your clinic before you pay.',
       },
       {
         q: 'Are there any hidden fees?',
-        a: 'No. The price you see is the price you pay. The only extra costs are optional add-ons, like SMS credits or additional storage beyond your plan limits.',
+        a: 'No. The price you see is the price you pay, with no setup fee.',
       },
       {
         q: 'Do you offer discounts for annual plans?',
@@ -90,11 +90,11 @@ const faqCategories = [
       },
       {
         q: 'Can I customize MyClinicSoft for my clinic?',
-        a: 'Yes. Professional and Enterprise plans add custom reports, API access, and integrations. Enterprise plans also include a white-label option.',
+        a: 'Yes. Professional and Enterprise plans add custom reports, API access, and webhooks for your own integrations.',
       },
       {
         q: 'Does MyClinicSoft support multiple locations?',
-        a: 'Multi-location support is available on Professional and Enterprise plans, so you can manage several clinic locations from one account.',
+        a: 'Each clinic location runs as its own MyClinicSoft account today. Managing several locations from one account is on our roadmap; contact us if you need it.',
       },
       {
         q: 'Can patients book appointments online?',
@@ -124,7 +124,7 @@ const faqCategories = [
       },
       {
         q: 'Can I export my data?',
-        a: 'Yes, you can export your data at any time. Professional and Enterprise plans also include bulk export.',
+        a: 'Yes. You can export your data at any time, including while your account is read-only after a subscription ends.',
       },
     ],
   },
@@ -134,7 +134,7 @@ const faqCategories = [
     questions: [
       {
         q: 'What kind of support do you offer?',
-        a: 'All plans include email support. Professional plans include priority support, and Enterprise plans include 24/7 support with a dedicated account manager.',
+        a: 'All plans include email support. Professional plans get priority handling, and Enterprise support terms are agreed in your contract.',
       },
       {
         q: 'Do you provide training?',
@@ -142,7 +142,7 @@ const faqCategories = [
       },
       {
         q: 'How quickly do you respond to support requests?',
-        a: 'Response times depend on your plan: Basic within 24–48 hours, Professional within 4–8 hours, and Enterprise within 1–2 hours, or immediately for critical issues.',
+        a: 'We answer support email during our support hours, with Professional and Enterprise requests handled first.',
       },
     ],
   },
@@ -152,7 +152,7 @@ const faqCategories = [
     questions: [
       {
         q: 'How long does it take to set up MyClinicSoft?',
-        a: 'You can start using MyClinicSoft right after signing up — basic setup takes a few minutes. A full rollout including moving your existing records typically takes 1–2 weeks.',
+        a: 'You can start using MyClinicSoft right after signing up — basic setup takes a few minutes. How long a full rollout takes depends mostly on how many existing records you bring over.',
       },
       {
         q: 'Can I import data from my current system?',
@@ -160,7 +160,7 @@ const faqCategories = [
       },
       {
         q: 'What happens to my data if I cancel?',
-        a: 'You can export all your data before cancelling. After cancellation, your data is kept for 30 days and then permanently deleted, as described in our Privacy Policy.',
+        a: 'You can export all your data before cancelling. After you cancel, a clinic administrator can ask us to delete your data and we’ll do so within 30 days, as described in our Privacy Policy.',
       },
     ],
   },
