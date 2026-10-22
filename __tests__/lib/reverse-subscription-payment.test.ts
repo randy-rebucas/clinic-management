@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+vi.mock('server-only', () => ({}));
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn() }));
+vi.mock('@/lib/platform-config', () => ({ getPlanPricing: vi.fn() }));
 vi.mock('@/models/SubscriptionOrder', () => ({ default: {} }));
 vi.mock('@/models/Tenant', () => ({ default: { findOne: vi.fn() } }));
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { createCheckoutSession, isPayMongoConfigured } from '@/lib/paymongo';
+import { getPlanPricing } from '@/lib/platform-config';
 import { randomBytes } from 'crypto';
 import { PAID_PLANS, isPaidPlan, planPrice, planLabel } from '@/lib/subscription-period';
 import connectDB from '@/lib/mongodb';
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
       return refuseAccess(session, 'Forbidden', 'subscription', 'write');
     }
 
-    if (!isPayMongoConfigured()) {
+    if (!(await isPayMongoConfigured())) {
       return NextResponse.json(
         { success: false, error: 'Online payment isn’t set up on this server, so no payment was started.' },
         { status: 503 }
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { amount, currency } = planPrice(planName, billingCycle);
+    const { amount, currency } = planPrice(planName, billingCycle, await getPlanPricing());
 
     // Our own reference is the order id; PayMongo's session id is kept beside it.
     const orderId = `pm_${randomBytes(12).toString('hex')}`;
