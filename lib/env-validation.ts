@@ -88,6 +88,22 @@ export function validateEnv(): { valid: boolean; errors: string[] } {
     errors.push('MONGODB_URI must be a valid MongoDB connection string');
   }
 
+  // Not fatal, but each leaves a protection off in production; say so at every start.
+  if (isProduction) {
+    if (!process.env.UPSTASH_REDIS_REST_URL) {
+      console.warn('Security: UPSTASH_REDIS_REST_* unset; login and OTP rate limits are per serverless instance.');
+    }
+    if (!process.env.TURNSTILE_SECRET_KEY) {
+      console.warn('Security: TURNSTILE_SECRET_KEY unset; public booking and registration have no bot check.');
+    }
+    if (!process.env.DOCUMENT_VERIFY_BASE_URL) {
+      console.warn('Security: DOCUMENT_VERIFY_BASE_URL unset; printed QR codes take their host from the request.');
+    }
+    if (process.env.PLATFORM_LINK_TO_LOG === 'true') {
+      console.warn('Security: PLATFORM_LINK_TO_LOG=true; platform console sign-in links are written to the log.');
+    }
+  }
+
   // In production, throw if there are errors
   if (isProduction && errors.length > 0) {
     throw new Error(`Environment validation failed:\n${errors.join('\n')}`);
