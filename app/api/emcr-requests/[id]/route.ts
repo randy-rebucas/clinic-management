@@ -108,9 +108,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       );
       forgetAccountCache();
     }
-    // One approval settles the same person's requests at other clinics.
+    // Settles duplicates of this request at this clinic only: the link opens just this clinic's
+    // records, so each other clinic still checks consent at its own desk.
     await EmcrAccessRequest.updateMany(
-      { kind: 'adult_profile', accountId: account._id, status: 'pending', $or: [{ _id: req._id }, { patientId: patient._id }, { firstName: req.firstName, dateOfBirth: req.dateOfBirth }] },
+      { kind: 'adult_profile', accountId: account._id, tenantId: ctx.tenantObjectId, status: 'pending', $or: [{ _id: req._id }, { patientId: patient._id }, { firstName: req.firstName, dateOfBirth: req.dateOfBirth }] },
       { $set: { status: 'approved', ...decided } }
     );
     await audit(ctx, request, req, 'approved', patient._id);

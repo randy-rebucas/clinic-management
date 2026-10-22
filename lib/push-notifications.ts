@@ -99,8 +99,8 @@ export async function sendPushToPatientDevices(
   const { accountManagerRecordIds } = await import('@/lib/emcr/account');
   const [ownIds, guardianIds, accountManagerIds] = await Promise.all([
     personRecordIds(patientId).catch(() => []),
-    guardianRecordIds(patientId).catch(() => []),
-    accountManagerRecordIds(patientId).catch(() => []),
+    guardianRecordIds(patientId, options.tenantId).catch(() => []),
+    accountManagerRecordIds(patientId, options.tenantId).catch(() => []),
   ]);
   const own = ownIds.length ? ownIds : [new Types.ObjectId(patientId)];
   const ownKeys = new Set(own.map(String));

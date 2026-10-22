@@ -5,6 +5,8 @@ import { requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, patientTenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { updatePatientSchema } from '@/lib/patient-schema';
+import { normalizePhone } from '@/lib/phone';
+import { revokeAllPatientAccess } from '@/app/api/patients/auth/shared';
 
 const NESTED_FIELDS = new Set(['address', 'emergencyContact', 'identifiers', 'socialHistory']);
 
@@ -79,6 +81,24 @@ export async function PUT(
     unset.selfRegistered = '';
 
     const filter = patientTenantFilter(ctx.tenantId, { _id: id });
+
+    // The record joined a cross-clinic login on its phone + birth date (linked-records.ts). When
+    // either changes it leaves that login, and a new phone also ends the old number's sessions;
+    // the next OTP sign-in with the new number links it again.
+    let phoneChanged = false;
+    if ('phone' in parsed.data || 'dateOfBirth' in parsed.data) {
+      const before = await Patient.findOne(filter).select('phone dateOfBirth accountId').lean<{ phone?: string; dateOfBirth?: Date; accountId?: unknown } | null>();
+      if (!before) return notFound('Patient');
+      const day = (v: unknown) => {
+        const d = v ? new Date(v as string) : null;
+        return d && !isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : String(v ?? '');
+      };
+      const samePhone = (a: unknown, b: unknown) => (normalizePhone(String(a ?? '')) ?? String(a ?? '')) === (normalizePhone(String(b ?? '')) ?? String(b ?? ''));
+      phoneChanged = 'phone' in parsed.data && !samePhone(before.phone, parsed.data.phone);
+      const dobChanged = 'dateOfBirth' in parsed.data && day(before.dateOfBirth) !== day(parsed.data.dateOfBirth);
+      if ((phoneChanged || dobChanged) && before.accountId) unset.accountId = '';
+    }
+
     const patient =
       Object.keys(set).length || Object.keys(unset).length
         ? await Patient.findOneAndUpdate(
@@ -88,6 +108,7 @@ export async function PUT(
           )
         : await Patient.findOne(filter, { 'attachments.url': 0, readNotificationIds: 0 });
     if (!patient) return notFound('Patient');
+    if (phoneChanged) await revokeAllPatientAccess(id);
     return NextResponse.json({ success: true, data: patient });
   } catch (error: any) {
     if (error.name === 'ValidationError') {
