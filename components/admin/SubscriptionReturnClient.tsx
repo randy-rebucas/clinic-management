@@ -9,7 +9,7 @@ const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visibl
 const PRIMARY = `inline-flex items-center justify-center gap-2 rounded-md bg-brand-teal-dark px-4 py-2.5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-teal-deep disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`;
 const SECONDARY = `inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-900 transition-colors duration-150 hover:border-gray-900 ${FOCUS_RING}`;
 
-/** Mirrors the capture route's `code`: retry = unknown or still applying; declined = nothing taken; problem = needs a person. */
+/** Mirrors the confirm route's `code`: retry = unknown or still applying; declined = nothing taken; problem = needs a person. */
 type Phase =
   | { kind: 'confirming' }
   | { kind: 'paid'; plan: string; paidUntil: string | null }
@@ -20,19 +20,21 @@ type Phase =
 const formatDay = (value: string) =>
   new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
+const gateway = 'PayMongo';
+
 /**
- * Where PayPal sends the payer after approving (/admin/subscription/success?token=<order id>).
- * Confirms the order once (the capture route is idempotent and tenant-checked, so "Try again"
+ * Where PayMongo sends the payer after paying (/admin/subscription/success?token=<order id>).
+ * Confirms the order once (the confirm route is idempotent and tenant-checked, so "Try again"
  * and finishing an earlier payment from the subscription page are safe), and says plainly
  * whether money was taken.
  */
-export default function SubscriptionReturnClient({ orderId, gateway = 'PayPal' }: { orderId: string | null; gateway?: 'PayPal' | 'PayMongo' }) {
+export default function SubscriptionReturnClient({ orderId }: { orderId: string | null }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'confirming' });
   const started = useRef<string | null>(null);
 
   const capture = useCallback(async (id: string) => {
     try {
-      const res = await fetch(gateway === 'PayMongo' ? '/api/subscription/paymongo-confirm' : '/api/subscription/capture-order', {
+      const res = await fetch('/api/subscription/paymongo-confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId: id }),
@@ -51,7 +53,7 @@ export default function SubscriptionReturnClient({ orderId, gateway = 'PayPal' }
     } catch {
       setPhase({ kind: 'retry', message: `The connection dropped before ${gateway} answered.` });
     }
-  }, [gateway]);
+  }, []);
 
   useEffect(() => {
     // Once per order id, also under StrictMode's double effect run.

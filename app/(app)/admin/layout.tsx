@@ -16,6 +16,7 @@ const SECTIONS = [
   { label: 'Rooms', href: '/admin/rooms' },
   { label: 'Medicines', href: '/admin/medicines' },
   { label: 'Clinic settings', href: '/admin/settings' },
+  { label: 'Payment accounts', href: '/admin/payment-accounts' },
   { label: 'Subscription', href: '/admin/subscription' },
   { label: 'Backups', href: '/admin/backups' },
   { label: 'Audit log', href: '/admin/audit-logs' },

@@ -1,6 +1,7 @@
 import 'server-only';
 import { escapeHtml as e } from '@/lib/document-protection';
-import { formatTin, type BirSettings } from '@/lib/bir';
+import type { BirSettings } from '@/lib/bir';
+import { BIR_INVOICE_STYLES, birPermitFooter, birSellerHeader } from '@/lib/bir-invoice-parts';
 
 interface Parts {
   head: string;
@@ -50,7 +51,6 @@ export function birInvoiceHTML(opts: {
       : patient.address || '';
   const paid = (invoice.payments || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0);
   const registeredName = bir.registeredName.trim() || clinic.name;
-  const range = bir.serialEnd ? `${bir.serialStart} to ${bir.serialEnd}` : `from ${bir.serialStart}`;
 
   const row = (label: string, value: string, strong = false) =>
     `<tr${strong ? ' class="strong"' : ''}><td>${e(label)}</td><td class="num">${value}</td></tr>`;
@@ -89,49 +89,22 @@ export function birInvoiceHTML(opts: {
 <title>Sales Invoice ${e(invoice.bir?.serialNo)}</title>
 ${protection.head}
 <style>
-  @media print { @page { size: A5; margin: 10mm; } .no-print { display: none; } body { padding: 0; } }
-  body { font-family: Arial, Helvetica, sans-serif; color: #111827; max-width: 760px; margin: 0 auto; padding: 20px; font-size: 13px; line-height: 1.45; }
-  .seller { text-align: center; border-bottom: 2px solid #111827; padding-bottom: 10px; }
-  .seller h1 { font-size: 18px; margin: 0; letter-spacing: 0.02em; }
-  .seller p { margin: 2px 0; }
-  .title { display: flex; justify-content: space-between; align-items: baseline; margin: 14px 0 8px; }
-  .title h2 { font-size: 20px; margin: 0; letter-spacing: 0.08em; }
-  .serial { font-family: 'Courier New', monospace; font-size: 16px; font-weight: bold; color: #b91c1c; }
-  .buyer { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-  .buyer td { padding: 3px 0; vertical-align: top; }
-  .buyer td.k { width: 120px; color: #4b5563; }
-  .line { border-bottom: 1px solid #9ca3af; min-width: 160px; display: inline-block; }
-  table.items { width: 100%; border-collapse: collapse; margin: 6px 0 10px; }
-  table.items th, table.items td { border: 1px solid #d1d5db; padding: 5px 7px; }
-  table.items th { background: #f3f4f6; text-align: left; font-size: 12px; }
-  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .totals { display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; }
-  .totals table { border-collapse: collapse; }
-  .totals td { padding: 3px 6px; }
-  .totals .sum { min-width: 280px; }
-  .totals tr.strong td { border-top: 2px solid #111827; font-weight: bold; font-size: 15px; }
-  table.vat { font-size: 12px; color: #374151; }
-  .sc { margin-top: 12px; border: 1px dashed #9ca3af; padding: 8px 10px; }
-  .sc td { padding: 3px 8px 3px 0; }
-  .legend { margin-top: 12px; text-align: center; font-weight: bold; letter-spacing: 0.04em; }
-  .foot { margin-top: 18px; border-top: 1px solid #d1d5db; padding-top: 8px; font-size: 11px; color: #4b5563; }
-  .pays { margin-top: 10px; font-size: 12px; color: #374151; }
-  .print-button { text-align: center; margin-bottom: 14px; }
-  .print-button button { padding: 10px 22px; background: #0f766e; color: #fff; border: 0; border-radius: 6px; font-size: 15px; cursor: pointer; }
-</style>
+${BIR_INVOICE_STYLES}</style>
 </head>
 <body>
 ${protection.watermark}
 <div class="no-print print-button"><button data-print>Print sales invoice</button></div>
 ${protection.banner}
 
-<div class="seller">
-  <h1>${e(registeredName)}</h1>
-  ${registeredName !== clinic.name ? `<p>${e(clinic.name)}</p>` : ''}
-  ${clinic.address ? `<p>${e(clinic.address)}</p>` : ''}
-  <p><strong>${vat ? 'VAT REG TIN' : 'NON-VAT REG TIN'}:</strong> ${e(formatTin(clinic.tin, bir.branchCode))}</p>
-  ${clinic.phone || clinic.email ? `<p>${[clinic.phone, clinic.email].filter(Boolean).map(e).join(' · ')}</p>` : ''}
-</div>
+${birSellerHeader({
+  registeredName,
+  otherName: clinic.name,
+  address: clinic.address,
+  vat,
+  tin: clinic.tin,
+  branchCode: bir.branchCode,
+  contacts: [clinic.phone, clinic.email],
+})}
 
 <div class="title">
   <h2>SALES INVOICE</h2>
@@ -186,10 +159,7 @@ ${vat ? '' : '<p class="legend">THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TA
 
 ${protection.seal}
 
-<div class="foot">
-  <p>BIR permit / acknowledgment certificate no. ${e(bir.permitNumber)}${bir.permitIssuedOn ? `, issued ${e(bir.permitIssuedOn)}` : ''}. Approved series ${e(range)}.</p>
-  <p>Printed ${e(new Date().toLocaleString('en-PH', { timeZone: opts.timezone }))}. Reprints carry the same serial.</p>
-</div>
+${birPermitFooter({ permitNumber: bir.permitNumber, permitIssuedOn: bir.permitIssuedOn, serialStart: bir.serialStart, serialEnd: bir.serialEnd, timezone: opts.timezone })}
 </body>
 </html>`;
 }

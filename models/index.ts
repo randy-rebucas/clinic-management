@@ -306,7 +306,10 @@ export function registerAllModels(): void {
   require('./Product');
   require('./MedicalRepresentativeVisit');
   require('./SupportRequest');
-  require('./PaypalOrder');
+  require('./SubscriptionOrder');
+  require('./PlatformSetting');
+  require('./PlatformInvoice');
+  require('./PaymentAccount');
   require('./PushSubscription');
   require('./MobileDevice');
   require('./RefreshToken');
@@ -368,7 +371,10 @@ const models = {
   Product: require('./Product').default,
   MedicalRepresentativeVisit: require('./MedicalRepresentativeVisit').default,
   SupportRequest: require('./SupportRequest').default,
-  PaypalOrder: require('./PaypalOrder').default,
+  SubscriptionOrder: require('./SubscriptionOrder').default,
+  PlatformSetting: require('./PlatformSetting').default,
+  PlatformInvoice: require('./PlatformInvoice').default,
+  PaymentAccount: require('./PaymentAccount').default,
   PushSubscription: require('./PushSubscription').default,
   MobileDevice: require('./MobileDevice').default,
   RefreshToken: require('./RefreshToken').default,

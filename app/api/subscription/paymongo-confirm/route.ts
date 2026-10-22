@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import PaypalOrder from '@/models/PaypalOrder';
+import SubscriptionOrder from '@/models/SubscriptionOrder';
 import Tenant from '@/models/Tenant';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { retrieveCheckoutSession, paidTotal } from '@/lib/paymongo';
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 
   try {
     await connectDB();
-    const order = await PaypalOrder.findOne({ orderId, tenantId: ctx.tenantObjectId, provider: 'paymongo' }).lean<any>();
+    const order = await SubscriptionOrder.findOne({ orderId, tenantId: ctx.tenantObjectId, provider: 'paymongo' }).lean<any>();
     if (!order?.gatewayId) return fail('problem', 'This payment wasn’t started from this clinic, or it has lapsed', 404);
 
     const session = await retrieveCheckoutSession(order.gatewayId);

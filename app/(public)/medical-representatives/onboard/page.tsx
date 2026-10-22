@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { pageMetadata } from '@/lib/seo';
 import { isPayMongoConfigured } from '@/lib/paymongo';
+import { getPlatformFees } from '@/lib/platform-config';
 import { isMedRepSelfSignupEnabled } from '@/lib/medrep-signup';
 import { PageHero, buttonPrimary, buttonSecondary } from '@/components/PublicPage';
 import MedicalRepresentativeOnboardingClient from '@/components/MedicalRepresentativeOnboardingClient';
@@ -12,7 +13,7 @@ export const metadata: Metadata = pageMetadata({
   description: 'Register as a pharmaceutical medical representative to connect with clinics that use MyClinicSoft.',
 });
 
-export default function MedicalRepresentativeOnboardingPage() {
+export default async function MedicalRepresentativeOnboardingPage() {
   // Reps lost their web portal on 2026-10-18; until their app ships, signing up (and paying) would
   // create an account nobody can sign in to.
   if (!isMedRepSelfSignupEnabled()) {
@@ -35,7 +36,7 @@ export default function MedicalRepresentativeOnboardingPage() {
   }
 
   // Same rule as the onboard API: online payment only when PayMongo is set up and the fee is at least ₱20.
-  const fee = Number(process.env.MEDREP_ACTIVATION_FEE_PHP);
-  const onlineFee = isPayMongoConfigured() && fee >= 20 ? fee : null;
+  const fee = (await getPlatformFees()).medrepActivationFee;
+  const onlineFee = (await isPayMongoConfigured()) && fee >= 20 ? fee : null;
   return <MedicalRepresentativeOnboardingClient onlineFee={onlineFee} />;
 }

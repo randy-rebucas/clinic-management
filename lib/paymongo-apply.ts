@@ -1,10 +1,11 @@
 import 'server-only';
 import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
-import PaypalOrder from '@/models/PaypalOrder';
+import SubscriptionOrder from '@/models/SubscriptionOrder';
 import Invoice from '@/models/Invoice';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
 import { activateSubscriptionFromOrder, type ActivationResult } from '@/lib/subscription';
+import { scheduleSubscriptionInvoice } from '@/lib/platform-invoice';
 import { recordInvoicePayments } from '@/lib/invoice-payments';
 import { isPaidPlan } from '@/lib/subscription-period';
 import { paidTotal, type CheckoutSession } from '@/lib/paymongo';
@@ -30,7 +31,7 @@ export async function applyPaidCheckout(session: CheckoutSession): Promise<Apply
     const orderId = m.orderId;
     if (!orderId || !isOid(m.tenantId) || !isPaidPlan(m.plan)) return { ok: false, retry: false, error: 'Subscription checkout without its order details' };
     // The order record lapses after a while unpaid; the checkout's own details rebuild it.
-    await PaypalOrder.updateOne(
+    await SubscriptionOrder.updateOne(
       { orderId },
       {
         $setOnInsert: {
@@ -49,10 +50,15 @@ export async function applyPaidCheckout(session: CheckoutSession): Promise<Apply
     );
     const r: ActivationResult = await activateSubscriptionFromOrder(orderId, { transactionId: paymentId, amount: paid, currency: 'PHP' });
     if (!r.ok) return { ok: false, retry: r.status === 409, error: r.error };
+    // DevCom Digital's sales invoice for it, after the response (idempotent; also on a repeat).
+    scheduleSubscriptionInvoice(orderId);
     return { ok: true, applied: !r.alreadyApplied };
   }
 
   if (m.purpose === 'invoice') {
+    // Deprecated: links made before clinics had their own accounts were paid into the platform's.
+    // Kept so those still land on their invoice; remove after 2026-11-22 (30 days).
+    console.warn(`Invoice ${m.invoiceNumber ?? m.invoiceId} paid through the platform PayMongo account (an old link)`);
     if (!isOid(m.tenantId) || !isOid(m.invoiceId)) return { ok: false, retry: false, error: 'Invoice checkout without its invoice' };
     const already = await Invoice.exists({ _id: new Types.ObjectId(m.invoiceId), tenantId: new Types.ObjectId(m.tenantId), 'payments.referenceNo': paymentId });
     if (already) return { ok: true, applied: false, detail: 'already recorded' };
