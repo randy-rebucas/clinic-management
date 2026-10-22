@@ -2,6 +2,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Metadata } from 'next';
 import { pageMetadata } from '@/lib/seo';
+import { Icon, icons, NavyBand, PageHero, SectionHeading, buttonPrimary, buttonSecondary } from '@/components/PublicPage';
 
 export const metadata: Metadata = pageMetadata({
   title: 'About Us',
@@ -9,222 +10,211 @@ export const metadata: Metadata = pageMetadata({
   description: 'MyClinicSoft is clinic management software built for Philippine clinics by DevCom Digital. Learn about our mission, our values, and our commitment to patient data security.',
 });
 
+const values = [
+  {
+    icon: icons.shield,
+    title: 'Security first',
+    description: 'Patient data is protected with encryption, role-based access, and audit logs — built around the Data Privacy Act.',
+  },
+  {
+    icon: icons.bolt,
+    title: 'Practical innovation',
+    description: 'We ship tools that remove real work from the front desk and the consult room, not features for their own sake.',
+  },
+  {
+    icon: icons.users,
+    title: 'Patient-centered',
+    description: 'Everything we build is designed with patients and the people who care for them in mind.',
+  },
+  {
+    icon: icons.checkCircle,
+    title: 'Reliability',
+    description: 'We aim for 99.9% uptime so your clinic keeps running, from first patient to last.',
+  },
+];
+
+const reasons = [
+  {
+    title: 'One system',
+    description: 'Patients, scheduling, queues, billing, and inventory in one platform — integrated, not bolted together.',
+  },
+  {
+    title: 'Easy to pick up',
+    description: 'Designed for healthcare staff, not IT teams. Most clinics are up and running with minimal training.',
+  },
+  {
+    title: 'Always improving',
+    description: 'Regular updates shaped by feedback from the doctors and staff who use it every day.',
+  },
+];
+
+const products = [
+  {
+    name: 'MyClinicSoft',
+    audience: 'For clinic teams',
+    description: 'Records, appointments, queues, billing, PhilHealth and HMO claims, and inventory — for the front desk, doctors, and admins.',
+    href: '/features',
+    cta: 'Explore features',
+  },
+  {
+    name: 'eMCR',
+    audience: 'For patients',
+    description: 'The Electronic MyClinic Record app: book visits, follow your queue live, and keep results and prescriptions in your pocket.',
+    href: '/download',
+    cta: 'Get the app',
+  },
+];
+
+const stats = [
+  { value: '1,000+', label: 'Patients' },
+  { value: '50+', label: 'Clinics' },
+  { value: '99.9%', label: 'Uptime' },
+];
+
 export default function AboutPage() {
-  const values = [
-    {
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-        </svg>
-      ),
-      title: 'Security First',
-      description: 'We prioritize the security and privacy of patient data with enterprise-grade encryption and compliance.',
-    },
-    {
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-        </svg>
-      ),
-      title: 'Innovation',
-      description: 'We continuously innovate to provide cutting-edge solutions that improve healthcare delivery.',
-    },
-    {
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-        </svg>
-      ),
-      title: 'Patient-Centered',
-      description: 'Everything we build is designed with patients and healthcare providers in mind.',
-    },
-    {
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      ),
-      title: 'Reliability',
-      description: 'We ensure 99.9% uptime and reliable service so your clinic operations never stop.',
-    },
-  ];
-
-  const stats = [
-    { number: '1000+', label: 'Active Patients' },
-    { number: '50+', label: 'Clinics' },
-    { number: '99.9%', label: 'Uptime' },
-    { number: '24/7', label: 'Support' },
-  ];
-
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      {/* Background */}
-      <div className="fixed inset-0 -z-10">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"></div>
-        <div className="absolute top-0 -left-4 w-96 h-96 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob"></div>
-        <div className="absolute top-0 -right-4 w-96 h-96 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-      </div>
+    <div className="min-h-screen bg-white">
+      <PageHero eyebrow="About us" title="Clinic software," accent="made for Philippine clinics">
+        MyClinicSoft is built by DevCom Digital to take the paperwork out of running a clinic — so doctors and staff can
+        spend their time on patients.
+      </PageHero>
 
-      {/* Hero Section */}
-      <section className="relative pt-24 sm:pt-32 pb-12 sm:pb-16 px-4 sm:px-6 lg:px-8">
-        <div className="container mx-auto max-w-7xl">
-          <div className="text-center mb-12">
-            <div className="inline-block px-4 py-2 bg-blue-100 rounded-full mb-4">
-              <span className="text-sm font-semibold text-blue-700">About Us</span>
-            </div>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 mb-6">
-              Transforming{' '}
-              <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                Healthcare Management
-              </span>
-            </h1>
-            <p className="text-xl sm:text-2xl text-gray-700 max-w-3xl mx-auto leading-relaxed">
-              We&apos;re on a mission to make clinic management simple, efficient, and accessible for healthcare providers everywhere.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Mission Section */}
-      <section className="relative py-12 sm:py-16 lg:py-20 px-4 sm:px-6 lg:px-8">
-        <div className="container mx-auto max-w-7xl">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-6">Our Mission</h2>
-              <p className="text-lg text-gray-700 mb-4 leading-relaxed">
-                At MyClinicSoft, we believe that healthcare providers should focus on what matters most - patient care. 
-                Our mission is to eliminate administrative burdens and streamline clinic operations through innovative technology.
+      {/* Mission */}
+      <section className="border-t border-gray-200 px-4 sm:px-6 lg:px-8 py-14 sm:py-16 lg:py-20">
+        <div className="container mx-auto max-w-7xl grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-teal-dark mb-3">Our mission</p>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight mb-5">
+              Less admin, more patient care
+            </h2>
+            <div className="space-y-4 text-gray-600 leading-relaxed">
+              <p>
+                We believe healthcare providers should focus on what matters most: their patients. Our mission is to
+                remove administrative burden and streamline clinic operations with technology that simply works.
               </p>
-              <p className="text-lg text-gray-700 mb-4 leading-relaxed">
-                We&apos;re committed to providing a comprehensive, user-friendly platform that empowers clinics of all sizes 
-                to deliver exceptional healthcare services while maintaining the highest standards of security and compliance.
+              <p>
+                That means a complete, easy-to-use platform that helps clinics of every size deliver great care while
+                meeting the highest standards of security and privacy.
               </p>
-              <p className="text-lg text-gray-700 leading-relaxed">
-                Every feature we build, every update we release, and every interaction we have is guided by our core belief: 
-                better technology leads to better healthcare outcomes.
+              <p>
+                Every feature and every update is guided by one belief: better tools lead to better healthcare.
               </p>
             </div>
-            <div className="relative h-96 rounded-2xl overflow-hidden shadow-2xl">
-              <Image
-                src="https://images.unsplash.com/photo-1551601651-2a8555f1a136?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=600&q=80"
-                alt="Healthcare team"
-                fill
-                className="object-cover"
-                sizes="(max-width: 1024px) 100vw, 50vw"
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Values Section */}
-      <section className="relative py-12 sm:py-16 lg:py-20 px-4 sm:px-6 lg:px-8 bg-white/40 backdrop-blur-sm">
-        <div className="container mx-auto max-w-7xl">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-4">Our Values</h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              The principles that guide everything we do
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
-            {values.map((value, index) => (
-              <div
-                key={index}
-                className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 sm:p-8 shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100/50 hover:border-blue-300 hover:-translate-y-1"
-              >
-                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center mb-4 text-white">
-                  {value.icon}
+            <dl className="mt-8 grid grid-cols-3 gap-6 max-w-md border-t border-gray-200 pt-6">
+              {stats.map((s) => (
+                <div key={s.label}>
+                  <dt className="sr-only">{s.label}</dt>
+                  <dd className="font-mono text-2xl sm:text-3xl font-semibold text-gray-900 tabular-nums">{s.value}</dd>
+                  <dd className="text-sm text-gray-500">{s.label}</dd>
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">{value.title}</h3>
-                <p className="text-gray-600 leading-relaxed">{value.description}</p>
+              ))}
+            </dl>
+          </div>
+          <div className="relative h-72 sm:h-96 lg:h-[28rem] overflow-hidden rounded-xl bg-brand-navy">
+            <Image
+              src="https://images.unsplash.com/photo-1551601651-2a8555f1a136?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&h=900&q=80"
+              alt="Clinic team at work"
+              fill
+              className="object-cover opacity-90"
+              sizes="(max-width: 1024px) 100vw, 50vw"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-brand-navy/60 to-brand-navy/0" />
+            <div className="absolute bottom-5 left-5 right-5 sm:right-auto rounded-lg bg-white p-4 shadow-[0_8px_30px_rgb(15,23,42,0.15)] sm:max-w-[16rem]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 shrink-0 rounded-md bg-brand-teal-light text-brand-teal-dark flex items-center justify-center">
+                  <Icon d={icons.shield} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">PH DPA compliant</p>
+                  <p className="text-xs text-gray-500">Audit-logged by design</p>
+                </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Products */}
+      <section className="border-y border-gray-200 bg-gray-50/70 px-4 sm:px-6 lg:px-8 py-14 sm:py-16">
+        <div className="container mx-auto max-w-7xl">
+          <SectionHeading title="Two products, one connected record">
+            Clinics run on MyClinicSoft; their patients carry the same record in eMCR.
+          </SectionHeading>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {products.map((p, i) => (
+              <Link
+                key={p.name}
+                href={p.href}
+                className={`group flex flex-col rounded-xl p-6 sm:p-8 transition-shadow duration-200 hover:shadow-[0_12px_40px_rgb(15,23,42,0.08)] ${
+                  i === 0 ? 'bg-white border border-gray-200' : 'bg-brand-teal text-white'
+                }`}
+              >
+                <p className={`text-xs font-semibold uppercase tracking-[0.14em] ${i === 0 ? 'text-brand-teal-dark' : 'text-white/80'}`}>
+                  {p.audience}
+                </p>
+                <h3 className={`text-2xl font-extrabold tracking-tight mt-2 ${i === 0 ? 'text-gray-900' : 'text-white'}`}>{p.name}</h3>
+                <p className={`mt-2 leading-relaxed ${i === 0 ? 'text-gray-600' : 'text-white/90'}`}>{p.description}</p>
+                <span className={`mt-6 inline-flex items-center gap-1.5 text-sm font-semibold ${i === 0 ? 'text-brand-teal-dark' : 'text-white'}`}>
+                  {p.cta}
+                  <Icon d={icons.arrow} className="w-4 h-4 transition-transform duration-150 group-hover:translate-x-0.5" />
+                </span>
+              </Link>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Stats Section */}
-      <section className="relative py-12 sm:py-16 lg:py-20 px-4 sm:px-6 lg:px-8">
+      {/* Values */}
+      <section className="px-4 sm:px-6 lg:px-8 py-14 sm:py-16 lg:py-20">
         <div className="container mx-auto max-w-7xl">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
-            {stats.map((stat, index) => (
-              <div
-                key={index}
-                className="text-center bg-white/80 backdrop-blur-sm rounded-2xl p-6 sm:p-8 shadow-lg"
-              >
-                <div className="text-4xl sm:text-5xl font-extrabold text-gray-900 mb-2">
-                  {stat.number}
+          <SectionHeading title="What we value">The principles behind every decision we make.</SectionHeading>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {values.map((v) => (
+              <li key={v.title} className="rounded-xl border border-gray-200 bg-white p-6">
+                <div className="w-10 h-10 rounded-md bg-brand-teal-light text-brand-teal-dark flex items-center justify-center mb-4">
+                  <Icon d={v.icon} />
                 </div>
-                <div className="text-sm sm:text-base text-gray-600">{stat.label}</div>
-              </div>
+                <h3 className="text-lg font-bold text-gray-900 tracking-tight">{v.title}</h3>
+                <p className="text-sm text-gray-600 mt-1.5 leading-relaxed">{v.description}</p>
+              </li>
             ))}
-          </div>
-        </div>
-      </section>
+          </ul>
 
-      {/* Why Choose Us Section */}
-      <section className="relative py-12 sm:py-16 lg:py-20 px-4 sm:px-6 lg:px-8 bg-white/40 backdrop-blur-sm">
-        <div className="container mx-auto max-w-7xl">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-4">Why Choose MyClinicSoft?</h2>
+          <div className="mt-14">
+            <h2 className="text-xl font-bold text-gray-900 tracking-tight mb-6">Why clinics choose MyClinicSoft</h2>
+            <ol className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-10">
+              {reasons.map((r, i) => (
+                <li key={r.title} className="border-t border-gray-200 pt-4">
+                  <span className="font-mono text-[11px] font-semibold text-gray-400">0{i + 1}</span>
+                  <h3 className="font-semibold text-gray-900 mt-1">{r.title}</h3>
+                  <p className="text-sm text-gray-600 mt-1 leading-relaxed">{r.description}</p>
+                </li>
+              ))}
+            </ol>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg">
-              <h3 className="text-xl font-bold text-gray-900 mb-3">Comprehensive Solution</h3>
-              <p className="text-gray-600">
-                Everything you need in one platform - from patient management to billing, all integrated seamlessly.
-              </p>
-            </div>
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg">
-              <h3 className="text-xl font-bold text-gray-900 mb-3">Easy to Use</h3>
-              <p className="text-gray-600">
-                Intuitive interface designed for healthcare professionals. Get started quickly with minimal training.
-              </p>
-            </div>
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg">
-              <h3 className="text-xl font-bold text-gray-900 mb-3">Always Improving</h3>
-              <p className="text-gray-600">
-                Regular updates and new features based on feedback from healthcare providers like you.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
 
-      {/* CTA Section */}
-      <section className="relative bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 py-16 sm:py-20 lg:py-24 px-4 sm:px-6 lg:px-8 overflow-hidden">
-        <div className="absolute inset-0">
-          <div className="absolute top-0 left-0 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
-        </div>
-        <div className="container mx-auto max-w-4xl text-center relative z-10">
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white mb-4 sm:mb-6">
-            Join Us in Transforming Healthcare
-          </h2>
-          <p className="text-base sm:text-lg lg:text-xl text-blue-100 mb-8 sm:mb-12 max-w-2xl mx-auto leading-relaxed">
-            Experience the future of clinic management. Start your free trial today.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <Link
-              href="/tenant-onboard"
-              className="group px-6 sm:px-8 py-3 sm:py-4 bg-white text-blue-600 rounded-xl sm:rounded-2xl font-semibold hover:bg-blue-50 transition-all shadow-xl hover:shadow-2xl hover:scale-105 flex items-center gap-2 text-sm sm:text-base"
-            >
-              Get Started
-              <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
+          <div className="mt-12 flex flex-col sm:flex-row gap-3">
+            <Link href="/tenant-onboard" className={buttonPrimary}>
+              Start 14-day free trial
+              <Icon d={icons.arrow} className="w-4 h-4 transition-transform duration-150 group-hover:translate-x-0.5" />
             </Link>
-            <Link
-              href="/contact"
-              className="px-6 sm:px-8 py-3 sm:py-4 bg-blue-500/90 backdrop-blur-sm text-white rounded-xl sm:rounded-2xl font-semibold hover:bg-blue-400 transition-all shadow-xl hover:shadow-2xl hover:scale-105 flex items-center gap-2 text-sm sm:text-base"
-            >
-              Contact Us
+            <Link href="/security" className={buttonSecondary}>
+              <Icon d={icons.shield} className="w-4 h-4 text-brand-teal-dark" />
+              How we protect data
             </Link>
           </div>
         </div>
       </section>
+
+      <NavyBand
+        title="Want to talk to the team?"
+        actions={[
+          { href: '/contact', label: 'Contact us', icon: icons.chat, primary: true },
+          { href: '/tenant-onboard', label: 'Start free trial', icon: icons.arrow },
+        ]}
+      >
+        Questions about MyClinicSoft or eMCR — we answer patients and clinics alike.
+      </NavyBand>
     </div>
   );
 }
-

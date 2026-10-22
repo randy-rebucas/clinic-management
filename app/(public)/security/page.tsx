@@ -1,229 +1,176 @@
 import Link from 'next/link';
 import { Metadata } from 'next';
 import { pageMetadata } from '@/lib/seo';
+import { Icon, icons, NavyBand, PageHero, SectionHeading, SUPPORT_EMAIL, buttonPrimary, buttonSecondary } from '@/components/PublicPage';
 
 export const metadata: Metadata = pageMetadata({
   title: 'Security & Compliance',
   path: '/security',
-  description: 'How MyClinicSoft protects patient data: encryption, role-based access controls, multi-factor authentication, audit logging, and Data Privacy Act compliance.',
+  description: 'How MyClinicSoft protects patient data: encryption, role-based access controls, two-factor sign-in, audit logging, and Data Privacy Act compliance.',
 });
 
+const lock = 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z';
+const document = 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z';
+const building = 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4';
+const globe = 'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9';
+
+// Every control here is implemented in the product; keep this list in step with the code.
+const controls = [
+  {
+    icon: lock,
+    title: 'Encryption',
+    description: 'All traffic is encrypted with TLS, and the database is encrypted at rest. Sign-in secrets and integration keys get an extra layer of AES-256-GCM encryption.',
+  },
+  {
+    icon: icons.phone,
+    title: 'Two-factor sign-in',
+    description: 'Staff can turn on authenticator-app codes, so a stolen password alone isn’t enough to get in.',
+  },
+  {
+    icon: icons.key,
+    title: 'Login protection',
+    description: 'Passwords are stored as bcrypt hashes, and repeated failed sign-ins are rate-limited per account and per network.',
+  },
+  {
+    icon: icons.users,
+    title: 'Role-based access',
+    description: 'Front desk, doctors, billing, and admins each see only what their role allows — and you can tailor permissions per staff member.',
+  },
+  {
+    icon: building,
+    title: 'Clinic isolation',
+    description: 'Every clinic’s data is kept separate. Staff of one clinic can never see another clinic’s patients.',
+  },
+  {
+    icon: document,
+    title: 'Audit trail',
+    description: 'Sign-ins, record access, and changes are logged with who, what, and when — ready for a compliance review.',
+  },
+  {
+    icon: globe,
+    title: 'Hardened web app',
+    description: 'Strict transport security, a content security policy, and click-jacking protection on every page.',
+  },
+  {
+    icon: icons.shield,
+    title: 'Backups you control',
+    description: 'Clinic admins can take backups of their clinic’s data from inside the app at any time.',
+  },
+];
+
+const dpaTools = [
+  'Export a patient’s data on request (right of access and data portability)',
+  'Handle deletion requests from patients',
+  'Data retention rules that clear records you no longer need',
+  'An audit log of who accessed which record, and when',
+];
+
+const yourPart = [
+  { title: 'Turn on two-factor sign-in', description: 'Ask every staff member to enable it in Settings.' },
+  { title: 'Give the least access needed', description: 'Assign roles that match each person’s job, and remove leavers promptly.' },
+  { title: 'Review the audit log', description: 'A quick monthly look catches unusual access early.' },
+  { title: 'Keep your own backups', description: 'Take a backup regularly and before big changes.' },
+];
+
 export default function SecurityPage() {
-  const securityFeatures = [
-    {
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-        </svg>
-      ),
-      title: 'Data Encryption',
-      description: 'All data is encrypted in transit (SSL/TLS) and at rest using AES-256 encryption.',
-    },
-    {
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-        </svg>
-      ),
-      title: 'Access Controls',
-      description: 'Role-based access control ensures users only access data they\'re authorized to see.',
-    },
-    {
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-      ),
-      title: 'Audit Logging',
-      description: 'Comprehensive audit trails track all system activities and data access for compliance.',
-    },
-    {
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-        </svg>
-      ),
-      title: 'Regular Security Audits',
-      description: 'We conduct regular security assessments and penetration testing to identify and fix vulnerabilities.',
-    },
-    {
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
-        </svg>
-      ),
-      title: 'Secure Data Centers',
-      description: 'Data is stored in SOC 2 compliant data centers with physical security and redundancy.',
-    },
-    {
-      icon: (
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-        </svg>
-      ),
-      title: 'Multi-Factor Authentication',
-      description: 'Optional MFA adds an extra layer of security to protect your account from unauthorized access.',
-    },
-  ];
-
-  const complianceStandards = [
-    { name: 'HIPAA', description: 'Health Insurance Portability and Accountability Act compliance for US healthcare providers' },
-    { name: 'PH DPA', description: 'Philippines Data Privacy Act compliance for clinics in the Philippines' },
-    { name: 'GDPR', description: 'General Data Protection Regulation compliance for EU-based users' },
-    { name: 'SOC 2', description: 'Service Organization Control 2 certified data centers' },
-  ];
-
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      {/* Background */}
-      <div className="fixed inset-0 -z-10">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"></div>
-        <div className="absolute top-0 -left-4 w-96 h-96 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob"></div>
-        <div className="absolute top-0 -right-4 w-96 h-96 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-      </div>
+    <div className="min-h-screen bg-white">
+      <PageHero
+        eyebrow="Security"
+        title="Patient data,"
+        accent="protected by design"
+        actions={
+          <>
+            <Link href="/privacy" className={buttonPrimary}>
+              Read the Privacy Policy
+              <Icon d={icons.arrow} className="w-4 h-4 transition-transform duration-150 group-hover:translate-x-0.5" />
+            </Link>
+            <Link href="/contact" className={buttonSecondary}>
+              Ask a security question
+            </Link>
+          </>
+        }
+      >
+        MyClinicSoft is built for the Philippine Data Privacy Act. Here&apos;s exactly how we keep your clinic&apos;s
+        records safe — and what you can do to help.
+      </PageHero>
 
-      {/* Hero Section */}
-      <section className="relative pt-24 sm:pt-32 pb-12 sm:pb-16 px-4 sm:px-6 lg:px-8">
+      {/* Controls */}
+      <section className="border-t border-gray-200 px-4 sm:px-6 lg:px-8 py-14 sm:py-16 lg:py-20">
         <div className="container mx-auto max-w-7xl">
-          <div className="text-center mb-12">
-            <div className="inline-block px-4 py-2 bg-blue-100 rounded-full mb-4">
-              <span className="text-sm font-semibold text-blue-700">Security</span>
-            </div>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-gray-900 mb-6">
-              Security &{' '}
-              <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                Compliance
-              </span>
-            </h1>
-            <p className="text-xl sm:text-2xl text-gray-700 max-w-3xl mx-auto leading-relaxed">
-              Enterprise-grade security to protect your clinic and patient data
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Security Features */}
-      <section className="relative py-12 sm:py-16 lg:py-20 px-4 sm:px-6 lg:px-8">
-        <div className="container mx-auto max-w-7xl">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-4">Security Features</h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              Multiple layers of protection to keep your data safe
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
-            {securityFeatures.map((feature, index) => (
-              <div
-                key={index}
-                className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 sm:p-8 shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100/50 hover:border-blue-300 hover:-translate-y-1"
-              >
-                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center mb-4 text-white">
-                  {feature.icon}
+          <SectionHeading title="What protects your data">Layers that work together, from sign-in to storage.</SectionHeading>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {controls.map((c) => (
+              <li key={c.title} className="rounded-xl border border-gray-200 bg-white p-6">
+                <div className="w-10 h-10 rounded-md bg-brand-teal-light text-brand-teal-dark flex items-center justify-center mb-4">
+                  <Icon d={c.icon} />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-3">{feature.title}</h3>
-                <p className="text-gray-600 leading-relaxed">{feature.description}</p>
-              </div>
+                <h3 className="text-lg font-bold text-gray-900 tracking-tight">{c.title}</h3>
+                <p className="text-sm text-gray-600 mt-1.5 leading-relaxed">{c.description}</p>
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       </section>
 
-      {/* Compliance Section */}
-      <section className="relative py-12 sm:py-16 lg:py-20 px-4 sm:px-6 lg:px-8 bg-white/40 backdrop-blur-sm">
-        <div className="container mx-auto max-w-7xl">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-4">Compliance Standards</h2>
-            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              We meet the highest standards for healthcare data protection
+      {/* Data Privacy Act */}
+      <section className="border-y border-gray-200 bg-gray-50/70 px-4 sm:px-6 lg:px-8 py-14 sm:py-16">
+        <div className="container mx-auto max-w-7xl grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-start">
+          <div>
+            <p className="inline-flex items-center gap-2 rounded-full border border-brand-teal/30 bg-white px-3 py-1 font-mono text-xs font-semibold text-brand-teal-deep mb-4">
+              RA 10173
+            </p>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">
+              Built for the Data Privacy Act of 2012
+            </h2>
+            <p className="text-gray-600 mt-3 leading-relaxed">
+              Your clinic is responsible for its patients&apos; personal and health information. MyClinicSoft gives you the
+              tools to meet those obligations without extra paperwork.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
-            {complianceStandards.map((standard, index) => (
-              <div
-                key={index}
-                className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 sm:p-8 shadow-lg"
-              >
-                <h3 className="text-2xl font-bold text-gray-900 mb-3">{standard.name}</h3>
-                <p className="text-gray-600 leading-relaxed">{standard.description}</p>
-              </div>
+          <ul className="rounded-xl border border-gray-200 bg-white divide-y divide-gray-100">
+            {dpaTools.map((t) => (
+              <li key={t} className="flex items-start gap-3 px-5 py-4 text-sm text-gray-700">
+                <Icon d={icons.check} className="w-4 h-4 mt-0.5 shrink-0 text-brand-teal" />
+                {t}
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       </section>
 
-      {/* Data Protection Section */}
-      <section className="relative py-12 sm:py-16 lg:py-20 px-4 sm:px-6 lg:px-8">
-        <div className="container mx-auto max-w-4xl">
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 sm:p-8 lg:p-12 shadow-lg">
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-6">Data Protection</h2>
-            <div className="space-y-6 text-gray-700">
-              <div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">Encryption</h3>
-                <p className="leading-relaxed">
-                  All data transmitted between your device and our servers is encrypted using TLS 1.3. 
-                  Data at rest is encrypted using AES-256 encryption, the same standard used by banks and government agencies.
-                </p>
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">Access Controls</h3>
-                <p className="leading-relaxed">
-                  Role-based access control ensures that only authorized personnel can access sensitive patient data. 
-                  You can customize permissions for different staff members based on their roles.
-                </p>
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">Backup & Recovery</h3>
-                <p className="leading-relaxed">
-                  Your data is automatically backed up daily with point-in-time recovery capabilities. 
-                  Backups are stored in geographically distributed data centers for redundancy.
-                </p>
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">Incident Response</h3>
-                <p className="leading-relaxed">
-                  We have a dedicated security team that monitors for threats 24/7 and responds immediately 
-                  to any security incidents. We also conduct regular security audits and penetration testing.
-                </p>
-              </div>
-            </div>
-          </div>
+      {/* Shared responsibility */}
+      <section className="px-4 sm:px-6 lg:px-8 py-14 sm:py-16 lg:py-20">
+        <div className="container mx-auto max-w-7xl">
+          <SectionHeading title="Your part in keeping data safe">
+            Security is shared. These four habits close the gaps software can&apos;t.
+          </SectionHeading>
+          <ol className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
+            {yourPart.map((p, i) => (
+              <li key={p.title} className="border-t border-gray-200 pt-4">
+                <span className="font-mono text-[11px] font-semibold text-gray-400">0{i + 1}</span>
+                <h3 className="font-semibold text-gray-900 mt-1">{p.title}</h3>
+                <p className="text-sm text-gray-600 mt-1 leading-relaxed">{p.description}</p>
+              </li>
+            ))}
+          </ol>
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="relative bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 py-16 sm:py-20 lg:py-24 px-4 sm:px-6 lg:px-8 overflow-hidden">
-        <div className="absolute inset-0">
-          <div className="absolute top-0 left-0 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
-        </div>
-        <div className="container mx-auto max-w-4xl text-center relative z-10">
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white mb-4 sm:mb-6">
-            Questions About Security?
-          </h2>
-          <p className="text-base sm:text-lg lg:text-xl text-blue-100 mb-8 sm:mb-12 max-w-2xl mx-auto leading-relaxed">
-            Our security team is available to answer any questions about our security measures and compliance.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <Link
-              href="/contact"
-              className="group px-6 sm:px-8 py-3 sm:py-4 bg-white text-blue-600 rounded-xl sm:rounded-2xl font-semibold hover:bg-blue-50 transition-all shadow-xl hover:shadow-2xl hover:scale-105 flex items-center gap-2 text-sm sm:text-base"
-            >
-              Contact Security Team
-              <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
-            </Link>
-            <Link
-              href="/privacy"
-              className="px-6 sm:px-8 py-3 sm:py-4 bg-blue-500/90 backdrop-blur-sm text-white rounded-xl sm:rounded-2xl font-semibold hover:bg-blue-400 transition-all shadow-xl hover:shadow-2xl hover:scale-105 flex items-center gap-2 text-sm sm:text-base"
-            >
-              View Privacy Policy
-            </Link>
-          </div>
-        </div>
-      </section>
+      <NavyBand
+        title="Found a security issue?"
+        actions={[
+          {
+            href: `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Security report')}`,
+            label: 'Report it privately',
+            icon: icons.mail,
+            primary: true,
+          },
+          { href: '/contact', label: 'Other questions', icon: icons.chat },
+        ]}
+      >
+        Tell us privately and we&apos;ll investigate right away. Please don&apos;t share details publicly until it&apos;s fixed.
+      </NavyBand>
     </div>
   );
 }
-
