@@ -37,6 +37,24 @@ interface Payment {
   notes?: string;
 }
 
+interface PaymentClaim {
+  _id: string;
+  method: string;
+  amount: number;
+  referenceNo: string;
+  payerName?: string;
+  status: 'pending' | 'confirmed' | 'rejected';
+  submittedAt: string;
+}
+
+interface PayOption {
+  id: string;
+  label: string;
+  providerLabel: string;
+  online: boolean;
+  owner: 'clinic' | 'doctor';
+}
+
 interface Invoice {
   _id: string;
   invoiceNumber: string;
@@ -76,6 +94,8 @@ interface Invoice {
     note?: string;
   };
   payments: Payment[];
+  /** "I've paid" notices from the patient's pay page, for staff to confirm. */
+  paymentClaims?: PaymentClaim[];
   insurance?: {
     provider?: string;
     policyNumber?: string;
@@ -148,6 +168,50 @@ export default function InvoiceDetailClient({
   }, [notice]);
 
   const [payLink, setPayLink] = useState<string | null>(null);
+  // Where the link can be paid into: the clinic's accounts, and the doctor's own for their fee.
+  const [payOptions, setPayOptions] = useState<PayOption[] | null>(null);
+  const [payAccount, setPayAccount] = useState('');
+  const canPayLink = permissions.canSendPayLink && !!p && p.status !== 'refunded' && p.status !== 'paid';
+  useEffect(() => {
+    if (!canPayLink || payOptions) return;
+    let alive = true;
+    fetch(`/api/invoices/${invoiceId}/pay-link`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (!alive || !json?.success) return;
+        setPayOptions(json.data.accounts);
+        setPayAccount(json.data.accounts.length > 1 ? '' : json.data.defaultId ?? '');
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [canPayLink, invoiceId, payOptions]);
+
+  const [claimBusy, setClaimBusy] = useState<string | null>(null);
+  const decideClaim = async (claimId: string, action: 'confirm' | 'reject') => {
+    setClaimBusy(claimId);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}/claims/${claimId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        setActionError(formatApiError(json, 'That didn’t go through'));
+        return;
+      }
+      setNotice({ text: action === 'confirm' ? 'Payment confirmed and recorded.' : 'The patient’s report was rejected.', receipt: action === 'confirm' });
+      inv.reload();
+    } catch {
+      setActionError('The server couldn’t be reached. Try again.');
+    } finally {
+      setClaimBusy(null);
+    }
+  };
+
   const sendPayLink = async () => {
     setBusy(true);
     setActionError(null);
@@ -155,7 +219,7 @@ export default function InvoiceDetailClient({
       const res = await fetch(`/api/invoices/${invoiceId}/pay-link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sms: permissions.canText }),
+        body: JSON.stringify({ sms: permissions.canText, ...(payAccount ? { accountId: payAccount } : {}) }),
       });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.success) {
@@ -165,8 +229,8 @@ export default function InvoiceDetailClient({
       setPayLink(json.data.url);
       setNotice({
         text: json.data.texted
-          ? 'Payment link texted to the patient. The payment shows here by itself once they pay.'
-          : 'Payment link made. Send it to the patient; the payment shows here by itself once they pay.',
+          ? 'Payment link texted to the patient. Online payments show here by themselves; QR and bank payments wait for you to confirm.'
+          : 'Payment link made. Send it to the patient; online payments show here by themselves, QR and bank payments wait for you to confirm.',
         receipt: false,
       });
     } catch {
@@ -339,7 +403,27 @@ export default function InvoiceDetailClient({
               Record payment
             </button>
           )}
-          {permissions.canSendPayLink && open && (
+          {permissions.canSendPayLink && open && payOptions && payOptions.length > 1 && (
+            <select
+              aria-label="Pay into"
+              value={payAccount}
+              onChange={(e) => setPayAccount(e.target.value)}
+              className={`rounded-md border border-gray-300 bg-white px-2.5 py-2 text-sm text-gray-900 ${FOCUS_RING}`}
+            >
+              <option value="">Patient chooses</option>
+              {payOptions.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label} ({o.providerLabel}{o.owner === 'doctor' ? ', doctor' : ''})
+                </option>
+              ))}
+            </select>
+          )}
+          {permissions.canSendPayLink && open && payOptions && payOptions.length === 0 && (
+            <Link href="/admin/payment-accounts" className={`self-center text-sm font-semibold text-brand-teal-dark hover:underline ${FOCUS_RING}`}>
+              Set up a payment account
+            </Link>
+          )}
+          {permissions.canSendPayLink && open && (!payOptions || payOptions.length > 0) && (
             <button
               type="button"
               onClick={sendPayLink}
@@ -528,6 +612,48 @@ export default function InvoiceDetailClient({
               )}
             </dl>
           </Panel>
+
+          {(p.paymentClaims ?? []).some((c) => c.status === 'pending') && (
+            <Panel id="inv-claims" title="Reported by the patient">
+              <p className="px-5 pt-1 text-sm text-gray-600">
+                Check that each payment arrived in the account before confirming it. Confirming records it as paid.
+              </p>
+              <ul className="divide-y divide-gray-100">
+                {(p.paymentClaims ?? [])
+                  .filter((c) => c.status === 'pending')
+                  .map((c) => (
+                    <li key={c._id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
+                      <span className="text-gray-900">
+                        <span className="font-mono tabular-nums">{money(c.amount)}</span> by {methodLabel(c.method)} · ref{' '}
+                        <span className="font-mono">{c.referenceNo}</span>
+                        {c.payerName ? ` · ${c.payerName}` : ''}
+                        <span className="block text-xs text-gray-500">{shortDate(c.submittedAt)}</span>
+                      </span>
+                      {permissions.canPay && (
+                        <span className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={claimBusy !== null}
+                            onClick={() => decideClaim(c._id, 'confirm')}
+                            className={`rounded-md bg-brand-teal-dark px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-teal-deep disabled:cursor-wait ${FOCUS_RING}`}
+                          >
+                            {claimBusy === c._id ? 'Saving…' : 'Confirm'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={claimBusy !== null}
+                            onClick={() => decideClaim(c._id, 'reject')}
+                            className={`rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-900 hover:border-gray-900 disabled:cursor-wait ${FOCUS_RING}`}
+                          >
+                            Reject
+                          </button>
+                        </span>
+                      )}
+                    </li>
+                  ))}
+              </ul>
+            </Panel>
+          )}
 
           <Panel
             id="inv-payments"
