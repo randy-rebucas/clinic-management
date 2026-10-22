@@ -13,7 +13,7 @@ import { requirePermission } from '@/app/lib/auth-helpers';
 import { logRecordOpened } from '@/lib/audit';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
-import { updateVisitSchema, signatureWithMetadata } from '@/lib/visit-schema';
+import { updateVisitSchema, signatureWithMetadata, touchesAttestedFields } from '@/lib/visit-schema';
 
 export async function GET(
   request: NextRequest,
@@ -114,6 +114,7 @@ export async function PUT(
     if (body.digitalSignature) {
       update.digitalSignature = signatureWithMetadata(body.digitalSignature, session.userId, request);
     }
+    if (touchesAttestedFields(body)) update.contentAuthor = session.userId;
 
     const statusChangedToClosed = oldVisit.status !== 'closed' && body.status === 'closed';
 

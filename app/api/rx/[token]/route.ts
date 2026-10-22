@@ -7,7 +7,7 @@ import '@/models/Visit';
 import { getSettings } from '@/lib/settings';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { issueSeal } from '@/lib/document-seal';
-import { loadSigner, pickSignature } from '@/lib/doctor-signature';
+import { loadSigner, pickSignature, signerWroteContent } from '@/lib/doctor-signature';
 import { generatePrescriptionHTML } from '@/lib/prescription-document';
 import { htmlToPdf, pdfFilename, pdfHeaders } from '@/lib/pdf';
 import { readPrescriptionLinkToken } from '@/lib/prescription-link';
@@ -60,7 +60,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       copyType: 'patient',
     });
     const showSignature = settings.prescriptionDigitalSignatureEnabled !== false;
-    const signatureSrc = showSignature ? pickSignature(prescription.digitalSignature?.signatureData, signer, true) : null;
+    const signatureSrc =
+      showSignature && signerWroteContent(prescription, prescription.prescribedBy)
+        ? pickSignature(prescription.digitalSignature?.signatureData, signer, true)
+        : null;
     const html = generatePrescriptionHTML(
       prescription,
       'patient',

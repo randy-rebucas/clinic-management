@@ -7,7 +7,7 @@ import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-ses
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { getSettings } from '@/lib/settings';
 import { issueSeal, tenantScopedQuery, IssuedSeal } from '@/lib/document-seal';
-import { loadSigner, pickSignature, type Signer } from '@/lib/doctor-signature';
+import { loadSigner, pickSignature, signerWroteContent, type Signer } from '@/lib/doctor-signature';
 import { escapeHtml as e, sealedDocumentParts } from '@/lib/document-protection';
 import { documentResponse, pdfFilename } from '@/lib/pdf';
 
@@ -85,8 +85,11 @@ function generateMedicalCertificateHTML(visit: any, settings: any, seal: IssuedS
   const patient = visit.patient || {};
   const provider = visit.provider;
   const clinicName = settings?.clinicName || 'Clinic';
-  // A draft visit is not signed off yet, so it never carries the doctor's stored signature.
-  const signatureSrc = pickSignature(visit.digitalSignature?.signatureData, signer, visit.status !== 'draft');
+  // A draft visit is not signed off yet, so it never carries the doctor's stored signature; nor
+  // does a visit whose notes someone other than the doctor wrote last.
+  const signatureSrc = signerWroteContent(visit, visit.provider)
+    ? pickSignature(visit.digitalSignature?.signatureData, signer, visit.status !== 'draft')
+    : null;
   const licenseNumber = signer?.licenseNumber || settings?.licenseNumber;
   const visitDate = new Date(visit.date).toLocaleDateString('en-US', {
     timeZone: tz,

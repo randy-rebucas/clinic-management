@@ -90,6 +90,7 @@ export async function createPrescriptionFromVisit(params: CreatePrescriptionFrom
       visit: visitId,
       patient: visit.patient._id,
       prescribedBy: visit.provider || createdBy,
+      contentAuthor: createdBy,
       issuedAt: new Date(),
       medications,
       status: 'active',
@@ -224,6 +225,7 @@ export async function updatePrescriptionFromVisit(params: CreatePrescriptionFrom
 
     // Update prescription
     prescription.medications = medications;
+    if (createdBy) prescription.contentAuthor = new Types.ObjectId(createdBy);
     prescription.updatedAt = new Date();
     await prescription.save();
 
