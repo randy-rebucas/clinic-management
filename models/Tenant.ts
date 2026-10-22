@@ -34,6 +34,13 @@ export interface ITenant extends Document {
   };
   settings?: ITenantSettings;
   status: 'active' | 'inactive' | 'suspended';
+  /** Who DevCom Digital's subscription sales invoices are made out to (blank = clinic name). */
+  billingProfile?: {
+    registeredName?: string;
+    tin?: string;
+    address?: string;
+    email?: string;
+  };
   subscription?: {
     plan?: string;
     status?: 'active' | 'cancelled' | 'expired';
@@ -104,6 +111,12 @@ const TenantSchema = new Schema<ITenant>(
       state: { type: String, trim: true },
       zipCode: { type: String, trim: true },
       country: { type: String, trim: true },
+    },
+    billingProfile: {
+      registeredName: { type: String, trim: true, maxlength: 200 },
+      tin: { type: String, trim: true, maxlength: 20 },
+      address: { type: String, trim: true, maxlength: 500 },
+      email: { type: String, trim: true, lowercase: true, maxlength: 254 },
     },
     settings: {
       timezone: { type: String, default: 'UTC' },

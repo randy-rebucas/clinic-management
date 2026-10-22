@@ -16,6 +16,7 @@ vi.mock('@/lib/platform-config', () => ({
   lastIssuedSerial: vi.fn(async () => 0),
   savePlatformSection: vi.fn(),
 }));
+vi.mock('@/lib/platform-invoice', () => ({ scheduleHeldInvoices: vi.fn() }));
 vi.mock('@/lib/platform-config-page', () => ({ loadPlatformConfig: vi.fn(async () => ({ ok: true })) }));
 
 import { PUT } from '@/app/api/platform/configuration/route';

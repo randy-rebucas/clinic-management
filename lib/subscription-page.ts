@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Tenant from '@/models/Tenant';
 import SubscriptionOrder from '@/models/SubscriptionOrder';
+import PlatformInvoice from '@/models/PlatformInvoice';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { formatInTz } from '@/lib/tz';
 import { checkSubscriptionStatus } from '@/lib/subscription';
@@ -80,6 +81,20 @@ export interface PaymentRow {
   currency: string;
   status: 'completed' | 'refunded' | 'failed';
   reference: string;
+  /** DevCom Digital's sales invoice for it, once issued (cancelled when refunded). */
+  invoice: { id: string; serialNo: string; status: 'issued' | 'cancelled' } | null;
+  /** Issued later: the issuer details or serials aren't ready yet. */
+  invoicePending: boolean;
+}
+
+/** Who the subscription sales invoices are made out to. */
+export interface BillingProfileView {
+  registeredName: string;
+  tin: string;
+  address: string;
+  email: string;
+  /** What prints when a field is blank. */
+  fallback: { registeredName: string; address: string; email: string };
 }
 
 export interface UnfinishedPayment {
@@ -102,6 +117,7 @@ export interface SubscriptionPageData {
   unfinished: UnfinishedPayment[];
   /** The platform's PayMongo account is set up, so plans can be paid for. */
   gatewayReady: boolean;
+  billingProfile: BillingProfileView;
   /** "PayMongo", for the page's wording. */
   gatewayName: string;
 }
@@ -111,6 +127,9 @@ const SUPPORT: Record<string, string> = { basic: 'Email', priority: 'Priority', 
 interface TenantDoc {
   name?: string;
   displayName?: string;
+  email?: string;
+  address?: { street?: string; city?: string; state?: string; zipCode?: string; country?: string };
+  billingProfile?: { registeredName?: string; tin?: string; address?: string; email?: string };
   createdAt?: Date;
   subscription?: {
     plan?: string;
@@ -141,9 +160,9 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
   const tenantId = new Types.ObjectId(session.tenantId);
   const now = new Date();
 
-  const [tz, tenant, status, usage, orders] = await Promise.all([
+  const [tz, tenant, status, usage, orders, invoices] = await Promise.all([
     getTenantTimezone(tenantId),
-    Tenant.findById(tenantId).select('name displayName createdAt subscription').lean<TenantDoc | null>(),
+    Tenant.findById(tenantId).select('name displayName email address billingProfile createdAt subscription').lean<TenantDoc | null>(),
     checkSubscriptionStatus(tenantId),
     getSubscriptionUsage(tenantId).catch((error) => {
       console.error('Subscription page: usage unavailable', error);
@@ -156,7 +175,11 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
       .sort({ createdAt: -1 })
       .limit(5)
       .lean<{ orderId: string; plan: string; billingCycle: BillingCycle; amount: number; currency: string; status: 'pending' | 'processing'; createdAt: Date }[]>(),
+    PlatformInvoice.find({ tenantId })
+      .select('orderId serialNo status')
+      .lean<{ _id: Types.ObjectId; orderId: string; serialNo?: string; status: string }[]>(),
   ]);
+  const invoiceByOrder = new Map(invoices.map((inv) => [inv.orderId, inv]));
 
   const sub = tenant?.subscription;
   const day = (d: Date | string) => formatInTz(d, 'MMM d, yyyy', tz);
@@ -221,6 +244,7 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
       currency: p.currency || 'USD',
       status: p.status ?? 'completed',
       reference: p.transactionId || p.orderId,
+      ...invoiceFields(invoiceByOrder.get(p.orderId), p.status ?? 'completed'),
     })),
     unfinished: orders
       .filter((o) => isPaidPlan(o.plan))
@@ -235,5 +259,32 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
       })),
     gatewayReady: await isPayMongoConfigured(),
     gatewayName: 'PayMongo',
+    billingProfile: billingProfileOf(tenant),
+  };
+}
+
+function invoiceFields(
+  inv: { _id: Types.ObjectId; serialNo?: string; status: string } | undefined,
+  paymentStatus: string
+): Pick<PaymentRow, 'invoice' | 'invoicePending'> {
+  if (inv?.serialNo && (inv.status === 'issued' || inv.status === 'cancelled')) {
+    return { invoice: { id: String(inv._id), serialNo: inv.serialNo, status: inv.status }, invoicePending: false };
+  }
+  return { invoice: null, invoicePending: paymentStatus === 'completed' && inv?.status !== 'cancelled' };
+}
+
+function billingProfileOf(tenant: TenantDoc | null): BillingProfileView {
+  const p = tenant?.billingProfile ?? {};
+  const a = tenant?.address ?? {};
+  return {
+    registeredName: p.registeredName ?? '',
+    tin: p.tin ?? '',
+    address: p.address ?? '',
+    email: p.email ?? '',
+    fallback: {
+      registeredName: tenant?.displayName || tenant?.name || 'Your clinic',
+      address: [a.street, a.city, [a.state, a.zipCode].filter(Boolean).join(' '), a.country].filter(Boolean).join(', '),
+      email: tenant?.email ?? '',
+    },
   };
 }
