@@ -169,6 +169,7 @@ export async function POST(request: NextRequest) {
       ...body,
       digitalSignature: signatureWithMetadata(body.digitalSignature, session.userId, request),
       provider: body.provider || session.userId,
+      contentAuthor: session.userId,
       visitCode: await nextVisitCode(tenantObjectId),
       tenantId: tenantObjectId,
     });

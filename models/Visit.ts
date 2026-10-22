@@ -87,6 +87,8 @@ export interface IVisit extends Document {
   visitCode: string;
   date: Date;
   provider?: Types.ObjectId;
+  /** Who last wrote the clinical content. The provider's signature prints only when it is them. */
+  contentAuthor?: Types.ObjectId;
   visitType: 'consultation' | 'follow-up' | 'checkup' | 'emergency' | 'teleconsult' | 'vaccination';
   chiefComplaint?: string;
   historyOfPresentIllness?: string;
@@ -178,6 +180,7 @@ const VisitSchema: Schema = new Schema(
     visitCode: { type: String, required: true }, // clinic-specific code
     date: { type: Date, default: Date.now, index: true },
     provider: { type: Schema.Types.ObjectId, ref: 'User' },
+    contentAuthor: { type: Schema.Types.ObjectId, ref: 'User' },
     visitType: { type: String, enum: ['consultation', 'follow-up', 'checkup', 'emergency', 'teleconsult', 'vaccination'], default: 'consultation' },
     chiefComplaint: { type: String },
     historyOfPresentIllness: { type: String },

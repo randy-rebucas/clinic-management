@@ -3,11 +3,11 @@ import connectDB from '@/lib/mongodb';
 import Tenant from '@/models/Tenant';
 import PaypalOrder from '@/models/PaypalOrder';
 import { verifyPayPalWebhook } from '@/lib/paypal';
-import { activateSubscriptionFromOrder } from '@/lib/subscription';
+import { activateSubscriptionFromOrder, reverseSubscriptionPayment } from '@/lib/subscription';
 
 /**
  * PayPal webhook handler for subscription events
- * Handles PAYMENT.CAPTURE.COMPLETED and PAYMENT.CAPTURE.REFUNDED
+ * Handles PAYMENT.CAPTURE.COMPLETED, REFUNDED, REVERSED (chargeback) and DENIED
  */
 export async function POST(request: NextRequest) {
   try {
@@ -91,46 +91,28 @@ export async function POST(request: NextRequest) {
         const upHref: string | undefined = resource?.links?.find((l: any) => l.rel === 'up')?.href;
         const captureId = upHref?.match(/\/captures\/([^/?#]+)/)?.[1];
         const relatedOrderId: string | undefined = resource?.supplementary_data?.related_ids?.order_id;
-
         if (!captureId && !relatedOrderId) {
           console.warn('PAYMENT.CAPTURE.REFUNDED: no capture/order id found in webhook payload');
           break;
         }
-
-        const tenant = await Tenant.findOne(
-          captureId
-            ? { 'subscription.paymentHistory.transactionId': captureId }
-            : { 'subscription.paymentHistory.orderId': relatedOrderId }
-        );
-        if (!tenant || !tenant.subscription) {
-          console.warn(`PAYMENT.CAPTURE.REFUNDED: no tenant found for capture ${captureId || relatedOrderId}`);
-          break;
-        }
-        tenantIdForStamp = tenant._id;
-
-        const payment = tenant.subscription.paymentHistory?.find((p: any) =>
-          captureId ? p.transactionId === captureId : p.orderId === relatedOrderId
-        );
-        if (!payment) break;
-
         const refunded = parseFloat(
           resource?.seller_payable_breakdown?.total_refunded_amount?.value ??
           resource?.amount?.value ??
           '0'
         );
-        const isFullRefund = refunded + 0.005 >= Number(payment.amount);
-        if (!isFullRefund) {
-          console.log(`PAYMENT.CAPTURE.REFUNDED: partial refund (${refunded}/${payment.amount}) for tenant ${tenant._id} — subscription unchanged`);
-          break;
-        }
+        const r = await reverseSubscriptionPayment(captureId ? { transactionId: captureId } : { orderId: relatedOrderId }, refunded);
+        tenantIdForStamp = r.tenantId ?? tenantIdForStamp;
+        console.log(`PAYMENT.CAPTURE.REFUNDED: ${captureId || relatedOrderId} ${r.reversed ? 'reversed' : 'unchanged (partial, unknown or already refunded)'}`);
+        break;
+      }
 
-        payment.status = 'refunded';
-        // Only a full refund of the payment that funds the current period cancels the subscription.
-        if (payment.orderId === tenant.subscription.paypalOrderId) {
-          tenant.subscription.status = 'cancelled';
-        }
-        await tenant.save();
-        console.log(`PAYMENT.CAPTURE.REFUNDED: payment ${payment.transactionId} refunded for tenant ${tenant._id}`);
+      case 'PAYMENT.CAPTURE.REVERSED': {
+        // A chargeback: resource is the capture itself, and the whole amount went back.
+        const captureId: string | undefined = resource?.id;
+        const relatedOrderId: string | undefined = resource?.supplementary_data?.related_ids?.order_id;
+        const r = await reverseSubscriptionPayment(captureId ? { transactionId: captureId } : { orderId: relatedOrderId }, 'full');
+        tenantIdForStamp = r.tenantId ?? tenantIdForStamp;
+        console.log(`PAYMENT.CAPTURE.REVERSED: ${captureId || relatedOrderId} ${r.reversed ? 'reversed' : 'unchanged'}`);
         break;
       }
 

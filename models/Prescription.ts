@@ -39,6 +39,8 @@ export interface IPrescription extends Document {
   visit?: Types.ObjectId;
   patient: Types.ObjectId;
   prescribedBy?: Types.ObjectId;
+  /** Who last wrote the medicines or notes. The prescriber's signature prints only when it is them. */
+  contentAuthor?: Types.ObjectId;
   issuedAt: Date;
   medications: IMedication[];
   notes?: string;
@@ -137,6 +139,7 @@ const PrescriptionSchema: Schema = new Schema(
     visit: { type: Schema.Types.ObjectId, ref: 'Visit' },
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true },
     prescribedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    contentAuthor: { type: Schema.Types.ObjectId, ref: 'User' },
     issuedAt: { type: Date, default: Date.now },
     medications: [MedicationSchema],
     notes: String,

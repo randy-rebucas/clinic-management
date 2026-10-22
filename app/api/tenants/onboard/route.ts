@@ -24,6 +24,11 @@ const RESERVED_WORDS = [
   'dev',
   'test',
   'demo',
+  // Names that would pass for the platform's own pages on a clinic subdomain (phishing).
+  'login', 'signin', 'signup', 'auth', 'account', 'accounts', 'secure', 'security', 'pay', 'payment',
+  'payments', 'billing', 'checkout', 'support', 'help', 'status', 'platform', 'console', 'dashboard',
+  'portal', 'emcr', 'verify', 'docs', 'blog', 'static', 'assets', 'cdn', 'media', 'files', 'smtp',
+  'email', 'webmail', 'ns1', 'ns2', 'root', 'system', 'official', 'myclinicsoft', 'devcom',
 ];
 
 function validateSubdomain(subdomain: string): { valid: boolean; error?: string } {

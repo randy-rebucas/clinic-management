@@ -100,10 +100,6 @@ export async function GET(request: NextRequest) {
     }
 
     // ── All checks passed ───────────────────────────────────────────────────
-    let daysRemaining: number | null = null;
-    if (expiresAt) {
-      daysRemaining = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    }
 
     return NextResponse.json({
       success: true,
@@ -119,16 +115,9 @@ export async function GET(request: NextRequest) {
         country: tenant.address?.country ?? null,
         logo: tenant.settings?.logo ?? null,
       },
-      subscription: {
-        plan: sub.plan ?? null,
-        status: sub.status ?? null,
-        billingCycle: sub.billingCycle ?? null,
-        isActive: true,
-        isTrial: sub.plan === 'trial',
-        isExpired: false,
-        expiresAt: expiresAt ? expiresAt.toISOString() : null,
-        daysRemaining,
-      },
+      // Public and unauthenticated: only whether the clinic is open, never its plan or expiry
+      // (who is on a trial or about to lapse is a target list).
+      subscription: { isActive: true, isExpired: false },
     });
   } catch (error: any) {
     console.error('Error validating tenant:', error);

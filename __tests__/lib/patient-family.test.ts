@@ -77,11 +77,35 @@ describe('verifyPatientAuth with X-Patient-Profile', () => {
     vi.mocked(Patient.findById).mockImplementation(((id: string) =>
       String(id) === GUARDIAN
         ? lean({ _id: GUARDIAN, tenantIds: [] })
-        : lean({ _id: OTHER_CHILD, dateOfBirth: new Date('2018-01-01'), guardians: [{ patient: GUARDIAN, source: 'clinic' }] })) as any);
+        : lean({ _id: OTHER_CHILD, dateOfBirth: new Date('2018-01-01'), guardians: [{ patient: GUARDIAN, source: 'phone' }] })) as any);
 
     const session = await verifyPatientAuth(request(OTHER_CHILD));
     expect(session).toMatchObject({ patientId: OTHER_CHILD, guardianId: GUARDIAN });
     expect(session?.amr).toBeUndefined();
+    expect(session?.tid).toBeUndefined();
+  });
+
+  it('a staff link only opens the clinic that made it', async () => {
+    const ELDER = '507f1f77bcf86cd799439066';
+    const CLINIC_A = '507f1f77bcf86cd7994390aa';
+    const CLINIC_B = '507f1f77bcf86cd7994390bb';
+    vi.mocked(Patient.findById).mockImplementation(((id: string) =>
+      String(id) === GUARDIAN
+        ? lean({ _id: GUARDIAN, tenantIds: [] })
+        : lean({
+            _id: ELDER,
+            tenantIds: [CLINIC_A],
+            dateOfBirth: new Date('1950-01-01'),
+            guardians: [{ patient: GUARDIAN, source: 'clinic', tenantId: CLINIC_A }],
+          })) as any);
+
+    expect(await verifyPatientAuth(request(ELDER))).toMatchObject({ patientId: ELDER, tid: CLINIC_A });
+
+    // A session already scoped to another clinic sees nothing of this person there.
+    vi.mocked(verifyPatientSession).mockResolvedValue({ patientId: GUARDIAN, type: 'patient', tid: CLINIC_B } as any);
+    const req = request(ELDER);
+    expect(await verifyPatientAuth(req)).toBeNull();
+    expect(patientAuthError(req).status).toBe(403);
   });
 
   it('a profile the caller does not manage is a 403, not a 401 (the app keeps its session)', async () => {

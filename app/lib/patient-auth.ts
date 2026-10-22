@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyPatientSession, PatientSessionPayload } from '@/app/lib/dal';
-import { canActFor } from '@/lib/patient-family';
-import { accountManages } from '@/lib/emcr/account';
+import { familyAccess, type FamilyAccess } from '@/lib/patient-family';
+import { accountAccess } from '@/lib/emcr/account';
 
 /** Header the app sends to act for a family member (their record id). */
 export const PATIENT_PROFILE_HEADER = 'x-patient-profile';
@@ -48,9 +48,20 @@ export async function verifyPatientAuth(
       profileFailures.set(request, 'refused');
       return null;
     }
-    if (!session.acc || !(await accountManages(session.acc, session.patientId))) return null;
+    // A staff-approved link keeps the session at the approving clinic.
+    const access = session.acc ? await accountAccess(session.acc, session.patientId) : null;
+    const tid = access ? scopeWithin(session.tid, access) : null;
+    if (!access || tid === null) return null;
+    return actAsProfile(request, { ...session, tid }, mode);
   }
+  return actAsProfile(request, session, mode);
+}
 
+async function actAsProfile(
+  request: NextRequest,
+  session: PatientSessionPayload,
+  mode: ProfileMode
+): Promise<PatientSessionPayload | null> {
   const profileId = request.headers.get(PATIENT_PROFILE_HEADER)?.trim();
   if (!profileId || profileId === session.patientId || mode === 'ignore') return session;
   if (mode === 'refuse') {
@@ -58,17 +69,29 @@ export async function verifyPatientAuth(
     return null;
   }
 
-  const allowed =
-    (session.rel !== 'guardian' && (await canActFor(session.patientId, profileId))) ||
-    (!!session.acc && (await accountManages(session.acc, profileId)));
-  if (!allowed) {
+  const viaGuardian = session.rel !== 'guardian' ? await familyAccess(session.patientId, profileId) : null;
+  const viaAccount = session.acc ? await accountAccess(session.acc, profileId) : null;
+  // The widest link wins: an unscoped one (phone) over a clinic-scoped one (staff).
+  const access = [viaGuardian, viaAccount].filter((a): a is FamilyAccess => a !== null).sort((a, b) => (a.tid ? 1 : 0) - (b.tid ? 1 : 0))[0];
+  const tid = access ? scopeWithin(session.tid, access) : null;
+  if (!access || tid === null) {
     profileFailures.set(request, 'forbidden');
     return null;
   }
-  // The family member's view, inside the caller's clinic scope. Never a fresh-OTP proof: the
-  // caller proved their own phone, not the family member's.
-  const { amr: _amr, ...rest } = session;
-  return { ...rest, patientId: profileId, guardianId: session.patientId };
+  // The family member's view, inside the caller's clinic scope and the link's. Never a fresh-OTP
+  // proof: the caller proved their own phone, not the family member's.
+  const { amr: _amr, tid: _tid, ...rest } = session;
+  return { ...rest, ...(tid ? { tid } : {}), patientId: profileId, guardianId: session.patientId };
+}
+
+/**
+ * The clinic scope of a session acting through a family link: the session's own scope, narrowed
+ * to the link's clinic for a staff-made link. Null when the two clinics differ (nothing in scope).
+ */
+function scopeWithin(sessionTid: string | undefined, access: FamilyAccess): string | undefined | null {
+  if (!access.tid) return sessionTid;
+  if (sessionTid && sessionTid !== access.tid) return null;
+  return access.tid;
 }
 
 /** Why verifyPatientAuth refused a signed-in caller because of their family-profile header. */

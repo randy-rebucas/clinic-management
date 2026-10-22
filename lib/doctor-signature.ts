@@ -100,6 +100,17 @@ export async function loadSigner(params: {
 }
 
 /** The per-document signature if present, else the signer's stored one when allowed. */
+/**
+ * Whether the signer wrote the document's current clinical content, so their signature may go
+ * on it. Anyone else's edit (a nurse's note under the doctor's name) hides it until the signer
+ * saves the document themselves. Documents from before `contentAuthor` existed count as theirs.
+ */
+export function signerWroteContent(doc: { contentAuthor?: unknown }, signerUserId: unknown): boolean {
+  const idOf = (v: unknown) => (v && typeof v === 'object' && '_id' in v ? String((v as { _id: unknown })._id) : v ? String(v) : null);
+  const author = idOf(doc.contentAuthor);
+  return !author || author === idOf(signerUserId);
+}
+
 export function pickSignature(documentSignature: unknown, signer: Signer | null, allowStored: boolean): string | null {
   return safeImageSrc(documentSignature) ?? (allowStored ? signer?.signatureSrc ?? null : null);
 }

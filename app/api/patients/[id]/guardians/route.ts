@@ -188,7 +188,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const dependent = await Patient.exists(patientTenantFilter(ctx.tenantId, { _id: id }));
     if (!dependent) return notFound('Patient');
 
-    const removed = await removeDependent(await personRecordIds(guardianPatientId), id);
+    const removed = await removeDependent(await personRecordIds(guardianPatientId), id, { tenantId: ctx.tenantObjectId });
     if (!removed) return NextResponse.json({ success: false, error: 'That family access was already removed.' }, { status: 404 });
 
     await createAuditLog({

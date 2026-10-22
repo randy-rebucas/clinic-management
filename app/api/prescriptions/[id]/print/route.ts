@@ -7,7 +7,7 @@ import { getSettings } from '@/lib/settings';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { issueSeal, tenantScopedQuery } from '@/lib/document-seal';
-import { loadSigner, pickSignature } from '@/lib/doctor-signature';
+import { loadSigner, pickSignature, signerWroteContent } from '@/lib/doctor-signature';
 import { generatePrescriptionHTML, type PaperSize } from '@/lib/prescription-document';
 import { documentResponse, pdfFilename } from '@/lib/pdf';
 
@@ -104,7 +104,8 @@ export async function GET(
       }),
       loadSigner({ tenantId, userId: prescription.prescribedBy?._id }),
     ]);
-    const signatureSrc = showSignature
+    // Only on a prescription the prescriber wrote themselves (not one made under their name).
+    const signatureSrc = showSignature && signerWroteContent(prescription, prescription.prescribedBy)
       ? pickSignature(prescription.digitalSignature?.signatureData, signer, true)
       : null;
 

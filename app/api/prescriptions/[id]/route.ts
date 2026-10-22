@@ -6,7 +6,7 @@ import Prescription from '@/models/Prescription';
 import Patient from '@/models/Patient';
 import Visit from '@/models/Visit';
 import User from '@/models/User';
-import { requirePermission } from '@/app/lib/auth-helpers';
+import { isAdmin, requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { updatePrescriptionSchema } from '@/lib/prescription-schema';
@@ -103,9 +103,16 @@ export async function PUT(
     if (body.visit && !(await Visit.exists({ _id: body.visit, tenantId: tenantObjectId }))) {
       return NextResponse.json({ success: false, error: 'Invalid visit' }, { status: 400 });
     }
-    if (body.prescribedBy && body.prescribedBy !== session.userId
-      && !(await User.exists({ _id: body.prescribedBy, tenantId: tenantObjectId }))) {
-      return NextResponse.json({ success: false, error: 'Invalid prescriber' }, { status: 400 });
+    if (body.prescribedBy && body.prescribedBy !== session.userId) {
+      const current = await Prescription.findOne(tenantFilter(tenantId, { _id: id })).select('prescribedBy').lean<{ prescribedBy?: unknown } | null>();
+      if (!current) return notFound('Prescription');
+      // Moving a prescription to another doctor's name (and signature) is for an admin only.
+      if (String(current.prescribedBy ?? '') !== body.prescribedBy && !isAdmin(session)) {
+        return NextResponse.json({ success: false, error: 'You can only prescribe under your own name.' }, { status: 403 });
+      }
+      if (!(await User.exists({ _id: body.prescribedBy, tenantId: tenantObjectId }))) {
+        return NextResponse.json({ success: false, error: 'Invalid prescriber' }, { status: 400 });
+      }
     }
 
     const update: Record<string, unknown> = {};
@@ -114,6 +121,9 @@ export async function PUT(
     }
     if (body.digitalSignature) update.digitalSignature = { ...body.digitalSignature, signedAt: new Date() };
     if (body.drugInteractions) update.drugInteractions = body.drugInteractions.map((i) => ({ ...i, checkedAt: new Date() }));
+    if (['patient', 'visit', 'prescribedBy', 'medications', 'notes', 'digitalSignature'].some((k) => (body as Record<string, unknown>)[k] !== undefined)) {
+      update.contentAuthor = session.userId;
+    }
 
     const prescription = await Prescription.findOneAndUpdate(
       tenantFilter(tenantId, { _id: id }),

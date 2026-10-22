@@ -4,8 +4,9 @@ import connectDB from '@/lib/mongodb';
 import EmcrAccount, { type IEmcrDependent } from '@/models/EmcrAccount';
 import Patient from '@/models/Patient';
 import Tenant from '@/models/Tenant';
-import { adulthoodDate, isMinor, personRecordIds, type FamilyMember } from '@/lib/patient-family';
+import { adulthoodDate, isMinor, personRecordIds, type FamilyAccess, type FamilyMember } from '@/lib/patient-family';
 import type { PatientSessionPayload } from '@/app/lib/dal';
+import { normalizePhone } from '@/lib/phone';
 
 /**
  * eMCR accounts (models/EmcrAccount.ts): one verified phone number holding the person's own
@@ -59,7 +60,7 @@ export async function activeAccountDependents(
   return Promise.all(active.map(async (link) => ({ link, recordIds: await personRecordIds(link.patientId) })));
 }
 
-const managesCache = new Map<string, { ok: boolean; expires: number }>();
+const managesCache = new Map<string, { access: FamilyAccess | null; expires: number }>();
 
 /**
  * Whether the account manages the person whose record is `patientId` through its own
@@ -67,24 +68,44 @@ const managesCache = new Map<string, { ok: boolean; expires: number }>();
  * canActFor instead. Cached briefly, like canActFor.
  */
 export async function accountManages(accountId: string, patientId: string): Promise<boolean> {
-  if (!Types.ObjectId.isValid(accountId) || !Types.ObjectId.isValid(patientId)) return false;
+  return (await accountAccess(accountId, patientId)) !== null;
+}
+
+/**
+ * accountManages with the link's clinic scope (as familyAccess): a staff-approved link opens
+ * only the approving clinic's records, a phone + birth date link opens all of them.
+ */
+export async function accountAccess(accountId: string, patientId: string): Promise<FamilyAccess | null> {
+  if (!Types.ObjectId.isValid(accountId) || !Types.ObjectId.isValid(patientId)) return null;
   const key = `${accountId}:${patientId}`;
   const cached = managesCache.get(key);
-  if (cached && cached.expires > Date.now()) return cached.ok;
+  if (cached && cached.expires > Date.now()) return cached.access;
 
   await connectDB();
   const account = await EmcrAccount.findById(accountId).select('dependents disabled').lean<EmcrAccountLean | null>();
-  let ok = false;
+  let access: FamilyAccess | null = null;
   if (account && !account.disabled && account.dependents?.length) {
-    const dependents = await activeAccountDependents(account);
-    ok = dependents.some((d) => d.recordIds.some((id) => String(id) === patientId));
+    for (const d of await activeAccountDependents(account)) {
+      if (!d.recordIds.some((id) => String(id) === patientId)) continue;
+      const scope = dependentLinkScope(d.link);
+      if (!scope.tid) {
+        access = {};
+        break;
+      }
+      access = access ?? scope;
+    }
   }
-  managesCache.set(key, { ok, expires: Date.now() + CACHE_TTL_MS });
+  managesCache.set(key, { access, expires: Date.now() + CACHE_TTL_MS });
   if (managesCache.size > 5000) {
     const now = Date.now();
     for (const [k, entry] of managesCache) if (entry.expires < now) managesCache.delete(k);
   }
-  return ok;
+  return access;
+}
+
+/** The clinic scope a dependent link grants: staff links stay at their clinic. */
+function dependentLinkScope(link: Pick<IEmcrDependent, 'source' | 'tenantId'>): FamilyAccess {
+  return link.source === 'clinic' && link.tenantId ? { tid: String(link.tenantId) } : {};
 }
 
 /** Drop cached decisions after an account's links change. */
@@ -134,7 +155,10 @@ export async function ensureAccountForSession(
  * Accounts that manage `patientId` through `dependents`, as the record ids their devices sign in
  * with (holder's records, or the managed records for a guardian-only account). For pushes.
  */
-export async function accountManagerRecordIds(patientId: string): Promise<Types.ObjectId[]> {
+export async function accountManagerRecordIds(
+  patientId: string,
+  tenantId?: string | Types.ObjectId | null
+): Promise<Types.ObjectId[]> {
   await connectDB();
   const ids = await personRecordIds(patientId);
   if (!ids.length) return [];
@@ -145,7 +169,12 @@ export async function accountManagerRecordIds(patientId: string): Promise<Types.
   const out = new Map<string, Types.ObjectId>();
   for (const account of accounts) {
     const dependents = await activeAccountDependents(account);
-    if (!dependents.some((d) => d.recordIds.some((id) => ids.some((own) => String(own) === String(id))))) continue;
+    // A staff-approved link only hears about its own clinic.
+    const manages = dependents.some((d) => {
+      const scope = dependentLinkScope(d.link);
+      return (!scope.tid || (!!tenantId && scope.tid === String(tenantId))) && d.recordIds.some((id) => ids.some((own) => String(own) === String(id)));
+    });
+    if (!manages) continue;
     if (account.selfPatientId) for (const id of await personRecordIds(account.selfPatientId)) out.set(String(id), id);
     for (const d of dependents) for (const id of d.recordIds) out.set(String(id), id);
   }
@@ -236,8 +265,11 @@ export async function accountSessionSubject(
   await connectDB();
   const fields = 'patientCode firstName lastName email sessionVersion active';
   if (account.selfPatientId) {
-    const self = await Patient.findById(account.selfPatientId).select(fields);
-    if (self && self.active !== false) return { patient: self };
+    const self = await Patient.findById(account.selfPatientId).select(`${fields} phone`);
+    // Only while the record still carries the account's number: after the clinic changes it (new
+    // SIM, typo fixed), whoever holds the old number must not keep signing in as this person.
+    const samePhone = !!self?.phone && !!account.phone && normalizePhone(self.phone) === normalizePhone(account.phone);
+    if (self && self.active !== false && samePhone) return { patient: self };
   }
   for (const { link } of await activeAccountDependents(account)) {
     const record = await Patient.findById(link.patientId).select(fields);
