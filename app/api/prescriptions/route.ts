@@ -4,7 +4,7 @@ import Prescription from '@/models/Prescription';
 import Patient from '@/models/Patient';
 import Visit from '@/models/Visit';
 import User from '@/models/User';
-import { requirePermission } from '@/app/lib/auth-helpers';
+import { isAdmin, requirePermission } from '@/app/lib/auth-helpers';
 import { Types } from 'mongoose';
 import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, escapeRegex } from '@/lib/api/validate';
@@ -123,9 +123,14 @@ export async function POST(request: NextRequest) {
     if (body.visit && !(await Visit.exists({ _id: body.visit, tenantId: tenantObjectId, patient: body.patient }))) {
       return NextResponse.json({ success: false, error: 'Invalid visit' }, { status: 400 });
     }
-    if (body.prescribedBy && body.prescribedBy !== session.userId
-      && !(await User.exists({ _id: body.prescribedBy, tenantId: tenantObjectId }))) {
-      return NextResponse.json({ success: false, error: 'Invalid prescriber' }, { status: 400 });
+    if (body.prescribedBy && body.prescribedBy !== session.userId) {
+      // Prescribing under another doctor's name (and signature) is for an admin only.
+      if (!isAdmin(session)) {
+        return NextResponse.json({ success: false, error: 'You can only prescribe under your own name.' }, { status: 403 });
+      }
+      if (!(await User.exists({ _id: body.prescribedBy, tenantId: tenantObjectId }))) {
+        return NextResponse.json({ success: false, error: 'Invalid prescriber' }, { status: 400 });
+      }
     }
 
     // The signature carries the signed-in user's own name, never a name the browser supplied.
@@ -137,6 +142,7 @@ export async function POST(request: NextRequest) {
       ...body,
       prescriptionCode: await nextPrescriptionCode(tenantId),
       prescribedBy: body.prescribedBy || session.userId,
+      contentAuthor: session.userId,
       digitalSignature: body.digitalSignature
         ? { ...body.digitalSignature, providerName: signer?.name || body.digitalSignature.providerName, signedAt: new Date() }
         : undefined,
