@@ -1,7 +1,9 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
+import { NO_INDEX } from '@/lib/seo';
 import { Icon, icons } from '@/components/PublicPage';
 
-export const metadata = { title: 'Payment', robots: { index: false } };
+export const metadata: Metadata = { title: 'Payment', robots: NO_INDEX };
 
 /** Where PayMongo sends a patient after paying a clinic's payment link. Says nothing about the bill. */
 export default async function PayDonePage({ searchParams }: { searchParams: Promise<{ ref?: string; cancelled?: string }> }) {

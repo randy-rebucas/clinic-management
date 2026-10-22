@@ -1,15 +1,15 @@
 'use client';
 
-import { useState, useEffect, useSyncExternalStore, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
 import { toDateKey } from './utils/dateKey';
+import TurnstileWidget, { TURNSTILE_SITE_KEY } from './TurnstileWidget';
 
 interface Clinic {
   _id: string;
   name: string;
   displayName: string;
   subdomain: string;
-  email?: string;
   phone?: string;
   address?: {
     street?: string;
@@ -43,20 +43,6 @@ interface BookedSummary {
   doctor: string;
   date: string;
   time: string;
-}
-
-const subscribeNoop = () => () => {};
-
-/** Clinic subdomain from the current hostname, '' on the root domain (incl. www); not called during SSR. */
-function getHostSubdomain(): string {
-  const parts = window.location.hostname.split('.');
-  const firstPart = parts[0]?.toLowerCase() ?? '';
-  const isWww = firstPart === 'www';
-  const hasSubdomain = !isWww && (
-    (parts.length > 2) ||
-    (parts.length === 2 && firstPart !== 'localhost')
-  );
-  return hasSubdomain ? firstPart : '';
 }
 
 function Icon({ d, className = 'w-5 h-5' }: { d: string; className?: string }) {
@@ -150,9 +136,16 @@ function SectionTitle({ n, children }: { n: number; children: React.ReactNode })
   );
 }
 
-export default function PublicBookingClient() {
+/**
+ * `subdomain` is the clinic subdomain the server resolved from ROOT_DOMAIN ('' on the root
+ * domain); `rootDomain` is ROOT_DOMAIN without a port, used to send visitors to a clinic.
+ */
+export default function PublicBookingClient({ subdomain, rootDomain }: { subdomain: string; rootDomain: string }) {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [fetchedSlots, setAvailableSlots] = useState<string[]>([]);
+  // Slots are tagged with the date|doctor they were fetched for, so a new pick never shows the
+  // previous day's times; `slots: null` means that fetch failed.
+  const [slotResult, setSlotResult] = useState<{ key: string; slots: string[] | null }>({ key: '', slots: [] });
+  const [slotRetry, setSlotRetry] = useState(0);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
@@ -161,11 +154,14 @@ export default function PublicBookingClient() {
   const [availableClinics, setAvailableClinics] = useState<Clinic[]>([]);
   const [loadingClinics, setLoadingClinics] = useState(true);
   const [clinicQuery, setClinicQuery] = useState('');
-  const subdomain = useSyncExternalStore(subscribeNoop, getHostSubdomain, () => null);
   // On the root domain the visitor first picks a clinic, then books on its subdomain.
   const showClinicSelection = subdomain === '';
   const slotsEnabled = Boolean(selectedDate && selectedDoctor && !showClinicSelection);
-  const availableSlots = slotsEnabled ? fetchedSlots : [];
+  const slotsKey = `${selectedDate}|${selectedDoctor}`;
+  const slotsCurrent = slotsEnabled && slotResult.key === slotsKey;
+  const slotsLoading = slotsEnabled && !slotsCurrent;
+  const slotsFailed = slotsCurrent && slotResult.slots === null;
+  const availableSlots = slotsCurrent ? slotResult.slots ?? [] : [];
   const [formData, setFormData] = useState<BookingFormData>({
     patientFirstName: '',
     patientLastName: '',
@@ -178,10 +174,12 @@ export default function PublicBookingClient() {
     room: '',
   });
   const [booked, setBooked] = useState<BookedSummary | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  // Turnstile tokens are single-use: bumping this remounts the widget after each attempt.
+  const [captchaKey, setCaptchaKey] = useState(0);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (subdomain === null) return;
     let cancelled = false;
     const fetchClinics = async () => {
       try {
@@ -243,7 +241,6 @@ export default function PublicBookingClient() {
     // Redirect to clinic's subdomain for booking
     if (typeof window !== 'undefined') {
       const protocol = window.location.protocol;
-      const rootDomain = window.location.hostname.split('.').slice(-2).join('.');
       const port = window.location.port ? `:${window.location.port}` : '';
       const bookingUrl = `${protocol}//${clinic.subdomain}.${rootDomain}${port}/book`;
       window.open(bookingUrl, '_self');
@@ -254,25 +251,24 @@ export default function PublicBookingClient() {
   useEffect(() => {
     if (!slotsEnabled) return;
     let cancelled = false;
+    const key = `${selectedDate}|${selectedDoctor}`;
     const fetchAvailableSlots = async () => {
+      let slots: string[] | null = null;
       try {
         const tenantParam = tenantId ? `&tenantId=${tenantId}` : '';
         const res = await fetch(`/api/appointments/public?date=${selectedDate}&doctorId=${selectedDoctor}${tenantParam}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (!cancelled && data.success) {
-            setAvailableSlots(data.data.availableSlots || []);
-          }
-        }
+        const data = res.ok ? await res.json() : null;
+        if (data?.success) slots = data.data.availableSlots || [];
       } catch (error) {
         console.error('Failed to fetch available slots:', error);
       }
+      if (!cancelled) setSlotResult({ key, slots });
     };
     fetchAvailableSlots();
     return () => {
       cancelled = true;
     };
-  }, [slotsEnabled, selectedDate, selectedDoctor, tenantId]);
+  }, [slotsEnabled, selectedDate, selectedDoctor, tenantId, slotRetry]);
 
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':').map(Number);
@@ -317,6 +313,7 @@ export default function PublicBookingClient() {
         ...formData,
         doctorId: selectedDoctor,
         appointmentDate: selectedDate,
+        turnstileToken: captchaToken ?? undefined,
       };
 
       if (selectedClinic) {
@@ -351,7 +348,6 @@ export default function PublicBookingClient() {
         });
         setSelectedDate('');
         setSelectedDoctor('');
-        setAvailableSlots([]);
       } else {
         setError(data.error || 'Failed to book appointment');
       }
@@ -360,6 +356,7 @@ export default function PublicBookingClient() {
       setError('Failed to submit appointment request. Please try again.');
     } finally {
       setSubmitting(false);
+      setCaptchaKey((k) => k + 1);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
@@ -609,6 +606,26 @@ export default function PublicBookingClient() {
                       <Icon d={icons.info} className="w-4 h-4 shrink-0 text-gray-400" />
                       Pick a doctor and date to see open times.
                     </p>
+                  ) : slotsLoading ? (
+                    <p role="status" className="flex items-center gap-2 rounded-md border border-dashed border-gray-300 bg-gray-50/70 px-4 py-3 text-sm text-gray-500">
+                      <span className="h-4 w-4 shrink-0 rounded-full border-2 border-brand-teal-light border-t-brand-teal animate-spin" />
+                      Loading open times…
+                    </p>
+                  ) : slotsFailed ? (
+                    <div role="alert" className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                      <Icon d={icons.info} className="w-4 h-4 shrink-0" />
+                      <span className="flex-1">Couldn&apos;t load open times.</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSlotResult({ key: '', slots: [] });
+                          setSlotRetry((n) => n + 1);
+                        }}
+                        className="font-semibold underline underline-offset-2 hover:text-red-900"
+                      >
+                        Try again
+                      </button>
+                    </div>
                   ) : availableSlots.length === 0 ? (
                     <p className="flex items-center gap-2 rounded-md border border-dashed border-gray-300 bg-gray-50/70 px-4 py-3 text-sm text-gray-500">
                       <Icon d={icons.info} className="w-4 h-4 shrink-0 text-gray-400" />
@@ -719,13 +736,18 @@ export default function PublicBookingClient() {
                 />
               </fieldset>
 
+              {TURNSTILE_SITE_KEY && (
+                <div className="px-5 pt-5 sm:px-7">
+                  <TurnstileWidget key={captchaKey} onToken={setCaptchaToken} />
+                </div>
+              )}
               <div className="flex flex-col gap-4 p-5 sm:p-7 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-gray-500">
                   <span className="text-red-500">*</span> Required. The clinic will confirm your request.
                 </p>
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || (Boolean(TURNSTILE_SITE_KEY) && !captchaToken)}
                   className="group inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-md bg-brand-teal px-6 py-3 font-semibold text-white shadow-[0_6px_20px_rgba(14,165,164,0.3)] transition-colors duration-150 hover:bg-brand-teal-dark disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
                 >
                   {submitting ? (

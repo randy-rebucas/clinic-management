@@ -41,14 +41,14 @@ const plans: {
     id: 'professional',
     name: 'Professional',
     description: 'For growing clinics with up to 10 doctors.',
-    highlights: ['AI visit notes', 'Teleconsult', 'REST API and webhooks', 'Priority support by phone and chat'],
+    highlights: ['AI visit notes', 'Teleconsult', 'REST API and webhooks', 'Priority email support'],
     cta: { label: 'Start with Professional', href: '/tenant-onboard' },
   },
   {
     id: 'enterprise',
     name: 'Enterprise',
     description: 'For large and multi-doctor practices.',
-    highlights: ['Everything in Professional', 'Custom integrations with our team', '24/7 support', 'Dedicated account manager'],
+    highlights: ['Everything in Professional', 'Custom integrations with our team', 'Support terms agreed in your contract'],
     cta: { label: 'Talk to sales', href: '/contact' },
   },
 ];
@@ -77,14 +77,14 @@ const comparison: { label: string; value: (p: SubscriptionPlan) => string | bool
   { label: 'REST API and webhooks', value: (p) => SUBSCRIPTION_PACKAGES[p].features.apiAccess },
   {
     label: 'Support',
-    value: (p) => ({ trial: 'Email', basic: 'Email', professional: 'Priority', enterprise: '24/7' })[p],
+    value: (p) => ({ trial: 'Email', basic: 'Email', professional: 'Priority', enterprise: 'Contract' })[p],
   },
 ];
 
 const faqs = [
   { q: 'Can I change plans later?', a: 'Yes. Upgrade or downgrade at any time, and changes take effect immediately.' },
   { q: 'What happens after the trial?', a: 'Choose a paid plan to keep going. Everything you set up during the trial stays as it is.' },
-  { q: 'Do you offer refunds?', a: 'We offer a 30-day money-back guarantee on all paid plans. Contact support for help.' },
+  { q: 'Do you offer refunds?', a: 'No. Payments are non-refundable, so start with the 14-day free trial to make sure it fits your clinic.' },
   { q: 'Is there a setup fee?', a: 'No. You only pay the monthly or yearly subscription.' },
 ];
 
@@ -106,7 +106,9 @@ export default function PricingPage() {
     <div className="min-h-screen bg-white">
       <JsonLd
         data={softwareApplicationJsonLd(
-          priced.map((p) => ({ name: p.name, price: p.monthly, priceCurrency: p.code, description: p.description })),
+          priced
+            .filter((p) => p.monthly > 0)
+            .map((p) => ({ name: p.name, price: p.monthly, priceCurrency: p.code, description: p.description })),
         )}
       />
 

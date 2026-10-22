@@ -86,7 +86,8 @@ function buildCsp(nonce: string): string {
     "img-src 'self' data: blob: https://images.unsplash.com https://static.vecteezy.com https://res.cloudinary.com https://www.paypalobjects.com",
     "font-src 'self' data:",
     `connect-src 'self' https://api.paypal.com https://www.paypal.com${isProd ? '' : ' ws: wss:'}`,
-    "frame-src 'self' https://www.paypal.com",
+    // Turnstile (lib/turnstile.ts) renders its challenge in an iframe; its script is allowed by 'strict-dynamic'.
+    "frame-src 'self' https://www.paypal.com https://challenges.cloudflare.com",
     "worker-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",

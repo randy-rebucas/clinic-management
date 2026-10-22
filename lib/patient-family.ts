@@ -234,6 +234,7 @@ async function phoneMinorRecords(guardian: GuardianSelf, guardianIds: Types.Obje
     _id: { $nin: guardianIds },
     phone: { $in: phoneVariants(guardian.phone) },
     active: { $ne: false },
+    selfRegistered: { $ne: true },
   })
     .select('firstName lastName dateOfBirth accountId tenantIds guardians')
     .limit(MAX_DEPENDENTS * 3)

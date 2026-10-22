@@ -10,6 +10,8 @@ import { getTenantContext } from '@/lib/tenant';
 import { isValidId } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { checkSubscriptionLimit } from '@/lib/subscription-limits';
+import { normalizePhone } from '@/lib/phone';
+import { turnstileRejection } from '@/lib/turnstile';
 import { patientFieldsSchema, cleanPatientInput, nextPatientCode } from '@/lib/patient-schema';
 
 // Self-registration may only fill in demographic/medical history fields; status, tags,
@@ -19,6 +21,7 @@ const publicRegistrationSchema = patientFieldsSchema
   .extend({
     sex: z.enum(['male', 'female', 'other']).optional(),
     tenantId: z.string().optional(),
+    turnstileToken: z.string().max(2048).optional(),
   });
 
 /**
@@ -28,7 +31,7 @@ const publicRegistrationSchema = patientFieldsSchema
  */
 export async function POST(request: NextRequest) {
   // Apply rate limiting for public endpoint
-  const rateLimitResponse = await applyRateLimit(request, rateLimiters.public);
+  const rateLimitResponse = await applyRateLimit(request, rateLimiters.publicWrite);
   if (rateLimitResponse) {
     return rateLimitResponse;
   }
@@ -38,7 +41,17 @@ export async function POST(request: NextRequest) {
 
     const parsed = await parseBody(request, publicRegistrationSchema);
     if (isValidationError(parsed)) return parsed;
-    const { tenantId: requestedTenantId, ...fields } = parsed.data;
+    const { tenantId: requestedTenantId, turnstileToken, ...fields } = parsed.data;
+
+    const captchaRejected = await turnstileRejection(request, turnstileToken);
+    if (captchaRejected) return captchaRejected;
+
+    // Each registration sends a welcome SMS to the submitted number.
+    const phone = normalizePhone(fields.phone);
+    if (phone) {
+      const phoneLimited = await applyRateLimit(request, rateLimiters.publicWritePhone, phone);
+      if (phoneLimited) return phoneLimited;
+    }
 
     // The clinic comes from the subdomain; an explicit id is accepted only for an active clinic.
     const ctx = await getTenantContext();
@@ -68,7 +81,8 @@ export async function POST(request: NextRequest) {
       const existingPatient = await Patient.exists({ email: data.email, tenantIds: tenantObjectId });
       if (existingPatient) {
         return NextResponse.json(
-          { success: false, error: 'A patient with this email already exists. Please use a different email or contact the clinic.' },
+          // Don't confirm to an anonymous caller that this person is a patient here.
+          { success: false, error: 'We could not complete your registration with these details. Please contact the clinic.' },
           { status: 409 }
         );
       }
@@ -85,6 +99,7 @@ export async function POST(request: NextRequest) {
           patientCode: await nextPatientCode(),
           tenantIds: [tenantObjectId],
           active: true,
+          selfRegistered: true,
         });
       } catch (createError: any) {
         if (createError.code === 11000 && createError.keyPattern?.patientCode) continue;
