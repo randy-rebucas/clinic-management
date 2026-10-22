@@ -9,6 +9,7 @@ const SECTIONS = [
   { label: 'Support', href: '/platform/support' },
   { label: 'eMCR vouchers', href: '/platform/vouchers' },
   { label: 'Notify', href: '/platform/notifications' },
+  { label: 'Configuration', href: '/platform/configuration' },
 ];
 
 export default function PlatformNav({ waiting }: { waiting: number }) {

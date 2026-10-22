@@ -9,6 +9,7 @@ import { Types } from 'mongoose';
 import { subMonths, subYears } from 'date-fns';
 import { isPaidPlan, periodEndAfterPayment } from '@/lib/subscription-period';
 import { currentOrderId } from '@/lib/subscription-order';
+import { getPlanPricing } from '@/lib/platform-config';
 
 /** Plans that never expire. A missing expiresAt on any other plan means expired. */
 const NON_EXPIRING_PLANS = new Set(['lifetime', 'free']);
@@ -149,7 +150,7 @@ export async function activateSubscriptionFromOrder(
       sub,
       order.billingCycle === 'yearly' ? 'yearly' : 'monthly',
       now,
-      isPaidPlan(order.plan) ? { plan: order.plan } : undefined
+      isPaidPlan(order.plan) ? { plan: order.plan, pricing: await getPlanPricing() } : undefined
     );
 
     const entry = {

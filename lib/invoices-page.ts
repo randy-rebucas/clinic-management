@@ -42,7 +42,7 @@ export async function loadInvoiceDetailPermissions(): Promise<InvoiceDetailPermi
     canRefund: can('invoices', 'update'),
     canSeePatient: can('patients', 'read'),
     canSeeVisit: can('visits', 'read'),
-    canSendPayLink: can('invoices', 'write') && isPayMongoConfigured(),
+    canSendPayLink: can('invoices', 'write') && (await isPayMongoConfigured()),
     canText: isSMSConfigured(),
   };
 }

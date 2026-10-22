@@ -4,6 +4,7 @@ import { pageMetadata, softwareApplicationJsonLd } from '@/lib/seo';
 import JsonLd from '@/components/JsonLd';
 import { SUBSCRIPTION_PACKAGES, type SubscriptionPlan } from '@/lib/subscription-packages';
 import { monthsSavedYearly, planPrice } from '@/lib/subscription-period';
+import { getPlanPricing } from '@/lib/platform-config';
 import { Icon, icons, NavyBand, PageHero, SectionHeading } from '@/components/PublicPage';
 
 export const metadata: Metadata = pageMetadata({
@@ -88,15 +89,19 @@ const faqs = [
   { q: 'Is there a setup fee?', a: 'No. You only pay the monthly or yearly subscription.' },
 ];
 
-export default function PricingPage() {
+/** Prices come from Platform → Configuration; the page is rebuilt when they change. */
+export const revalidate = 300;
+
+export default async function PricingPage() {
+  const pricing = await getPlanPricing();
   // Philippines first: always quote the peso price list (charged through PayMongo).
   const currency = 'PHP' as const;
 
   const priced = plans.map((plan) => {
     if (plan.id === 'trial') return { ...plan, monthly: 0, yearly: 0, saved: 0, code: currency };
-    const monthly = planPrice(plan.id as PaidPlan, 'monthly');
-    const yearly = planPrice(plan.id as PaidPlan, 'yearly');
-    return { ...plan, monthly: monthly.amount, yearly: yearly.amount, saved: monthsSavedYearly(), code: monthly.currency };
+    const monthly = planPrice(plan.id as PaidPlan, 'monthly', pricing);
+    const yearly = planPrice(plan.id as PaidPlan, 'yearly', pricing);
+    return { ...plan, monthly: monthly.amount, yearly: yearly.amount, saved: monthsSavedYearly(pricing), code: monthly.currency };
   });
 
   const money = (amount: number, code: string) =>
@@ -113,7 +118,8 @@ export default function PricingPage() {
       />
 
       <PageHero eyebrow="Pricing" title="Simple pricing," accent="no setup fees">
-        Start free for 14 days, then pick the plan that fits your clinic. Pay yearly and get 2 months free.
+        Start free for 14 days, then pick the plan that fits your clinic.
+        {monthsSavedYearly(pricing) > 0 && ` Pay yearly and get ${monthsSavedYearly(pricing)} months free.`}
       </PageHero>
 
       {/* Plans */}

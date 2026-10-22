@@ -10,12 +10,19 @@ import { LABEL, Notice, PRIMARY, callPlatform } from './platform-api';
  * Make a batch of eMCR voucher codes for a clinic. The batch starts unpaid: it can be printed,
  * but the codes only work once the cash is recorded on the batch's page.
  */
-export default function NewVoucherBatchForm({ clinics }: { clinics: Array<{ id: string; name: string }> }) {
+export default function NewVoucherBatchForm({
+  clinics,
+  defaults,
+}: {
+  clinics: Array<{ id: string; name: string }>;
+  /** Voucher prices from Platform → Configuration. */
+  defaults: { faceValue: number; wholesalePrice: number };
+}) {
   const router = useRouter();
   const [tenantId, setTenantId] = useState('');
   const [quantity, setQuantity] = useState(50);
-  const [faceValue, setFaceValue] = useState(80);
-  const [wholesalePrice, setWholesalePrice] = useState(60);
+  const [faceValue, setFaceValue] = useState(defaults.faceValue);
+  const [wholesalePrice, setWholesalePrice] = useState(defaults.wholesalePrice);
   const [days, setDays] = useState(365);
   const [plan, setPlan] = useState<'basic' | 'plus'>('basic');
   const [notes, setNotes] = useState('');

@@ -29,7 +29,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (isTenantSessionError(ctx)) return ctx;
   const permissionCheck = await requirePermission(ctx.session, 'invoices', 'write');
   if (permissionCheck) return permissionCheck;
-  if (!isPayMongoConfigured()) return NextResponse.json({ success: false, error: 'Online payment isn’t set up on this server.' }, { status: 503 });
+  if (!(await isPayMongoConfigured())) return NextResponse.json({ success: false, error: 'Online payment isn’t set up on this server.' }, { status: 503 });
   const { id } = await params;
   if (!isValidId(id)) return notFound('Invoice');
   const parsed = await parseBody(request, bodySchema);

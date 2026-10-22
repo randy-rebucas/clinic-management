@@ -8,6 +8,7 @@ import { formatInTz } from '@/lib/tz';
 import { checkSubscriptionStatus } from '@/lib/subscription';
 import { getSubscriptionUsage } from '@/lib/subscription-limits';
 import { isPayMongoConfigured } from '@/lib/paymongo';
+import { getPlanPricing } from '@/lib/platform-config';
 import { currentOrderId } from '@/lib/subscription-order';
 import { SUBSCRIPTION_PACKAGES } from '@/lib/subscription-packages';
 import { buildUsageRows, planLimits, type UsageKey, type UsageRow } from '@/lib/plan-usage';
@@ -192,16 +193,17 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
   // --- What each plan allows, costs, and would run to --------------------------------------
   // Activation extends from the current end only while the plan is active; mirror it exactly.
   const current = { status: sub?.status, expiresAt: sub?.expiresAt, plan: sub?.plan, billingCycle: sub?.billingCycle };
+  const pricing = await getPlanPricing();
   const offers: PlanOffer[] = PAID_PLANS.map((p) => {
-    const monthly = planPrice(p, 'monthly');
-    const yearly = planPrice(p, 'yearly');
+    const monthly = planPrice(p, 'monthly', pricing);
+    const yearly = planPrice(p, 'yearly', pricing);
     return {
       plan: p,
       label: planLabel(p),
       limits: planLimits(p),
       support: SUPPORT[SUBSCRIPTION_PACKAGES[p].features.supportLevel] ?? SUBSCRIPTION_PACKAGES[p].features.supportLevel,
-      monthly: { ...monthly, paidUntil: day(periodEndAfterPayment(current, 'monthly', now, { plan: p })) },
-      yearly: { ...yearly, paidUntil: day(periodEndAfterPayment(current, 'yearly', now, { plan: p })), monthsSaved: monthsSavedYearly() },
+      monthly: { ...monthly, paidUntil: day(periodEndAfterPayment(current, 'monthly', now, { plan: p, pricing })) },
+      yearly: { ...yearly, paidUntil: day(periodEndAfterPayment(current, 'yearly', now, { plan: p, pricing })), monthsSaved: monthsSavedYearly(pricing) },
     };
   });
 
@@ -231,7 +233,7 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
         currency: o.currency || 'PHP',
         status: o.status,
       })),
-    gatewayReady: isPayMongoConfigured(),
+    gatewayReady: await isPayMongoConfigured(),
     gatewayName: 'PayMongo',
   };
 }
