@@ -2,10 +2,14 @@ import 'server-only';
 import type { OnlineProvider } from '@/lib/payments/providers';
 import type { GatewayAdapter } from './types';
 import { paymongoAdapter } from './paymongo';
+import { xenditAdapter } from './xendit';
+import { mayaAdapter } from './maya';
 
-/** The online providers a clinic can connect, by key. Xendit and Maya come in their own files. */
+/** The online providers a clinic can connect, by key. */
 const ADAPTERS: Partial<Record<OnlineProvider, GatewayAdapter>> = {
   paymongo: paymongoAdapter,
+  xendit: xenditAdapter,
+  maya: mayaAdapter,
 };
 
 export function adapterFor(provider: string): GatewayAdapter | null {
