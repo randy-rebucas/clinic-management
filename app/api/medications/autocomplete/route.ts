@@ -4,14 +4,19 @@ import Visit from '@/models/Visit';
 import Medicine from '@/models/Medicine';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { sanitizeSearch } from '@/lib/utils';
+import { searchRxNormNames } from '@/lib/rxnorm';
 
 export interface MedicineSuggestion {
   name: string;
   dosage?: string;
   frequency?: string;
   duration?: string;
-  source: 'catalog' | 'history';
+  source: 'catalog' | 'history' | 'rxnorm';
 }
+
+const MAX_RESULTS = 30;
+// The visit form shows 12; only reach out to RxNorm when the clinic's own data can't fill that.
+const RXNORM_WHEN_FEWER_THAN = 12;
 
 // GET /api/medications/autocomplete?search=amox
 export async function GET(request: NextRequest) {
@@ -97,7 +102,15 @@ export async function GET(request: NextRequest) {
         if (a.source !== b.source) return a.source === 'catalog' ? -1 : 1;
         return a.name.localeCompare(b.name);
       })
-      .slice(0, 30);
+      .slice(0, MAX_RESULTS);
+
+    // 4. Top up with RxNorm names (generic names; PH brands are rarely in RxNorm)
+    if (results.length < RXNORM_WHEN_FEWER_THAN) {
+      const rxnormNames = await searchRxNormNames(search, RXNORM_WHEN_FEWER_THAN - results.length);
+      for (const name of rxnormNames) {
+        if (!catalogMap.has(name.toLowerCase())) results.push({ name, source: 'rxnorm' });
+      }
+    }
 
     return NextResponse.json({ success: true, data: results });
   } catch (error: any) {

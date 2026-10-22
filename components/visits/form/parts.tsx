@@ -322,7 +322,7 @@ function Suggestions<T>({
       id={id}
       role="listbox"
       aria-label={label}
-      className="motion-panel-in absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-lg border border-gray-200 bg-white p-1 shadow-[0_8px_30px_rgb(15,23,42,0.1)]"
+      className="motion-panel-in absolute left-0 right-0 top-full z-20 mt-1 min-w-[14rem] max-h-60 overflow-y-auto rounded-lg border border-gray-200 bg-white p-1 shadow-[0_8px_30px_rgb(15,23,42,0.1)]"
     >
       {items.map((item, i) => (
         <li
@@ -441,12 +441,16 @@ export interface MedicineSuggestion {
   source?: string;
 }
 
-/** Medicine name with suggestions from the clinic's catalogue and past prescriptions. */
+/**
+ * Medicine name with suggestions from the clinic's catalogue, past prescriptions and RxNorm.
+ * With `onCreate`, a name that isn't on the catalogue gets an "Add to the medicines list" option.
+ */
 export function MedicineNameField({
   id,
   value,
   onChange,
   onPick,
+  onCreate,
   invalid,
   describedBy,
 }: {
@@ -454,14 +458,18 @@ export function MedicineNameField({
   value: string;
   onChange: (v: string) => void;
   onPick: (s: MedicineSuggestion) => void;
+  onCreate?: (name: string) => void;
   invalid?: boolean;
   describedBy?: string;
 }) {
   const [focused, setFocused] = useState(false);
   const all = useSuggestions<MedicineSuggestion>((q) => `/api/medications/autocomplete?search=${encodeURIComponent(q)}`, value, focused);
-  const q = value.trim().toLowerCase();
+  const typed = value.trim();
+  const q = typed.toLowerCase();
   const items = (q ? all.filter((s) => s.name.toLowerCase().includes(q) && s.name.toLowerCase() !== q) : all).slice(0, 12);
-  const box = useCombobox(items, onPick);
+  const onCatalogue = all.some((s) => s.source === 'catalog' && s.name.toLowerCase() === q);
+  if (onCreate && typed.length >= 2 && !onCatalogue) items.push({ name: typed, source: 'create' });
+  const box = useCombobox(items, (s) => (s.source === 'create' ? onCreate?.(s.name) : onPick(s)));
   const listId = `${id}-list`;
   return (
     <div className="relative">
@@ -502,19 +510,27 @@ export function MedicineNameField({
           highlight={box.highlight}
           onHighlight={box.setHighlight}
           onPick={box.pick}
-          render={(s) => (
+          render={(s) =>
+            s.source === 'create' ? (
+              <span className="flex items-center gap-1.5 font-semibold text-brand-teal-deep">
+                <Svg d="M12 4v16m8-8H4" className="h-3.5 w-3.5 shrink-0" />
+                Add “{s.name}” to the medicines list
+              </span>
+            ) : (
             <span className="flex items-baseline justify-between gap-3">
               <span className="font-medium text-gray-900">{s.name}</span>
               {(s.dosage || s.frequency) && <span className="shrink-0 text-xs text-gray-500">{[s.dosage, s.frequency].filter(Boolean).join(' · ')}</span>}
+              {s.source === 'rxnorm' && <span className="shrink-0 text-xs text-gray-400">RxNorm</span>}
             </span>
-          )}
+            )
+          }
         />
       )}
     </div>
   );
 }
 
-// Common values offered as browser suggestions (any text is still accepted).
+// Common values suggested after the clinic's own wordings (any text is still accepted).
 export const DOSAGE_OPTIONS = ['5 mg', '10 mg', '25 mg', '50 mg', '100 mg', '250 mg', '500 mg', '1 g', '5 mL', '10 mL', '1 tablet', '2 tablets'];
 export const FREQUENCY_OPTIONS = [
   'Once daily (OD)',
@@ -529,3 +545,118 @@ export const FREQUENCY_OPTIONS = [
   'Once weekly',
 ];
 export const DURATION_OPTIONS = ['1 day', '3 days', '5 days', '7 days', '10 days', '14 days', '1 month', '3 months', 'Ongoing', 'Until finished'];
+export const INSTRUCTION_OPTIONS = [
+  'After meals',
+  'Before meals',
+  'With food',
+  'On an empty stomach',
+  'At bedtime',
+  'With a full glass of water',
+  'Do not crush or chew',
+  'Shake well before use',
+  'Finish the full course',
+  'As needed for fever',
+  'As needed for pain',
+];
+
+export type MedicineValues = { dosage: string[]; frequency: string[]; duration: string[]; instructions: string[] };
+export type MedicineValueField = keyof MedicineValues;
+
+const DEFAULT_VALUES: MedicineValues = {
+  dosage: DOSAGE_OPTIONS,
+  frequency: FREQUENCY_OPTIONS,
+  duration: DURATION_OPTIONS,
+  instructions: INSTRUCTION_OPTIONS,
+};
+
+/** Clinic wordings (this medicine's first) followed by the defaults, without repeats. */
+export function useMedicineValues(medicineName: string): MedicineValues {
+  const name = medicineName.trim();
+  const [fetched, setFetched] = useState<{ name: string; data: MedicineValues } | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const t = setTimeout(() => {
+      fetch(`/api/medications/values?name=${encodeURIComponent(name)}`, { signal: controller.signal })
+        .then((res) => res.json())
+        .then((json) => {
+          if (json?.success) setFetched({ name, data: json.data });
+        })
+        .catch(() => {});
+    }, 300);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
+  }, [name]);
+
+  const clinic = fetched?.name === name ? fetched.data : null;
+  const merge = (field: MedicineValueField) => {
+    const seen = new Set<string>();
+    return [...(clinic?.[field] ?? []), ...DEFAULT_VALUES[field]].filter((v) => !seen.has(v.toLowerCase()) && seen.add(v.toLowerCase()));
+  };
+  return { dosage: merge('dosage'), frequency: merge('frequency'), duration: merge('duration'), instructions: merge('instructions') };
+}
+
+/** Free-text field with a dropdown of suggested values; anything typed is kept as is. */
+export function ValueField({
+  id,
+  value,
+  onChange,
+  options,
+  placeholder,
+  label,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  placeholder?: string;
+  label: string;
+}) {
+  const q = value.trim().toLowerCase();
+  const items = (q ? options.filter((o) => o.toLowerCase().includes(q) && o.toLowerCase() !== q) : options).slice(0, 8);
+  const box = useCombobox(items, onChange);
+  const listId = `${id}-list`;
+  return (
+    <div className="relative">
+      <input
+        id={id}
+        type="text"
+        role="combobox"
+        aria-expanded={box.show}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-activedescendant={box.show && box.highlight >= 0 ? `${listId}-${box.highlight}` : undefined}
+        autoComplete="off"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => {
+          onChange(e.target.value);
+          box.open();
+          box.reset();
+        }}
+        onFocus={box.open}
+        onBlur={box.close}
+        onKeyDown={box.onKeyDown}
+        className={FIELD}
+      />
+      {box.show && (
+        <Suggestions
+          id={listId}
+          label={label}
+          items={items}
+          highlight={box.highlight}
+          onHighlight={box.setHighlight}
+          onPick={box.pick}
+          render={(o) => <span className="text-gray-900">{o}</span>}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Gives one medicine row its suggested values (hooks can't run inside the rows' map). */
+export function WithMedicineValues({ name, children }: { name: string; children: (values: MedicineValues) => ReactNode }) {
+  return <>{children(useMedicineValues(name))}</>;
+}

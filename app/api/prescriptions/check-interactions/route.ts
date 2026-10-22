@@ -4,7 +4,7 @@ import Prescription from '@/models/Prescription';
 import Patient from '@/models/Patient';
 import { requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, isValidId, patientTenantFilter, tenantFilter } from '@/lib/api/tenant-session';
-import { checkDrugInteractionsAdvanced, checkInteractionsWithPatientMedications, getApiStats } from '@/lib/drug-interactions';
+import { checkDrugInteractions, checkInteractionsWithPatientMedications } from '@/lib/drug-interactions';
 
 export async function POST(request: NextRequest) {
   const ctx = await requireTenantSession();
@@ -50,13 +50,10 @@ export async function POST(request: NextRequest) {
         }))
       );
 
-      interactions = await checkInteractionsWithPatientMedications(medications, currentMedications);
+      interactions = checkInteractionsWithPatientMedications(medications, currentMedications);
     } else {
-      // Use advanced RxNav API-powered interaction check for better accuracy
-      interactions = await checkDrugInteractionsAdvanced(medications);
+      interactions = checkDrugInteractions(medications);
     }
-
-    getApiStats();
 
     return NextResponse.json({
       success: true,
