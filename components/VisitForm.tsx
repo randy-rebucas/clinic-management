@@ -10,9 +10,6 @@ import { VISIT_TYPES } from './visits/shared';
 import PatientSummary, { allergyList, usePatientSummary } from './visits/form/PatientSummary';
 import {
   ADD_BUTTON,
-  DOSAGE_OPTIONS,
-  DURATION_OPTIONS,
-  FREQUENCY_OPTIONS,
   FieldError,
   Icd10Field,
   Label,
@@ -20,7 +17,9 @@ import {
   NoteArea,
   REMOVE_BUTTON,
   Section,
+  ValueField,
   VitalsFields,
+  WithMedicineValues,
   vitalsProblems,
   vitalsSentence,
   vitalsToRecord,
@@ -32,6 +31,7 @@ import { useTemplates } from './templates/useTemplates';
 import { SaveTemplateDialog, TemplatePickerDialog } from './templates/TemplateDialogs';
 import { fillBlank, mergeDiagnoses, mergeMedications, type ClinicalTemplateDTO, type TemplateMedication, type TemplateVisitContent } from '@/lib/clinical-templates';
 import ScribePanel, { type ScribeSelection } from './visits/ScribePanel';
+import { QuickAddMedicineDialog } from './visits/form/QuickAddMedicineDialog';
 
 const SignaturePad = dynamic(() => import('./SignaturePad'), { ssr: false });
 
@@ -294,6 +294,8 @@ export default function VisitForm({ initialData, patients, onSubmit, onCancel, o
   const rxTemplates = useMemo(() => tpl.templates.filter((t) => t.kind === 'prescription'), [tpl.templates]);
   const [picker, setPicker] = useState<'visit' | 'prescription' | null>(null);
   const [saveAs, setSaveAs] = useState<'visit' | 'prescription' | null>(null);
+  // The medicine row whose typed name is being added to the clinic's medicines list.
+  const [addingMed, setAddingMed] = useState<{ key: string; name: string } | null>(null);
   const [templateNotice, setTemplateNotice] = useState<string | null>(null);
 
   const pickTemplate = (t: ClinicalTemplateDTO) => {
@@ -877,6 +879,8 @@ export default function VisitForm({ initialData, patients, onSubmit, onCancel, o
                   const label = `Medicine ${i + 1}`;
                   return (
                     <li key={m._key} className="motion-row-in px-5 py-4">
+                      <WithMedicineValues name={m.name}>
+                      {(values) => (
                       <div className="grid gap-3 sm:grid-cols-6">
                         <div className="sm:col-span-6 lg:col-span-3">
                           <Label htmlFor={`${ids}-med-${m._key}`}>{label}</Label>
@@ -886,6 +890,7 @@ export default function VisitForm({ initialData, patients, onSubmit, onCancel, o
                             invalid={Boolean(problem)}
                             describedBy={problem ? `${ids}-med-${m._key}-err` : undefined}
                             onChange={(v) => setMed(m._key, { name: v })}
+                            onCreate={(name) => setAddingMed({ key: m._key, name })}
                             onPick={(s) =>
                               setMed(m._key, {
                                 name: s.name,
@@ -899,15 +904,15 @@ export default function VisitForm({ initialData, patients, onSubmit, onCancel, o
                         </div>
                         <div className="sm:col-span-2 lg:col-span-1">
                           <Label htmlFor={`${ids}-dose-${m._key}`}>Dose</Label>
-                          <input id={`${ids}-dose-${m._key}`} list={`${ids}-doses`} value={m.dosage} onChange={(e) => setMed(m._key, { dosage: e.target.value })} placeholder="500 mg" className={FIELD} />
+                          <ValueField id={`${ids}-dose-${m._key}`} label="Suggested doses" options={values.dosage} value={m.dosage} onChange={(v) => setMed(m._key, { dosage: v })} placeholder="500 mg" />
                         </div>
                         <div className="sm:col-span-2 lg:col-span-1">
                           <Label htmlFor={`${ids}-freq-${m._key}`}>How often</Label>
-                          <input id={`${ids}-freq-${m._key}`} list={`${ids}-freqs`} value={m.frequency} onChange={(e) => setMed(m._key, { frequency: e.target.value })} placeholder="TID" className={FIELD} />
+                          <ValueField id={`${ids}-freq-${m._key}`} label="Suggested frequencies" options={values.frequency} value={m.frequency} onChange={(v) => setMed(m._key, { frequency: v })} placeholder="TID" />
                         </div>
                         <div className="sm:col-span-2 lg:col-span-1">
                           <Label htmlFor={`${ids}-dur-${m._key}`}>For how long</Label>
-                          <input id={`${ids}-dur-${m._key}`} list={`${ids}-durs`} value={m.duration} onChange={(e) => setMed(m._key, { duration: e.target.value })} placeholder="7 days" className={FIELD} />
+                          <ValueField id={`${ids}-dur-${m._key}`} label="Suggested durations" options={values.duration} value={m.duration} onChange={(v) => setMed(m._key, { duration: v })} placeholder="7 days" />
                         </div>
                         <div className="sm:col-span-2 lg:col-span-1">
                           <Label htmlFor={`${ids}-qty-${m._key}`}>Quantity</Label>
@@ -926,12 +931,13 @@ export default function VisitForm({ initialData, patients, onSubmit, onCancel, o
                           <Label htmlFor={`${ids}-ins-${m._key}`} optional>
                             Instructions
                           </Label>
-                          <input
+                          <ValueField
                             id={`${ids}-ins-${m._key}`}
+                            label="Suggested instructions"
+                            options={values.instructions}
                             value={m.instructions}
-                            onChange={(e) => setMed(m._key, { instructions: e.target.value })}
+                            onChange={(v) => setMed(m._key, { instructions: v })}
                             placeholder="After meals"
-                            className={FIELD}
                           />
                         </div>
                         <div className="flex items-end justify-end sm:col-span-6 lg:col-span-1">
@@ -946,6 +952,8 @@ export default function VisitForm({ initialData, patients, onSubmit, onCancel, o
                           </button>
                         </div>
                       </div>
+                      )}
+                      </WithMedicineValues>
                     </li>
                   );
                 })}
@@ -957,21 +965,6 @@ export default function VisitForm({ initialData, patients, onSubmit, onCancel, o
                 Add medicine
               </button>
             </div>
-            <datalist id={`${ids}-doses`}>
-              {DOSAGE_OPTIONS.map((o) => (
-                <option key={o} value={o} />
-              ))}
-            </datalist>
-            <datalist id={`${ids}-freqs`}>
-              {FREQUENCY_OPTIONS.map((o) => (
-                <option key={o} value={o} />
-              ))}
-            </datalist>
-            <datalist id={`${ids}-durs`}>
-              {DURATION_OPTIONS.map((o) => (
-                <option key={o} value={o} />
-              ))}
-            </datalist>
           </Section>
 
           {/* Follow-up and notes */}
@@ -1135,6 +1128,13 @@ export default function VisitForm({ initialData, patients, onSubmit, onCancel, o
               ? 'No templates yet. Write a note you use often and choose “Save as template”.'
               : 'No saved prescriptions yet. Add the medicines you usually give and choose “Save these”.'
           }
+        />
+      )}
+      {addingMed && (
+        <QuickAddMedicineDialog
+          draft={{ ...(note.medications.find((m) => m._key === addingMed.key) ?? emptyMed()), name: addingMed.name }}
+          onClose={() => setAddingMed(null)}
+          onAdded={(name) => setMed(addingMed.key, { name })}
         />
       )}
       {saveAs && (

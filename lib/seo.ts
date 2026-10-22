@@ -19,6 +19,9 @@ export const SUPPORT_EMAIL = 'support@myclinicsoft.solutions';
 export const EMCR_PLAY_STORE_URL =
   'https://play.google.com/store/apps/details?id=solutions.myclinicsoft.emcr';
 
+/** Unset until the iOS app is published; iPhone visitors to /download get the unsupported page. */
+export const EMCR_APP_STORE_URL = process.env.NEXT_PUBLIC_EMCR_APP_STORE_URL || null;
+
 /** Off for every non-public area (signed-in app, sign-in, one-time links). */
 export const NO_INDEX: Metadata['robots'] = { index: false, follow: false };
 
