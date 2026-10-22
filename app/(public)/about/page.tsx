@@ -65,10 +65,11 @@ const products = [
   },
 ];
 
+// Product facts only: usage or uptime figures go here once there's data to back them.
 const stats = [
-  { value: '1,000+', label: 'Patients' },
-  { value: '50+', label: 'Clinics' },
-  { value: '99.9%', label: 'Uptime' },
+  { value: '14', label: 'Day free trial' },
+  { value: '2FA', label: 'For staff sign-in' },
+  { value: 'eMCR', label: 'Patient app' },
 ];
 
 export default function AboutPage() {
@@ -125,7 +126,7 @@ export default function AboutPage() {
                   <Icon d={icons.shield} />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-gray-900">PH DPA compliant</p>
+                  <p className="text-sm font-semibold text-gray-900">Built for the PH Data Privacy Act</p>
                   <p className="text-xs text-gray-500">Audit-logged by design</p>
                 </div>
               </div>

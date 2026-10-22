@@ -48,12 +48,6 @@ const quickLinks = [
   { title: 'Report a bug', href: '/contact', icon: icons.bug },
 ];
 
-const enterprise = [
-  { label: 'Availability', value: '24/7' },
-  { label: 'Response time', value: '1–2 hours' },
-  { label: 'Dedicated manager', value: 'Included' },
-];
-
 export default function SupportPage() {
   return (
     <div className="min-h-screen bg-white">
@@ -133,14 +127,7 @@ export default function SupportPage() {
               </div>
               <div className="border-t border-gray-200 p-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-teal-dark mb-3">Enterprise</p>
-                <dl className="divide-y divide-gray-100 text-sm">
-                  {enterprise.map((e) => (
-                    <div key={e.label} className="flex items-baseline justify-between gap-4 py-2.5 first:pt-0 last:pb-0">
-                      <dt className="text-gray-600">{e.label}</dt>
-                      <dd className="font-mono font-semibold text-gray-900 tabular-nums">{e.value}</dd>
-                    </div>
-                  ))}
-                </dl>
+                <p className="text-sm text-gray-600">Support hours and response times are agreed in your contract.</p>
               </div>
             </div>
           </div>

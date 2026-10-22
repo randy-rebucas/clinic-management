@@ -33,6 +33,7 @@ import {
   Role,
   Settings,
 } from '@/models';
+import Tenant from '@/models/Tenant';
 
 /**
  * Reset database - Delete all collections
@@ -40,6 +41,9 @@ import {
  *
  * Requires Authorization: Bearer <INSTALL_SECRET> in every environment (also enforced in
  * proxy.ts); without INSTALL_SECRET configured the route is disabled.
+ *
+ * Once any clinic exists the reset is refused: it deletes every tenant's data, so a leaked
+ * secret must not be enough. INSTALL_ALLOW_RESET=true lifts the lock for a deliberate wipe.
  */
 export async function POST(request: NextRequest) {
   const installSecret = process.env.INSTALL_SECRET;
@@ -61,6 +65,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+
+    if (process.env.INSTALL_ALLOW_RESET !== 'true' && (await Tenant.exists({}))) {
+      return NextResponse.json(
+        { success: false, error: 'Reset is locked because clinics already exist. Set INSTALL_ALLOW_RESET=true to wipe on purpose.' },
+        { status: 409 }
+      );
+    }
 
     // Delete all collections in the correct order (respecting dependencies)
     const deletionResults: { [key: string]: number } = {};

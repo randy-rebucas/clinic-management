@@ -5,6 +5,7 @@ import User from '@/models/User';
 import { sendEmail } from '@/lib/email';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { createCheckoutSession, isPayMongoConfigured } from '@/lib/paymongo';
+import { isMedRepSelfSignupEnabled } from '@/lib/medrep-signup';
 
 interface OnboardingRequest {
     firstName: string;
@@ -20,6 +21,13 @@ interface OnboardingRequest {
 }
 
 export async function POST(request: NextRequest) {
+    if (!isMedRepSelfSignupEnabled()) {
+        return NextResponse.json(
+            { success: false, error: 'Medical representative registration is paused until the rep app launches.' },
+            { status: 410 }
+        );
+    }
+
     const rateLimitResponse = await applyRateLimit(request, rateLimiters.auth);
     if (rateLimitResponse) return rateLimitResponse;
 

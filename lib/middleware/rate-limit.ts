@@ -253,6 +253,23 @@ export const rateLimiters = {
     message: 'Rate limit exceeded, please try again later',
   }),
 
+  // Unauthenticated writes that create records and send SMS (online booking, self-registration)
+  publicWrite: rateLimit({
+    name: 'public-write',
+    windowMs: 60 * 60 * 1000,
+    maxRequests: 5,
+    message: 'Too many requests from this device. Please try again later or contact the clinic.',
+  }),
+
+  // Same writes per destination phone across all IPs (SMS pumping / slot squatting)
+  publicWritePhone: rateLimit({
+    name: 'public-write-phone',
+    windowMs: 24 * 60 * 60 * 1000,
+    maxRequests: 3,
+    identifierOnly: true,
+    message: 'Too many requests for this phone number today. Please contact the clinic.',
+  }),
+
   // Lenient rate limit for authenticated users
   authenticated: rateLimit({
     name: 'authenticated',

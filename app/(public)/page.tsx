@@ -112,8 +112,8 @@ const audiences = [
   {
     title: 'For medical reps',
     icon: icons.briefcase,
-    points: ['Register your company profile online', 'Account activated after verification', 'Reach clinics on the platform'],
-    primary: { href: '/medical-representatives/onboard', label: 'Rep sign up' },
+    points: ['A dedicated rep app is on the way', 'Clinics you work with can add you today', 'Ask us to be notified at launch'],
+    primary: { href: '/medical-representatives/onboard', label: 'Rep app: coming soon' },
     secondary: { href: '/contact', label: 'Ask a question' },
     featured: false,
   },
@@ -145,10 +145,11 @@ const storeBadges = [
   },
 ];
 
+// Product facts only: usage or uptime figures go here once there's data to back them.
 const stats = [
-  { value: '1,000+', label: 'Patients' },
-  { value: '50+', label: 'Clinics' },
-  { value: '99.9%', label: 'Uptime' },
+  { value: '14', label: 'Day free trial' },
+  { value: '2FA', label: 'For staff sign-in' },
+  { value: 'eMCR', label: 'Patient app' },
 ];
 
 export default async function HomePage() {
@@ -182,7 +183,7 @@ export default async function HomePage() {
                   <span className="absolute inline-flex h-full w-full rounded-full bg-brand-teal opacity-60 motion-safe:animate-ping" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-teal" />
                 </span>
-                Built for Philippine clinics · PH DPA compliant
+                Built for Philippine clinics and the Data Privacy Act
               </div>
 
               <h1 className="animate-fade-up-in text-4xl sm:text-5xl lg:text-[3.5rem] font-extrabold text-gray-900 mb-5 tracking-tight leading-[1.06]">
@@ -230,7 +231,7 @@ export default async function HomePage() {
                 <span className="mx-2 text-gray-300">·</span>
                 Medical rep?{' '}
                 <Link href="/medical-representatives/onboard" className="font-semibold text-brand-blue hover:underline underline-offset-2">
-                  Sign up
+                  Rep app coming soon
                 </Link>
               </p>
 
@@ -258,7 +259,7 @@ export default async function HomePage() {
                   <span className="w-2.5 h-2.5 rounded-full bg-gray-200" />
                   <span className="w-2.5 h-2.5 rounded-full bg-gray-200" />
                   <span className="w-2.5 h-2.5 rounded-full bg-gray-200" />
-                  <span className="ml-3 text-sm font-medium text-gray-400">Clinic Dashboard</span>
+                  <span className="ml-3 text-sm font-medium text-gray-500">Clinic Dashboard</span>
                 </div>
                 <div className="p-5">
                   <div className="flex items-center justify-between mb-4">
@@ -333,7 +334,7 @@ export default async function HomePage() {
                     <Icon d={icons.shield} />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-gray-900 text-sm">PH DPA compliant</h3>
+                    <h3 className="font-semibold text-gray-900 text-sm">Built for the PH Data Privacy Act</h3>
                     <p className="text-xs text-gray-500">Audit-logged by design</p>
                   </div>
                 </div>

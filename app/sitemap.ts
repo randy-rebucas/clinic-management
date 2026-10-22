@@ -17,7 +17,6 @@ const PAGES: Entry[] = [
   ["/contact", 0.6, "yearly"],
   ["/support", 0.6, "monthly"],
   ["/resources", 0.6, "monthly"],
-  ["/testimonials", 0.5, "monthly"],
   ["/book", 0.5, "monthly"],
   ["/onboard", 0.5, "monthly"],
   ["/medical-representatives/onboard", 0.4, "yearly"],

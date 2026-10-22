@@ -4,7 +4,7 @@ export default function NotFound() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="text-center max-w-md">
-        <p className="text-6xl font-bold text-blue-600 mb-4">404</p>
+        <p className="text-6xl font-bold text-brand-teal-dark mb-4">404</p>
         <h1 className="text-2xl font-bold text-gray-900 mb-2">
           Page not found
         </h1>
@@ -13,7 +13,7 @@ export default function NotFound() {
         </p>
         <Link
           href="/"
-          className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center justify-center rounded-lg bg-brand-teal px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-teal-dark transition-colors"
         >
           Go home
         </Link>
