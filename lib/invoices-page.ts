@@ -1,5 +1,4 @@
 import { redirect } from 'next/navigation';
-import { isPayMongoConfigured } from '@/lib/paymongo';
 import { isSMSConfigured } from '@/lib/sms';
 import { verifySession } from '@/app/lib/dal';
 import { denyPage, getPermissionChecker } from '@/app/lib/auth-helpers';
@@ -42,7 +41,8 @@ export async function loadInvoiceDetailPermissions(): Promise<InvoiceDetailPermi
     canRefund: can('invoices', 'update'),
     canSeePatient: can('patients', 'read'),
     canSeeVisit: can('visits', 'read'),
-    canSendPayLink: can('invoices', 'write') && (await isPayMongoConfigured()),
+    // Where it can be paid comes from the clinic's own payment accounts (asked for on the page).
+    canSendPayLink: can('invoices', 'write'),
     canText: isSMSConfigured(),
   };
 }

@@ -56,6 +56,9 @@ export async function applyPaidCheckout(session: CheckoutSession): Promise<Apply
   }
 
   if (m.purpose === 'invoice') {
+    // Deprecated: links made before clinics had their own accounts were paid into the platform's.
+    // Kept so those still land on their invoice; remove after 2026-11-22 (30 days).
+    console.warn(`Invoice ${m.invoiceNumber ?? m.invoiceId} paid through the platform PayMongo account (an old link)`);
     if (!isOid(m.tenantId) || !isOid(m.invoiceId)) return { ok: false, retry: false, error: 'Invoice checkout without its invoice' };
     const already = await Invoice.exists({ _id: new Types.ObjectId(m.invoiceId), tenantId: new Types.ObjectId(m.tenantId), 'payments.referenceNo': paymentId });
     if (already) return { ok: true, applied: false, detail: 'already recorded' };

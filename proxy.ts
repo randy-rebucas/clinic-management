@@ -26,8 +26,8 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 // Server-to-server endpoints authenticated by their own signatures/secrets.
 const CSRF_EXEMPT_PREFIXES = [
-  '/api/subscription/webhook',
   '/api/paymongo/webhook',
+  '/api/payments/webhook/',
   '/api/webhooks/',
   '/api/lab-results/third-party/webhook',
   '/api/cron/',
