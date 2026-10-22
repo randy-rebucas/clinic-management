@@ -4,7 +4,7 @@ import { Types } from 'mongoose';
 
 vi.mock('server-only', () => ({}));
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn() }));
-vi.mock('@/models/PaypalOrder', () => ({ default: { updateOne: vi.fn() } }));
+vi.mock('@/models/SubscriptionOrder', () => ({ default: { updateOne: vi.fn() } }));
 vi.mock('@/models/Invoice', () => ({ default: { exists: vi.fn() } }));
 vi.mock('@/models/MedicalRepresentative', () => ({ default: { updateOne: vi.fn() } }));
 vi.mock('@/lib/subscription', () => ({ activateSubscriptionFromOrder: vi.fn() }));
@@ -12,7 +12,7 @@ vi.mock('@/lib/invoice-payments', () => ({ recordInvoicePayments: vi.fn() }));
 
 import Invoice from '@/models/Invoice';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
-import PaypalOrder from '@/models/PaypalOrder';
+import SubscriptionOrder from '@/models/SubscriptionOrder';
 import { activateSubscriptionFromOrder } from '@/lib/subscription';
 import { recordInvoicePayments } from '@/lib/invoice-payments';
 import { verifyPaymongoSignature, type CheckoutSession } from '@/lib/paymongo';
@@ -58,7 +58,7 @@ describe('applyPaidCheckout', () => {
     vi.mocked(activateSubscriptionFromOrder).mockResolvedValue({ ok: true, alreadyApplied: false, subscription: {} });
     const r = await applyPaidCheckout(session({ purpose: 'subscription', orderId: 'pm_x', tenantId: TENANT, plan: 'basic', billingCycle: 'monthly', amount: '1499' }));
     expect(r).toEqual({ ok: true, applied: true });
-    expect(PaypalOrder.updateOne).toHaveBeenCalledWith({ orderId: 'pm_x' }, expect.objectContaining({ $setOnInsert: expect.objectContaining({ plan: 'basic', currency: 'PHP' }) }), { upsert: true });
+    expect(SubscriptionOrder.updateOne).toHaveBeenCalledWith({ orderId: 'pm_x' }, expect.objectContaining({ $setOnInsert: expect.objectContaining({ plan: 'basic', currency: 'PHP' }) }), { upsert: true });
     expect(activateSubscriptionFromOrder).toHaveBeenCalledWith('pm_x', { transactionId: 'pay_1', amount: 1499, currency: 'PHP' });
   });
 

@@ -402,7 +402,7 @@ Registration stays on the web (`/medical-representatives/onboard`, which needs p
 ## Not built yet
 
 - **Paying invoices in the app** (deferred by decision). Clinics have no payment accounts of their
-  own, and the platform's PayPal account must not collect clinic money. Invoices are view-only.
+  own, and the platform's PayMongo account must not collect clinic money. Invoices are view-only.
   Show "Pay at the clinic".
 - **Lab-result PDFs.** Lab results come back as structured data. A PDF only exists if the clinic
   uploaded one as a document.

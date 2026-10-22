@@ -2,12 +2,13 @@ import 'server-only';
 import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Tenant from '@/models/Tenant';
-import PaypalOrder from '@/models/PaypalOrder';
+import SubscriptionOrder from '@/models/SubscriptionOrder';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { formatInTz } from '@/lib/tz';
 import { checkSubscriptionStatus } from '@/lib/subscription';
 import { getSubscriptionUsage } from '@/lib/subscription-limits';
-import { subscriptionGateway, gatewayCurrency, GATEWAY_NAME } from '@/lib/payment-gateway';
+import { isPayMongoConfigured } from '@/lib/paymongo';
+import { currentOrderId } from '@/lib/subscription-order';
 import { SUBSCRIPTION_PACKAGES } from '@/lib/subscription-packages';
 import { buildUsageRows, planLimits, type UsageKey, type UsageRow } from '@/lib/plan-usage';
 import {
@@ -25,10 +26,10 @@ import {
  * Everything /admin/subscription shows, read on the server: where the plan stands (including
  * the read-only days after it ends), what the clinic uses of each limit the system enforces,
  * what each plan would allow and cost with the "paid until" a payment today would give, the
- * payments made, and any payment started at PayPal but not finished.
+ * payments made, and any payment started at PayMongo but not finished.
  */
 
-/** PaypalOrder deletes pending orders after two hours (TTL index). */
+/** SubscriptionOrder deletes pending orders after two hours (TTL index). */
 const PENDING_LIFETIME_MS = 2 * 60 * 60 * 1000;
 
 /**
@@ -87,7 +88,7 @@ export interface UnfinishedPayment {
   cycle: BillingCycle;
   amount: number;
   currency: string;
-  /** pending: not approved or not confirmed yet. processing: PayPal may have taken it; still being applied. */
+  /** pending: not approved or not confirmed yet. processing: PayMongo may have taken it; still being applied. */
   status: 'pending' | 'processing';
 }
 
@@ -98,9 +99,9 @@ export interface SubscriptionPageData {
   offers: PlanOffer[];
   payments: PaymentRow[];
   unfinished: UnfinishedPayment[];
-  /** A payment gateway is set up (PayMongo or PayPal). */
-  paypalReady: boolean;
-  /** "PayMongo" or "PayPal", for the page's wording. */
+  /** The platform's PayMongo account is set up, so plans can be paid for. */
+  gatewayReady: boolean;
+  /** "PayMongo", for the page's wording. */
   gatewayName: string;
 }
 
@@ -116,6 +117,7 @@ interface TenantDoc {
     billingCycle?: BillingCycle;
     expiresAt?: Date;
     paypalOrderId?: string;
+    lastOrderId?: string;
     paymentHistory?: {
       _id?: Types.ObjectId;
       transactionId: string;
@@ -146,7 +148,7 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
       console.error('Subscription page: usage unavailable', error);
       return null;
     }),
-    PaypalOrder.find({
+    SubscriptionOrder.find({
       tenantId,
       $or: [{ status: 'processing' }, { status: 'pending', createdAt: { $gte: new Date(now.getTime() - PENDING_LIFETIME_MS) } }],
     })
@@ -169,7 +171,7 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
   const history = [...(sub?.paymentHistory ?? [])].sort(
     (a, b) => new Date(b.paidAt ?? 0).getTime() - new Date(a.paidAt ?? 0).getTime()
   );
-  const funding = history.find((p) => p.orderId === sub?.paypalOrderId && p.status === 'completed');
+  const funding = history.find((p) => p.orderId === currentOrderId(sub) && p.status === 'completed');
   const started = state === 'trial' ? tenant?.createdAt ?? null : funding?.paidAt ?? null;
   const span = started && expiresAt ? expiresAt.getTime() - new Date(started).getTime() : 0;
 
@@ -190,18 +192,16 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
   // --- What each plan allows, costs, and would run to --------------------------------------
   // Activation extends from the current end only while the plan is active; mirror it exactly.
   const current = { status: sub?.status, expiresAt: sub?.expiresAt, plan: sub?.plan, billingCycle: sub?.billingCycle };
-  const gateway = subscriptionGateway();
-  const cur = gatewayCurrency(gateway);
   const offers: PlanOffer[] = PAID_PLANS.map((p) => {
-    const monthly = planPrice(p, 'monthly', cur);
-    const yearly = planPrice(p, 'yearly', cur);
+    const monthly = planPrice(p, 'monthly');
+    const yearly = planPrice(p, 'yearly');
     return {
       plan: p,
       label: planLabel(p),
       limits: planLimits(p),
       support: SUPPORT[SUBSCRIPTION_PACKAGES[p].features.supportLevel] ?? SUBSCRIPTION_PACKAGES[p].features.supportLevel,
-      monthly: { ...monthly, paidUntil: day(periodEndAfterPayment(current, 'monthly', now, { plan: p, currency: cur })) },
-      yearly: { ...yearly, paidUntil: day(periodEndAfterPayment(current, 'yearly', now, { plan: p, currency: cur })), monthsSaved: monthsSavedYearly(p, cur) },
+      monthly: { ...monthly, paidUntil: day(periodEndAfterPayment(current, 'monthly', now, { plan: p })) },
+      yearly: { ...yearly, paidUntil: day(periodEndAfterPayment(current, 'yearly', now, { plan: p })), monthsSaved: monthsSavedYearly() },
     };
   });
 
@@ -228,10 +228,10 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
         plan: planLabel(o.plan),
         cycle: o.billingCycle,
         amount: o.amount,
-        currency: o.currency || 'USD',
+        currency: o.currency || 'PHP',
         status: o.status,
       })),
-    paypalReady: gateway !== null,
-    gatewayName: gateway ? GATEWAY_NAME[gateway] : 'the payment page',
+    gatewayReady: isPayMongoConfigured(),
+    gatewayName: 'PayMongo',
   };
 }

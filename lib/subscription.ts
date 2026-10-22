@@ -4,10 +4,11 @@
 
 import connectDB from '@/lib/mongodb';
 import Tenant from '@/models/Tenant';
-import PaypalOrder from '@/models/PaypalOrder';
+import SubscriptionOrder from '@/models/SubscriptionOrder';
 import { Types } from 'mongoose';
 import { subMonths, subYears } from 'date-fns';
 import { isPaidPlan, periodEndAfterPayment } from '@/lib/subscription-period';
+import { currentOrderId } from '@/lib/subscription-order';
 
 /** Plans that never expire. A missing expiresAt on any other plan means expired. */
 const NON_EXPIRING_PLANS = new Set(['lifetime', 'free']);
@@ -107,11 +108,11 @@ export type ActivationResult =
   | { ok: false; status: number; error: string };
 
 /**
- * Apply a captured PayPal payment to the tenant's subscription.
+ * Apply a paid PayMongo checkout to the tenant's subscription.
  *
- * Idempotent: keyed by the PayPal order id, so the capture-order route, its retries
- * and the PAYMENT.CAPTURE.COMPLETED webhook can all call it safely. Plan, cycle and
- * expected amount come from the PaypalOrder record created server-side, never from
+ * Idempotent: keyed by our order id (pm_…), so the confirm route, its retries and the
+ * PayMongo webhook can all call it safely. Plan, cycle and
+ * expected amount come from the SubscriptionOrder record created server-side, never from
  * the client.
  */
 export async function activateSubscriptionFromOrder(
@@ -120,15 +121,15 @@ export async function activateSubscriptionFromOrder(
 ): Promise<ActivationResult> {
   await connectDB();
 
-  const order = await PaypalOrder.findOne({ orderId }).lean<any>();
+  const order = await SubscriptionOrder.findOne({ orderId }).lean<any>();
   if (!order) return { ok: false, status: 404, error: 'Order not found' };
 
   if (typeof payment.amount === 'number' && payment.amount + 0.005 < Number(order.amount)) {
-    console.error(`PayPal order ${orderId}: captured ${payment.amount} < expected ${order.amount}`);
+    console.error(`Subscription order ${orderId}: paid ${payment.amount} < expected ${order.amount}`);
     return { ok: false, status: 400, error: 'Captured amount does not match order' };
   }
   if (payment.currency && order.currency && payment.currency !== order.currency) {
-    console.error(`PayPal order ${orderId}: currency ${payment.currency} != ${order.currency}`);
+    console.error(`Subscription order ${orderId}: currency ${payment.currency} != ${order.currency}`);
     return { ok: false, status: 400, error: 'Captured currency does not match order' };
   }
 
@@ -138,7 +139,7 @@ export async function activateSubscriptionFromOrder(
 
     const sub = tenant.subscription || {};
     if ((sub.paymentHistory || []).some((p: any) => p.orderId === orderId && p.status !== 'failed')) {
-      await PaypalOrder.updateOne({ orderId }, { $set: { status: 'completed' } });
+      await SubscriptionOrder.updateOne({ orderId }, { $set: { status: 'completed' } });
       return { ok: true, alreadyApplied: true, subscription: sub };
     }
 
@@ -148,7 +149,7 @@ export async function activateSubscriptionFromOrder(
       sub,
       order.billingCycle === 'yearly' ? 'yearly' : 'monthly',
       now,
-      isPaidPlan(order.plan) ? { plan: order.plan, currency: order.currency === 'PHP' ? 'PHP' : undefined } : undefined
+      isPaidPlan(order.plan) ? { plan: order.plan } : undefined
     );
 
     const entry = {
@@ -177,6 +178,8 @@ export async function activateSubscriptionFromOrder(
           'subscription.billingCycle': order.billingCycle,
           'subscription.expiresAt': expiresAt,
           'subscription.renewalAt': expiresAt,
+          'subscription.lastOrderId': orderId,
+          // Kept in step until the field is renamed in the database (lib/subscription-order.ts).
           'subscription.paypalOrderId': orderId,
         },
         $push: { 'subscription.paymentHistory': entry },
@@ -187,7 +190,7 @@ export async function activateSubscriptionFromOrder(
       .lean<any>();
 
     if (updated) {
-      await PaypalOrder.updateOne({ orderId }, { $set: { status: 'completed' } });
+      await SubscriptionOrder.updateOne({ orderId }, { $set: { status: 'completed' } });
       return { ok: true, alreadyApplied: false, subscription: updated.subscription };
     }
   }
@@ -197,7 +200,7 @@ export async function activateSubscriptionFromOrder(
 
 /**
  * Take back the paid time of a subscription payment that was refunded in full or charged back
- * (PayPal PAYMENT.CAPTURE.REFUNDED / REVERSED, PayMongo payment.refunded). The payment's period
+ * (PayMongo payment.refunded). The payment's period
  * comes off the paid-until date, and the plan is cancelled when nothing paid for is left. A
  * partial refund changes nothing. Idempotent: a payment already marked refunded is skipped.
  */
@@ -226,7 +229,7 @@ export async function reverseSubscriptionPayment(
     sub.expiresAt = end;
     sub.renewalAt = end;
   }
-  if (!sub.expiresAt || new Date(sub.expiresAt) <= new Date() || payment.orderId === sub.paypalOrderId) {
+  if (!sub.expiresAt || new Date(sub.expiresAt) <= new Date() || payment.orderId === currentOrderId(sub)) {
     sub.status = 'cancelled';
   }
   await tenant.save();
