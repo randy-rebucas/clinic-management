@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect, useSyncExternalStore, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
-import { getHostSubdomain, subscribeNoop } from './utils/hostSubdomain';
 import { toDateKey } from './utils/dateKey';
 import TurnstileWidget, { TURNSTILE_SITE_KEY } from './TurnstileWidget';
 
@@ -11,7 +10,6 @@ interface Clinic {
   name: string;
   displayName: string;
   subdomain: string;
-  email?: string;
   phone?: string;
   address?: {
     street?: string;
@@ -138,9 +136,16 @@ function SectionTitle({ n, children }: { n: number; children: React.ReactNode })
   );
 }
 
-export default function PublicBookingClient() {
+/**
+ * `subdomain` is the clinic subdomain the server resolved from ROOT_DOMAIN ('' on the root
+ * domain); `rootDomain` is ROOT_DOMAIN without a port, used to send visitors to a clinic.
+ */
+export default function PublicBookingClient({ subdomain, rootDomain }: { subdomain: string; rootDomain: string }) {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [fetchedSlots, setAvailableSlots] = useState<string[]>([]);
+  // Slots are tagged with the date|doctor they were fetched for, so a new pick never shows the
+  // previous day's times; `slots: null` means that fetch failed.
+  const [slotResult, setSlotResult] = useState<{ key: string; slots: string[] | null }>({ key: '', slots: [] });
+  const [slotRetry, setSlotRetry] = useState(0);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
@@ -149,11 +154,14 @@ export default function PublicBookingClient() {
   const [availableClinics, setAvailableClinics] = useState<Clinic[]>([]);
   const [loadingClinics, setLoadingClinics] = useState(true);
   const [clinicQuery, setClinicQuery] = useState('');
-  const subdomain = useSyncExternalStore(subscribeNoop, getHostSubdomain, () => null);
   // On the root domain the visitor first picks a clinic, then books on its subdomain.
   const showClinicSelection = subdomain === '';
   const slotsEnabled = Boolean(selectedDate && selectedDoctor && !showClinicSelection);
-  const availableSlots = slotsEnabled ? fetchedSlots : [];
+  const slotsKey = `${selectedDate}|${selectedDoctor}`;
+  const slotsCurrent = slotsEnabled && slotResult.key === slotsKey;
+  const slotsLoading = slotsEnabled && !slotsCurrent;
+  const slotsFailed = slotsCurrent && slotResult.slots === null;
+  const availableSlots = slotsCurrent ? slotResult.slots ?? [] : [];
   const [formData, setFormData] = useState<BookingFormData>({
     patientFirstName: '',
     patientLastName: '',
@@ -172,7 +180,6 @@ export default function PublicBookingClient() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (subdomain === null) return;
     let cancelled = false;
     const fetchClinics = async () => {
       try {
@@ -234,7 +241,6 @@ export default function PublicBookingClient() {
     // Redirect to clinic's subdomain for booking
     if (typeof window !== 'undefined') {
       const protocol = window.location.protocol;
-      const rootDomain = window.location.hostname.split('.').slice(-2).join('.');
       const port = window.location.port ? `:${window.location.port}` : '';
       const bookingUrl = `${protocol}//${clinic.subdomain}.${rootDomain}${port}/book`;
       window.open(bookingUrl, '_self');
@@ -245,25 +251,24 @@ export default function PublicBookingClient() {
   useEffect(() => {
     if (!slotsEnabled) return;
     let cancelled = false;
+    const key = `${selectedDate}|${selectedDoctor}`;
     const fetchAvailableSlots = async () => {
+      let slots: string[] | null = null;
       try {
         const tenantParam = tenantId ? `&tenantId=${tenantId}` : '';
         const res = await fetch(`/api/appointments/public?date=${selectedDate}&doctorId=${selectedDoctor}${tenantParam}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (!cancelled && data.success) {
-            setAvailableSlots(data.data.availableSlots || []);
-          }
-        }
+        const data = res.ok ? await res.json() : null;
+        if (data?.success) slots = data.data.availableSlots || [];
       } catch (error) {
         console.error('Failed to fetch available slots:', error);
       }
+      if (!cancelled) setSlotResult({ key, slots });
     };
     fetchAvailableSlots();
     return () => {
       cancelled = true;
     };
-  }, [slotsEnabled, selectedDate, selectedDoctor, tenantId]);
+  }, [slotsEnabled, selectedDate, selectedDoctor, tenantId, slotRetry]);
 
   const formatTime = (time: string) => {
     const [hours, minutes] = time.split(':').map(Number);
@@ -343,7 +348,6 @@ export default function PublicBookingClient() {
         });
         setSelectedDate('');
         setSelectedDoctor('');
-        setAvailableSlots([]);
       } else {
         setError(data.error || 'Failed to book appointment');
       }
@@ -602,6 +606,26 @@ export default function PublicBookingClient() {
                       <Icon d={icons.info} className="w-4 h-4 shrink-0 text-gray-400" />
                       Pick a doctor and date to see open times.
                     </p>
+                  ) : slotsLoading ? (
+                    <p role="status" className="flex items-center gap-2 rounded-md border border-dashed border-gray-300 bg-gray-50/70 px-4 py-3 text-sm text-gray-500">
+                      <span className="h-4 w-4 shrink-0 rounded-full border-2 border-brand-teal-light border-t-brand-teal animate-spin" />
+                      Loading open times…
+                    </p>
+                  ) : slotsFailed ? (
+                    <div role="alert" className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                      <Icon d={icons.info} className="w-4 h-4 shrink-0" />
+                      <span className="flex-1">Couldn&apos;t load open times.</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSlotResult({ key: '', slots: [] });
+                          setSlotRetry((n) => n + 1);
+                        }}
+                        className="font-semibold underline underline-offset-2 hover:text-red-900"
+                      >
+                        Try again
+                      </button>
+                    </div>
                   ) : availableSlots.length === 0 ? (
                     <p className="flex items-center gap-2 rounded-md border border-dashed border-gray-300 bg-gray-50/70 px-4 py-3 text-sm text-gray-500">
                       <Icon d={icons.info} className="w-4 h-4 shrink-0 text-gray-400" />

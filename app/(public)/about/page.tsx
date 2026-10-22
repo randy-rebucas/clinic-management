@@ -29,7 +29,7 @@ const values = [
   {
     icon: icons.checkCircle,
     title: 'Reliability',
-    description: 'We aim for 99.9% uptime so your clinic keeps running, from first patient to last.',
+    description: 'Built to keep your clinic running from first patient to last, with backups you can take any time.',
   },
 ];
 

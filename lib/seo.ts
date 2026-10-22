@@ -104,11 +104,19 @@ export function softwareApplicationJsonLd(
     description: SITE_DESCRIPTION,
     publisher: { '@id': `${SITE_URL}/#organization` },
     ...(offers && {
+      // Subscription prices: the spec marks each price as per month.
       offers: offers.map((o) => ({
         '@type': 'Offer',
         name: o.name,
         price: o.price,
         priceCurrency: o.priceCurrency,
+        priceSpecification: {
+          '@type': 'UnitPriceSpecification',
+          price: o.price,
+          priceCurrency: o.priceCurrency,
+          billingDuration: 'P1M',
+          unitCode: 'MON',
+        },
         ...(o.description && { description: o.description }),
         url: `${SITE_URL}/pricing`,
       })),

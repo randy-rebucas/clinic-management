@@ -75,6 +75,9 @@ export async function PUT(
       }
     }
 
+    // A staff save is the clinic vouching for the record (see Patient.selfRegistered).
+    unset.selfRegistered = '';
+
     const filter = patientTenantFilter(ctx.tenantId, { _id: id });
     const patient =
       Object.keys(set).length || Object.keys(unset).length

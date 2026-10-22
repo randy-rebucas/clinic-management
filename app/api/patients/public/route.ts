@@ -99,6 +99,7 @@ export async function POST(request: NextRequest) {
           patientCode: await nextPatientCode(),
           tenantIds: [tenantObjectId],
           active: true,
+          selfRegistered: true,
         });
       } catch (createError: any) {
         if (createError.code === 11000 && createError.keyPattern?.patientCode) continue;

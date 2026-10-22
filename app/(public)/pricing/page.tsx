@@ -106,7 +106,9 @@ export default function PricingPage() {
     <div className="min-h-screen bg-white">
       <JsonLd
         data={softwareApplicationJsonLd(
-          priced.map((p) => ({ name: p.name, price: p.monthly, priceCurrency: p.code, description: p.description })),
+          priced
+            .filter((p) => p.monthly > 0)
+            .map((p) => ({ name: p.name, price: p.monthly, priceCurrency: p.code, description: p.description })),
         )}
       />
 

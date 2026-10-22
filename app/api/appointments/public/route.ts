@@ -11,6 +11,7 @@ import { Types } from 'mongoose';
 import { isValidId } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId, zEmail, zPhone, zShortText } from '@/lib/api/validate';
 import { normalizePhone } from '@/lib/phone';
+import { phoneVariants } from '@/app/api/patients/auth/shared';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { turnstileRejection } from '@/lib/turnstile';
 import { nextPatientCode } from '@/lib/patient-schema';
@@ -246,10 +247,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // An existing patient is linked by email but never modified from this unauthenticated
-    // endpoint: changing their phone here would let anyone take over the OTP login.
-    // The booking stays "pending" until staff confirm it.
-    let patient = await Patient.findOne({ email: body.patientEmail, tenantIds: tenantId }).select('_id phone firstName lastName');
+    // An existing patient is reused only when both email and phone match, so typing someone
+    // else's email can't file a booking under their record; otherwise a new (self-registered)
+    // record is created for staff to merge. Existing records are never modified from this
+    // unauthenticated endpoint. The booking stays "pending" until staff confirm it.
+    let patient = await Patient.findOne({
+      email: body.patientEmail,
+      phone: { $in: phoneVariants(phone) },
+      tenantIds: tenantId,
+    }).select('_id phone firstName lastName');
     if (!patient) {
       const patientLimit = await checkSubscriptionLimit(tenantId, 'createPatient');
       if (!patientLimit.allowed) {
@@ -269,6 +275,7 @@ export async function POST(request: NextRequest) {
         sex: body.sex,
         patientCode: await nextPatientCode(),
         tenantIds: [tenantId],
+        selfRegistered: true,
       });
       await patient.save({ validateBeforeSave: !!(body.dateOfBirth && body.sex) });
     }
