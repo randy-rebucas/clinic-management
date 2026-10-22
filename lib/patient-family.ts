@@ -96,7 +96,14 @@ export async function personRecordIds(patientId: unknown): Promise<Types.ObjectI
   return (await linkedRecords(patient)).patientIds;
 }
 
-const actCache = new Map<string, { ok: boolean; expires: number }>();
+/**
+ * What a family link lets the guardian see: `tid` narrows the dependent's view to one clinic.
+ * A staff (`clinic`) link was consented to at one clinic's desk, so it only opens that clinic's
+ * records; a `phone` link (the guardian's own proven number is on the minor's record) opens all.
+ */
+export type FamilyAccess = { tid?: string };
+
+const actCache = new Map<string, { access: FamilyAccess | null; expires: number }>();
 
 /**
  * Whether the person signed in as `guardianId` may act for the person whose record is
@@ -104,18 +111,23 @@ const actCache = new Map<string, { ok: boolean; expires: number }>();
  * session revocation, so unlinking takes effect within seconds.
  */
 export async function canActFor(guardianId: string, dependentId: string): Promise<boolean> {
-  if (!Types.ObjectId.isValid(guardianId) || !Types.ObjectId.isValid(dependentId)) return false;
+  return (await familyAccess(guardianId, dependentId)) !== null;
+}
+
+/** canActFor with the clinic scope of the link: null when there is no link in force. */
+export async function familyAccess(guardianId: string, dependentId: string): Promise<FamilyAccess | null> {
+  if (!Types.ObjectId.isValid(guardianId) || !Types.ObjectId.isValid(dependentId)) return null;
   const key = `${guardianId}:${dependentId}`;
   const cached = actCache.get(key);
-  if (cached && cached.expires > Date.now()) return cached.ok;
+  if (cached && cached.expires > Date.now()) return cached.access;
 
-  const ok = await checkActFor(guardianId, dependentId);
-  actCache.set(key, { ok, expires: Date.now() + CACHE_TTL_MS });
+  const access = await checkActFor(guardianId, dependentId);
+  actCache.set(key, { access, expires: Date.now() + CACHE_TTL_MS });
   if (actCache.size > 5000) {
     const now = Date.now();
     for (const [k, entry] of actCache) if (entry.expires < now) actCache.delete(k);
   }
-  return ok;
+  return access;
 }
 
 /** Drop cached decisions after a link changes, so this instance applies it at once. */
@@ -123,30 +135,36 @@ function forgetActCache(): void {
   actCache.clear();
 }
 
-async function checkActFor(guardianId: string, dependentId: string): Promise<boolean> {
+async function checkActFor(guardianId: string, dependentId: string): Promise<FamilyAccess | null> {
   await connectDB();
   const guardianIds = await personRecordIds(guardianId);
-  if (!guardianIds.length || guardianIds.some((id) => String(id) === dependentId)) return false;
+  if (!guardianIds.length || guardianIds.some((id) => String(id) === dependentId)) return null;
 
   const dependent = await Patient.findById(dependentId)
-    .select('accountId dateOfBirth active guardians')
+    .select('accountId tenantIds dateOfBirth active guardians')
     .lean<PersonRecord | null>();
-  if (!dependent || dependent.active === false) return false;
+  if (!dependent || dependent.active === false) return null;
 
   // The link may sit on any of the dependent's own records (one per clinic).
   const records: PersonRecord[] = dependent.accountId
     ? await Patient.find({ accountId: dependent.accountId, active: { $ne: false } })
-        .select('dateOfBirth guardians')
+        .select('tenantIds dateOfBirth guardians')
         .limit(MAX_DEPENDENTS)
         .lean<PersonRecord[]>()
     : [dependent];
 
   const guardianKeys = new Set(guardianIds.map(String));
-  return records.some((record) =>
-    (record.guardians ?? []).some(
-      (g) => guardianKeys.has(String(g.patient)) && guardianshipActive(g, record.dateOfBirth ?? dependent.dateOfBirth)
-    )
-  );
+  let clinicScope: string | undefined;
+  for (const record of records) {
+    for (const g of record.guardians ?? []) {
+      if (!guardianKeys.has(String(g.patient)) || !guardianshipActive(g, record.dateOfBirth ?? dependent.dateOfBirth)) continue;
+      if (g.source === 'phone') return {};
+      // A staff link counts only at the clinic that made it (legacy links: the record's clinic).
+      const tenant = g.tenantId ?? record.tenantIds?.[0];
+      if (tenant && !clinicScope) clinicScope = String(tenant);
+    }
+  }
+  return clinicScope ? { tid: clinicScope } : null;
 }
 
 async function clinicNames(tenantIds: unknown[]): Promise<Map<string, string>> {
@@ -330,17 +348,25 @@ export async function addPhoneDependent(
 
 /**
  * Remove this guardian (any of their records) from every record of the dependent's person.
- * Returns false when the guardian had no link to that person.
+ * With `tenantId` (staff unlinking at the desk) only that clinic's records and links are touched:
+ * a clinic cannot undo what another clinic set up. Returns false when there was nothing to remove.
  */
-export async function removeDependent(guardianIds: Types.ObjectId[], dependentId: string): Promise<boolean> {
+export async function removeDependent(
+  guardianIds: Types.ObjectId[],
+  dependentId: string,
+  options: { tenantId?: Types.ObjectId } = {}
+): Promise<boolean> {
   if (!Types.ObjectId.isValid(dependentId)) return false;
   await connectDB();
   const dependentIds = await personRecordIds(dependentId);
   if (!dependentIds.length) return false;
-  const result = await Patient.updateMany(
-    { _id: { $in: dependentIds }, 'guardians.patient': { $in: guardianIds } },
-    { $pull: { guardians: { patient: { $in: guardianIds } } } }
-  );
+  const filter: Record<string, unknown> = { _id: { $in: dependentIds }, 'guardians.patient': { $in: guardianIds } };
+  const pull: Record<string, unknown> = { patient: { $in: guardianIds } };
+  if (options.tenantId) {
+    filter.tenantIds = options.tenantId;
+    pull.tenantId = { $in: [options.tenantId, null] };
+  }
+  const result = await Patient.updateMany(filter, { $pull: { guardians: pull } });
   forgetActCache();
   return result.modifiedCount > 0;
 }
@@ -380,21 +406,33 @@ export async function addClinicGuardian(options: {
  * Record ids whose app devices should also hear about `dependentId` (its active guardians, on
  * every record they sign in with). Empty when nobody manages this record.
  */
-export async function guardianRecordIds(dependentId: unknown, now = new Date()): Promise<Types.ObjectId[]> {
+export async function guardianRecordIds(
+  dependentId: unknown,
+  tenantId?: unknown,
+  now = new Date()
+): Promise<Types.ObjectId[]> {
   await connectDB();
   const dependent = await Patient.findById(toObjectId(dependentId))
-    .select('accountId dateOfBirth guardians')
+    .select('accountId tenantIds dateOfBirth guardians')
     .lean<PersonRecord | null>();
   if (!dependent) return [];
   const records: PersonRecord[] = dependent.accountId
     ? await Patient.find({ accountId: dependent.accountId, active: { $ne: false } })
-        .select('dateOfBirth guardians')
+        .select('tenantIds dateOfBirth guardians')
         .limit(MAX_DEPENDENTS)
         .lean<PersonRecord[]>()
     : [dependent];
 
+  // A staff link only hears about the clinic that made it (as familyAccess).
+  const inScope = (g: GuardianEntry, r: PersonRecord) => {
+    if (g.source === 'phone') return true;
+    const linkTenant = g.tenantId ?? r.tenantIds?.[0];
+    return !!tenantId && !!linkTenant && String(linkTenant) === String(tenantId);
+  };
   const direct = records.flatMap((r) =>
-    (r.guardians ?? []).filter((g) => guardianshipActive(g, r.dateOfBirth ?? dependent.dateOfBirth, now)).map((g) => g.patient)
+    (r.guardians ?? [])
+      .filter((g) => guardianshipActive(g, r.dateOfBirth ?? dependent.dateOfBirth, now) && inScope(g, r))
+      .map((g) => g.patient)
   );
   if (!direct.length) return [];
 

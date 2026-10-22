@@ -85,6 +85,16 @@ export const createVisitSchema = visitFieldsSchema;
 export const updateVisitSchema = visitFieldsSchema.partial();
 
 /** Server-side signature metadata; the client only supplies the name and image. */
+/** Visit fields a doctor signs for: writing any of them makes the writer the content author. */
+const ATTESTED_FIELDS = [
+  'patient', 'provider', 'chiefComplaint', 'historyOfPresentIllness', 'admittingImpression', 'physicalExam',
+  'diagnoses', 'assessment', 'plan', 'soapNotes', 'treatmentPlan', 'digitalSignature',
+] as const;
+
+export function touchesAttestedFields(body: Record<string, unknown>): boolean {
+  return ATTESTED_FIELDS.some((key) => body[key] !== undefined);
+}
+
 export function signatureWithMetadata(
   sig: { providerName?: string; signatureData?: string } | undefined,
   userId: string,
