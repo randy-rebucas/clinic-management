@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { FormEvent, useState } from 'react';
+import Link from 'next/link';
+import { Icon, icons } from '@/components/PublicPage';
 
 interface InstallCheck {
   nodeVersion?: string;
@@ -15,9 +16,7 @@ interface InstallCheck {
   warnings: string[];
 }
 
-interface InstallClientProps {
-  initialChecks: InstallCheck;
-}
+type Notice = { tone: 'error' | 'info' | 'success'; text: string } | null;
 
 // The first step whose requirements aren't met yet.
 function firstIncompleteStep(checks: InstallCheck) {
@@ -27,551 +26,512 @@ function firstIncompleteStep(checks: InstallCheck) {
   return 4;
 }
 
-export default function InstallClient({ initialChecks }: InstallClientProps) {
-  const router = useRouter();
-  const checks = initialChecks;
-  const [currentStep, setCurrentStep] = useState(() => firstIncompleteStep(initialChecks));
+const STEPS = [
+  { number: 1, title: 'Prerequisites' },
+  { number: 2, title: 'Environment' },
+  { number: 3, title: 'Database' },
+  { number: 4, title: 'Complete' },
+];
+
+const INSTALL_AUTH_ERROR =
+  'The install secret was rejected. It must match the INSTALL_SECRET set on the server (at least 32 characters).';
+
+const xIcon = 'M6 18L18 6M6 6l12 12';
+const dbIcon = 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4';
+const lockIcon = 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z';
+
+const btnPrimary =
+  'inline-flex items-center justify-center gap-2 rounded-md bg-brand-teal px-5 py-2.5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-teal-dark disabled:cursor-not-allowed disabled:opacity-50';
+const btnSecondary =
+  'inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 transition-colors duration-150 hover:border-gray-900 hover:text-gray-900 disabled:opacity-50';
+
+function Spinner() {
+  return <span className="h-4 w-4 rounded-full border-2 border-current/30 border-t-current animate-spin" aria-hidden="true" />;
+}
+
+function StatusRow({
+  icon,
+  title,
+  ok,
+  okLabel,
+  badLabel,
+  tone = 'error',
+  children,
+}: {
+  icon: string;
+  title: string;
+  ok: boolean;
+  okLabel: string;
+  badLabel: string;
+  tone?: 'error' | 'warn';
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border border-gray-200 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-3 font-semibold text-gray-900">
+          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-gray-50 text-gray-500">
+            <Icon d={icon} className="w-4 h-4" />
+          </span>
+          {title}
+        </span>
+        {ok ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-teal-light px-2.5 py-0.5 text-xs font-semibold text-brand-teal-deep">
+            <Icon d={icons.check} className="w-3.5 h-3.5" />
+            {okLabel}
+          </span>
+        ) : (
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+              tone === 'warn' ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-700'
+            }`}
+          >
+            {badLabel}
+          </span>
+        )}
+      </div>
+      {children && <div className="mt-3 pl-11 text-sm text-gray-600">{children}</div>}
+    </div>
+  );
+}
+
+function Code({ children }: { children: React.ReactNode }) {
+  return <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[13px] text-gray-900">{children}</code>;
+}
+
+export default function InstallClient({ enabled }: { enabled: boolean }) {
+  const [installSecret, setInstallSecret] = useState('');
+  const [checks, setChecks] = useState<InstallCheck | null>(null);
+  const [currentStep, setCurrentStep] = useState(1);
+  const [loading, setLoading] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
-  const [installSecret, setInstallSecret] = useState('');
-  const [authError, setAuthError] = useState<string | null>(null);
-
-  const INSTALL_AUTH_ERROR =
-    'Install request was rejected. The server must have INSTALL_SECRET set (at least 32 characters), and the install secret you entered must match it exactly.';
+  const [notice, setNotice] = useState<Notice>(null);
 
   const installFetch = async (url: string, init: RequestInit = {}) => {
     const headers = new Headers(init.headers);
     headers.set('Authorization', `Bearer ${installSecret}`);
     const response = await fetch(url, { ...init, headers });
     if (response.status === 401 || response.status === 403) {
-      setAuthError(INSTALL_AUTH_ERROR);
+      setNotice({ tone: 'error', text: INSTALL_AUTH_ERROR });
       return null;
     }
-    setAuthError(null);
     return response;
   };
 
-  const refreshPage = () => {
-    router.refresh();
+  /** Load (or reload) the checks; only works with a valid install secret. */
+  const loadChecks = async (jumpToFirstIncomplete: boolean) => {
+    setLoading(true);
+    try {
+      const response = await installFetch('/api/install/check');
+      if (!response) return;
+      const data = await response.json();
+      if (!data.success) {
+        setNotice({ tone: 'error', text: data.error || 'Failed to check installation status.' });
+        return;
+      }
+      setChecks(data.checks);
+      if (jumpToFirstIncomplete) setCurrentStep(firstIncompleteStep(data.checks));
+      setNotice(null);
+    } catch {
+      setNotice({ tone: 'error', text: 'Could not reach the server. Is it running?' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUnlock = (e: FormEvent) => {
+    e.preventDefault();
+    if (installSecret) loadChecks(true);
   };
 
   const handleInstallDependencies = async () => {
     setInstalling(true);
     try {
-      const response = await installFetch('/api/install/dependencies', {
-        method: 'POST',
-      });
+      const response = await installFetch('/api/install/dependencies', { method: 'POST' });
       if (!response) return;
       const data = await response.json();
-      
-      if (data.success) {
-        alert('Please run "npm install" in your terminal, then refresh this page.');
-      } else {
-        alert(data.error || 'Please run "npm install" in your terminal.');
-      }
-    } catch (err: any) {
-      alert('Please run "npm install" in your terminal.');
+      setNotice({
+        tone: 'info',
+        text: data.success
+          ? 'Run "npm install" in your terminal, then refresh the checks.'
+          : data.error || 'Run "npm install" in your terminal.',
+      });
+    } catch {
+      setNotice({ tone: 'info', text: 'Run "npm install" in your terminal, then refresh the checks.' });
     } finally {
       setInstalling(false);
     }
   };
 
   const handleResetDatabase = async () => {
-    if (!resetConfirm) {
-      alert('Please confirm that you want to reset the database. This will delete all data!');
-      return;
-    }
-
+    if (!resetConfirm) return;
     setResetting(true);
     try {
-      const response = await installFetch('/api/install/reset', {
-        method: 'POST',
-      });
+      const response = await installFetch('/api/install/reset', { method: 'POST' });
       if (!response) return;
       const data = await response.json();
-      
       if (data.success) {
-        alert('Database reset successfully! Refreshing page...');
-        setTimeout(() => {
-          router.refresh();
-        }, 1000);
+        setNotice({ tone: 'success', text: 'Database reset.' });
+        await loadChecks(false);
       } else {
-        alert(data.error || 'Failed to reset database');
+        setNotice({ tone: 'error', text: data.error || 'Failed to reset database.' });
       }
     } catch (err: any) {
-      alert(err.message || 'Failed to reset database');
+      setNotice({ tone: 'error', text: err.message || 'Failed to reset database.' });
     } finally {
       setResetting(false);
       setResetConfirm(false);
     }
   };
 
-  const steps = [
-    { number: 1, title: 'Prerequisites', description: 'Check system requirements' },
-    { number: 2, title: 'Environment', description: 'Configure environment variables' },
-    { number: 3, title: 'Database', description: 'Reset & test connection' },
-    { number: 4, title: 'Complete', description: 'Installation finished' },
-  ];
+  const refreshButton = (
+    <button type="button" onClick={() => loadChecks(false)} disabled={loading} className={btnSecondary}>
+      {loading && <Spinner />}
+      Refresh
+    </button>
+  );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 py-12 px-4">
-      <div className="max-w-5xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-3xl shadow-xl mb-6">
-            <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
-          </div>
-          <h1 className="text-4xl font-bold text-gray-900 mb-3">Installation Wizard</h1>
-          <p className="text-gray-600 text-lg">
-            Welcome to MyClinicSoft installation
-          </p>
-        </div>
+    <div className="relative min-h-[80vh] bg-white overflow-hidden">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-[24rem]"
+        style={{
+          backgroundImage:
+            'linear-gradient(to right, #e5e7eb 1px, transparent 1px), linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)',
+          backgroundSize: '48px 48px',
+          maskImage: 'radial-gradient(ellipse 70% 70% at 50% 0%, black 20%, transparent 75%)',
+          WebkitMaskImage: 'radial-gradient(ellipse 70% 70% at 50% 0%, black 20%, transparent 75%)',
+        }}
+      />
+      <div className="relative mx-auto max-w-3xl px-4 sm:px-6 py-10 sm:py-14">
+        <header className="mb-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-teal-dark mb-3">Setup</p>
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-tight">Installation wizard</h1>
+          <p className="text-gray-600 mt-2">Check the server, configure the environment, and prepare the database.</p>
+        </header>
 
-        {/* Main Card */}
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
-          {/* Progress Steps */}
-          <div className="bg-gray-50 border-b border-gray-200 p-6">
-            <div className="flex items-center justify-between">
-              {steps.map((step, index) => (
-                <div key={step.number} className="flex items-center flex-1">
-                  <div className="flex flex-col items-center flex-1" aria-current={currentStep === step.number ? 'step' : undefined}>
-                    <div
-                      className={`w-12 h-12 rounded-full flex items-center justify-center font-semibold transition-all ${
-                        currentStep >= step.number
-                          ? 'bg-blue-600 text-white shadow-lg'
-                          : 'bg-gray-200 text-gray-600'
-                      }`}
-                    >
-                      {currentStep > step.number ? (
-                        <>
-                          <svg aria-hidden="true" className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                          <span className="sr-only">Completed: </span>
-                        </>
-                      ) : (
-                        step.number
-                      )}
-                    </div>
-                    <p className="text-xs mt-2 text-center text-gray-600 font-medium">
-                      {step.title}
-                    </p>
-                    <p className="text-xs text-gray-400 text-center mt-1">
-                      {step.description}
-                    </p>
-                  </div>
-                  {index < steps.length - 1 && (
-                    <div
-                      className={`h-1 flex-1 mx-2 transition-all ${
-                        currentStep > step.number ? 'bg-blue-600' : 'bg-gray-200'
-                      }`}
-                    />
-                  )}
-                </div>
-              ))}
+        <div className="rounded-xl border border-gray-200 bg-white shadow-[0_20px_50px_rgb(15,23,42,0.06)]">
+          {!enabled ? (
+            <div className="p-6 sm:p-8">
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-gray-500">
+                <Icon d={lockIcon} />
+              </div>
+              <h2 className="text-lg font-bold text-gray-900">The installer is disabled</h2>
+              <p className="text-sm text-gray-600 mt-1.5 leading-relaxed">
+                Set <Code>INSTALL_SECRET</Code> (at least 32 characters) on the server and restart it to use this wizard.
+                Remove it again once setup is done.
+              </p>
             </div>
-          </div>
-
-          {/* Step Content */}
-          <div className="p-8">
-            <div className="mb-6 border border-gray-200 rounded-lg p-4">
-              <label htmlFor="install-secret" className="block text-sm font-semibold text-gray-700 mb-1">
+          ) : !checks ? (
+            /* Unlock */
+            <form onSubmit={handleUnlock} className="p-6 sm:p-8">
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-brand-teal-light text-brand-teal-dark">
+                <Icon d={lockIcon} />
+              </div>
+              <h2 className="text-lg font-bold text-gray-900">Enter the install secret</h2>
+              <p className="text-sm text-gray-600 mt-1.5">
+                It must match <Code>INSTALL_SECRET</Code> on the server. Server checks are only shown after it&apos;s verified.
+              </p>
+              <label htmlFor="install-secret" className="sr-only">
                 Install secret
               </label>
-              <input
-                id="install-secret"
-                type="password"
-                autoComplete="off"
-                value={installSecret}
-                onChange={(e) => setInstallSecret(e.target.value)}
-                aria-describedby="install-secret-help"
-                aria-invalid={authError ? true : undefined}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p id="install-secret-help" className="text-xs text-gray-500 mt-1">
-                Must match the INSTALL_SECRET value configured on the server (at least 32 characters). Required for installer actions.
-              </p>
-              {authError && (
-                <p className="mt-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3" role="alert">
-                  {authError}
+              <div className="mt-5 flex flex-col sm:flex-row gap-3">
+                <input
+                  id="install-secret"
+                  type="password"
+                  autoComplete="off"
+                  value={installSecret}
+                  onChange={(e) => setInstallSecret(e.target.value)}
+                  aria-invalid={notice?.tone === 'error' ? true : undefined}
+                  className="flex-1 rounded-md border border-gray-300 px-3.5 py-2.5 font-mono text-sm focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/25"
+                  placeholder="Install secret"
+                />
+                <button type="submit" disabled={!installSecret || loading} className={btnPrimary}>
+                  {loading && <Spinner />}
+                  Unlock
+                </button>
+              </div>
+              {notice && (
+                <p role="alert" className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                  {notice.text}
                 </p>
               )}
-            </div>
+            </form>
+          ) : (
             <>
+              {/* Progress */}
+              <ol className="grid grid-cols-4 gap-2 border-b border-gray-200 px-5 sm:px-8 pt-5 pb-4">
+                {STEPS.map((step) => {
+                  const done = currentStep > step.number;
+                  const active = currentStep === step.number;
+                  return (
+                    <li key={step.number} aria-current={active ? 'step' : undefined}>
+                      <span className={`block h-1 rounded-full ${done || active ? 'bg-brand-teal' : 'bg-gray-200'}`} />
+                      <span className="mt-2.5 flex items-center gap-2">
+                        <span
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-mono text-[10px] font-semibold ${
+                            done ? 'bg-brand-teal text-white' : active ? 'bg-brand-teal-light text-brand-teal-deep' : 'bg-gray-100 text-gray-400'
+                          }`}
+                        >
+                          {done ? <Icon d={icons.check} className="w-3 h-3" /> : step.number}
+                          {done && <span className="sr-only">Completed: </span>}
+                        </span>
+                        <span className={`hidden sm:inline text-sm font-semibold ${active ? 'text-gray-900' : 'text-gray-400'}`}>
+                          {step.title}
+                        </span>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+
+              <div className="p-5 sm:p-8 space-y-6">
+                {notice && (
+                  <p
+                    role={notice.tone === 'error' ? 'alert' : 'status'}
+                    className={`rounded-md border px-4 py-3 text-sm ${
+                      notice.tone === 'error'
+                        ? 'border-red-200 bg-red-50 text-red-800'
+                        : notice.tone === 'success'
+                          ? 'border-brand-teal/30 bg-brand-teal-light/60 text-brand-teal-deep'
+                          : 'border-blue-200 bg-blue-50 text-blue-900'
+                    }`}
+                  >
+                    {notice.text}
+                  </p>
+                )}
+
                 {/* Step 1: Prerequisites */}
                 {currentStep === 1 && (
-                  <div className="space-y-6">
+                  <>
                     <div>
-                      <h2 className="text-2xl font-semibold mb-2">Step 1: System Prerequisites</h2>
-                      <p className="text-gray-600">
-                        Let&apos;s verify that your system meets the requirements.
-                      </p>
+                      <h2 className="text-xl font-bold text-gray-900 tracking-tight">System prerequisites</h2>
+                      <p className="text-sm text-gray-600 mt-1">Make sure the server can run MyClinicSoft.</p>
                     </div>
-
-                    <div className="space-y-4">
-                      {/* Node.js Version */}
-                      <div className="border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-3">
-                            <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span className="font-semibold">Node.js Version</span>
-                          </div>
-                          {checks.nodeVersionValid ? (
-                            <span className="text-green-600 text-sm font-medium flex items-center gap-1">
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                              </svg>
-                              {checks.nodeVersion || 'Valid'}
-                            </span>
-                          ) : (
-                            <span className="text-red-600 text-sm font-medium">Not Detected</span>
-                          )}
-                        </div>
-                        <p className="text-sm text-gray-600 ml-9">
-                          Requires Node.js 20.9 or higher
-                        </p>
-                      </div>
-
-                      {/* Dependencies */}
-                      <div className="border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-3">
-                            <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                            </svg>
-                            <span className="font-semibold">Dependencies</span>
-                          </div>
-                          {checks.dependenciesInstalled ? (
-                            <span className="text-green-600 text-sm font-medium flex items-center gap-1">
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                              </svg>
-                              Installed
-                            </span>
-                          ) : (
-                            <span className="text-yellow-600 text-sm font-medium">Not Installed</span>
-                          )}
-                        </div>
+                    <div className="space-y-3">
+                      <StatusRow
+                        icon={icons.checkCircle}
+                        title="Node.js"
+                        ok={checks.nodeVersionValid}
+                        okLabel={checks.nodeVersion || 'Valid'}
+                        badLabel="Too old"
+                      >
+                        Requires Node.js 20.9 or higher.
+                      </StatusRow>
+                      <StatusRow
+                        icon={icons.book}
+                        title="Dependencies"
+                        ok={checks.dependenciesInstalled}
+                        okLabel="Installed"
+                        badLabel="Not installed"
+                        tone="warn"
+                      >
                         {!checks.dependenciesInstalled && (
-                          <div className="ml-9 mt-2">
-                            <button
-                              onClick={handleInstallDependencies}
-                              disabled={installing}
-                              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
-                            >
-                              {installing ? (
-                                <>
-                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                                  Installing...
-                                </>
-                              ) : (
-                                <>
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                  </svg>
-                                  Install Dependencies
-                                </>
-                              )}
+                          <div className="flex flex-wrap items-center gap-3">
+                            <button type="button" onClick={handleInstallDependencies} disabled={installing} className={btnPrimary}>
+                              {installing && <Spinner />}
+                              Install dependencies
                             </button>
-                            <p className="text-xs text-gray-500 mt-2">
-                              Or run manually: <code className="bg-gray-100 px-1 rounded">npm install</code>
-                            </p>
+                            <span className="text-xs text-gray-500">
+                              or run <Code>npm install</Code>
+                            </span>
                           </div>
                         )}
-                      </div>
+                      </StatusRow>
                     </div>
-
-                    {checks.errors.length > 0 && (
-                      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                        <h3 className="font-semibold text-red-800 mb-2">Errors:</h3>
-                        <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
-                          {checks.errors.map((error, idx) => (
-                            <li key={idx}>{error}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {checks.warnings.length > 0 && (
-                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                        <h3 className="font-semibold text-yellow-800 mb-2">Warnings:</h3>
-                        <ul className="list-disc list-inside text-sm text-yellow-700 space-y-1">
-                          {checks.warnings.map((warning, idx) => (
-                            <li key={idx}>{warning}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    <div className="flex gap-3">
-                      <button
-                        onClick={refreshPage}
-                        className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                      >
-                        Refresh
-                      </button>
-                      <button
-                        onClick={() => setCurrentStep(2)}
-                        disabled={!checks.nodeVersionValid || !checks.dependenciesInstalled}
-                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                      >
-                        Continue
-                      </button>
-                    </div>
-                  </div>
+                  </>
                 )}
 
-                {/* Step 2: Environment Configuration */}
+                {/* Step 2: Environment */}
                 {currentStep === 2 && (
-                  <div className="space-y-6">
+                  <>
                     <div>
-                      <h2 className="text-2xl font-semibold mb-2">Step 2: Environment Configuration</h2>
-                      <p className="text-gray-600">
-                        Configure your environment variables in <code className="bg-gray-100 px-1 rounded">.env.local</code>
+                      <h2 className="text-xl font-bold text-gray-900 tracking-tight">Environment</h2>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Set the required variables in <Code>.env.local</Code> (or your host&apos;s environment settings).
                       </p>
                     </div>
-
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <h3 className="font-semibold text-blue-900 mb-3">Required Environment Variables</h3>
-                      <div className="space-y-3">
-                        <div>
-                          <p className="text-sm font-medium text-blue-800">MONGODB_URI</p>
-                          <p className="text-xs text-blue-700 mt-1">
-                            Your MongoDB connection string (e.g., <code>mongodb://localhost:27017/myclinicsoft</code> or MongoDB Atlas connection string)
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-blue-800">SESSION_SECRET</p>
-                          <p className="text-xs text-blue-700 mt-1">
-                            A secure random string (minimum 32 characters). Generate with: <code>openssl rand -base64 32</code>
-                          </p>
-                        </div>
+                    <dl className="rounded-lg border border-gray-200 divide-y divide-gray-100 text-sm">
+                      <div className="p-4">
+                        <dt className="font-mono font-semibold text-gray-900">MONGODB_URI</dt>
+                        <dd className="text-gray-600 mt-1">
+                          A MongoDB connection string, e.g. <Code>mongodb://localhost:27017/myclinicsoft</Code> or a MongoDB
+                          Atlas URI.
+                        </dd>
                       </div>
-                    </div>
-
-                    <div className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-semibold">Environment Variables</span>
-                        {checks.environmentConfigured ? (
-                          <span className="text-green-600 text-sm font-medium flex items-center gap-1">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                            Configured
-                          </span>
+                      <div className="p-4">
+                        <dt className="font-mono font-semibold text-gray-900">SESSION_SECRET</dt>
+                        <dd className="text-gray-600 mt-1">
+                          A random string of at least 32 characters. Generate one with <Code>openssl rand -base64 32</Code>.
+                        </dd>
+                      </div>
+                    </dl>
+                    <StatusRow
+                      icon={lockIcon}
+                      title="Environment variables"
+                      ok={checks.environmentConfigured}
+                      okLabel="Configured"
+                      badLabel="Not configured"
+                      tone="warn"
+                    >
+                      {!checks.environmentConfigured &&
+                        (checks.envLocalExists ? (
+                          <>
+                            <Code>.env.local</Code> exists but needs valid <Code>MONGODB_URI</Code> and{' '}
+                            <Code>SESSION_SECRET</Code> values.
+                          </>
                         ) : (
-                          <span className="text-yellow-600 text-sm font-medium">Not Configured</span>
-                        )}
-                      </div>
-                      {!checks.environmentConfigured && (
-                        <div className="mt-2">
-                          {checks.envLocalExists ? (
-                            <div className="space-y-2">
-                              <p className="text-sm text-gray-600">
-                                <code className="bg-gray-100 px-1 rounded">.env.local</code> file exists but needs to be updated.
-                              </p>
-                              <p className="text-xs text-gray-500">
-                                Please ensure the file contains valid <code className="bg-gray-100 px-1 rounded">MONGODB_URI</code> and <code className="bg-gray-100 px-1 rounded">SESSION_SECRET</code> values.
-                              </p>
-                            </div>
-                          ) : (
-                            <p className="text-sm text-gray-600">
-                              Please create a <code className="bg-gray-100 px-1 rounded">.env.local</code> file in the project root with the required variables.
-                            </p>
-                          )}
-                        </div>
+                          <>
+                            Create <Code>.env.local</Code> in the project root with the variables above.
+                          </>
+                        ))}
+                    </StatusRow>
+                    <StatusRow
+                      icon={dbIcon}
+                      title="Database connection"
+                      ok={checks.databaseConnected}
+                      okLabel="Connected"
+                      badLabel="Not connected"
+                    >
+                      {!checks.databaseConnected && (
+                        <>
+                          Check <Code>MONGODB_URI</Code> and that MongoDB is reachable from this server.
+                        </>
                       )}
-                    </div>
-
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => setCurrentStep(1)}
-                        className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                      >
-                        Back
-                      </button>
-                      <button
-                        onClick={refreshPage}
-                        className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                      >
-                        Refresh
-                      </button>
-                      <button
-                        onClick={() => setCurrentStep(3)}
-                        disabled={!checks.environmentConfigured}
-                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                      >
-                        Continue
-                      </button>
-                    </div>
-                  </div>
+                    </StatusRow>
+                  </>
                 )}
 
-                {/* Step 3: Database Reset & Connection */}
+                {/* Step 3: Database reset */}
                 {currentStep === 3 && (
-                  <div className="space-y-6">
+                  <>
                     <div>
-                      <h2 className="text-2xl font-semibold mb-2">Step 3: Database Reset & Connection</h2>
-                      <p className="text-gray-600">
-                        Reset the database to ensure a clean installation, then test the connection.
-                      </p>
+                      <h2 className="text-xl font-bold text-gray-900 tracking-tight">Prepare the database</h2>
+                      <p className="text-sm text-gray-600 mt-1">Start from a clean database for a fresh installation.</p>
                     </div>
-
-                    {/* Database Reset */}
-                    <div className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-semibold">Database Reset</span>
-                        {checks.databaseReset ? (
-                          <span className="text-green-600 text-sm font-medium flex items-center gap-1">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                            Reset Complete
-                          </span>
-                        ) : (
-                          <span className="text-yellow-600 text-sm font-medium">Not Reset</span>
-                        )}
-                      </div>
-                      {!checks.databaseReset && (
-                        <div className="mt-3 space-y-3">
-                          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                            <p className="text-sm text-red-800 font-semibold mb-2">⚠️ Warning</p>
-                            <p className="text-sm text-red-700">
-                              This will delete <strong>ALL</strong> data from the database including:
-                            </p>
-                            <ul className="text-xs text-red-600 mt-2 list-disc list-inside space-y-1">
-                              <li>All patients, appointments, and medical records</li>
-                              <li>All users, roles, and permissions</li>
-                              <li>All invoices, documents, and settings</li>
-                              <li>Everything else in the database</li>
-                            </ul>
-                            <p className="text-xs text-red-700 mt-2 font-semibold">
-                              This action cannot be undone!
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              id="resetConfirm"
-                              checked={resetConfirm}
-                              onChange={(e) => setResetConfirm(e.target.checked)}
-                              className="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
-                            />
-                            <label htmlFor="resetConfirm" className="text-sm text-gray-700">
-                              I understand this will delete all data and want to proceed
-                            </label>
-                          </div>
-                          {!checks.databaseConnected && (
-                            <p className="text-xs text-gray-500 mt-2">
-                              ⚠️ Please test the database connection first before resetting.
-                            </p>
-                          )}
-                          <button
-                            onClick={handleResetDatabase}
-                            disabled={!resetConfirm || resetting || !checks.databaseConnected}
-                            className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                          >
-                            {resetting ? (
-                              <>
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                                Resetting Database...
-                              </>
-                            ) : (
-                              <>
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                                Reset Database
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Database Connection */}
-                    <div className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-semibold">Database Connection</span>
-                        {checks.databaseConnected ? (
-                          <span className="text-green-600 text-sm font-medium flex items-center gap-1">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                            Connected
-                          </span>
-                        ) : (
-                          <span className="text-red-600 text-sm font-medium flex items-center gap-1">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                            Failed
-                          </span>
-                        )}
-                      </div>
-                      {!checks.databaseConnected && (
-                        <p className="text-sm text-gray-600 mt-2">
-                          Please check your MONGODB_URI in <code className="bg-gray-100 px-1 rounded">.env.local</code> and ensure MongoDB is running.
+                    {checks.databaseReset ? (
+                      <StatusRow icon={dbIcon} title="Database" ok okLabel="Clean" badLabel="" />
+                    ) : (
+                      <div className="rounded-lg border border-red-200 bg-red-50/60 p-5">
+                        <p className="flex items-center gap-2 font-semibold text-red-800">
+                          <Icon d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" className="w-5 h-5" />
+                          This deletes everything in the database
                         </p>
-                      )}
-                    </div>
-
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => setCurrentStep(2)}
-                        className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                      >
-                        Back
-                      </button>
-                      <button
-                        onClick={refreshPage}
-                        className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                      >
-                        Refresh
-                      </button>
-                      <button
-                        onClick={() => setCurrentStep(4)}
-                        disabled={!checks.databaseConnected || !checks.databaseReset}
-                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                      >
-                        Complete Installation
-                      </button>
-                    </div>
-                  </div>
+                        <ul className="mt-3 space-y-1 text-sm text-red-700">
+                          <li>All patients, appointments, and medical records</li>
+                          <li>All users, roles, and permissions</li>
+                          <li>All invoices, documents, and settings</li>
+                        </ul>
+                        <p className="mt-3 text-sm font-semibold text-red-800">It cannot be undone.</p>
+                        <label className="mt-4 flex items-start gap-2.5 text-sm text-gray-800">
+                          <input
+                            type="checkbox"
+                            checked={resetConfirm}
+                            onChange={(e) => setResetConfirm(e.target.checked)}
+                            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                          />
+                          I understand this will delete all data and want to proceed.
+                        </label>
+                        {!checks.databaseConnected && (
+                          <p className="mt-3 text-xs text-red-700">Connect the database first (step 2).</p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleResetDatabase}
+                          disabled={!resetConfirm || resetting || !checks.databaseConnected}
+                          className="mt-4 inline-flex items-center justify-center gap-2 rounded-md bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {resetting && <Spinner />}
+                          Reset database
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {/* Step 4: Complete */}
                 {currentStep === 4 && (
-                  <div className="space-y-6 text-center">
-                    <div className="inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-full mb-4">
-                      <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
+                  <div className="py-4 text-center">
+                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-brand-teal-light text-brand-teal-dark">
+                      <Icon d={icons.check} className="w-7 h-7" />
                     </div>
-                    <h2 className="text-2xl font-semibold mb-2">Installation Complete!</h2>
-                    <p className="text-gray-600 mb-6">
-                      MyClinicSoft has been successfully installed and configured.
+                    <h2 className="text-xl font-bold text-gray-900">Installation complete</h2>
+                    <p className="text-sm text-gray-600 mt-1.5">
+                      MyClinicSoft is ready. Remove <Code>INSTALL_SECRET</Code> from the server to switch this wizard off.
                     </p>
-                    <div className="flex gap-3 justify-center">
-                      <button
-                        onClick={() => router.push('/login')}
-                        className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold"
-                      >
-                        Go to Login
-                      </button>
+                    <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
+                      <Link href="/tenant-onboard" className={btnPrimary}>
+                        Register the first clinic
+                      </Link>
+                      <Link href="/login" className={btnSecondary}>
+                        Go to login
+                      </Link>
                     </div>
                   </div>
                 )}
+
+                {/* Errors and warnings from the checks */}
+                {currentStep < 4 && (checks.errors.length > 0 || checks.warnings.length > 0) && (
+                  <div className="space-y-3">
+                    {checks.errors.length > 0 && (
+                      <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+                        <p className="text-sm font-semibold text-red-800 mb-1.5">Errors</p>
+                        <ul className="space-y-1 text-sm text-red-700">
+                          {checks.errors.map((e) => (
+                            <li key={e} className="flex gap-2">
+                              <Icon d={xIcon} className="w-4 h-4 mt-0.5 shrink-0" />
+                              {e}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {checks.warnings.length > 0 && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                        <p className="text-sm font-semibold text-amber-900 mb-1.5">Warnings</p>
+                        <ul className="space-y-1 text-sm text-amber-800 list-disc pl-5">
+                          {checks.warnings.map((w) => (
+                            <li key={w}>{w}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Navigation */}
+                {currentStep < 4 && (
+                  <div className="flex flex-wrap items-center gap-3 border-t border-gray-100 pt-5">
+                    {currentStep > 1 && (
+                      <button type="button" onClick={() => setCurrentStep(currentStep - 1)} className={btnSecondary}>
+                        Back
+                      </button>
+                    )}
+                    {refreshButton}
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep(currentStep + 1)}
+                      disabled={
+                        currentStep === 1
+                          ? !checks.nodeVersionValid || !checks.dependenciesInstalled
+                          : currentStep === 2
+                            ? !checks.environmentConfigured || !checks.databaseConnected
+                            : !checks.databaseConnected || !checks.databaseReset
+                      }
+                      className={`${btnPrimary} ml-auto`}
+                    >
+                      {currentStep === 3 ? 'Finish' : 'Continue'}
+                      <Icon d={icons.arrow} className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
             </>
-          </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
-

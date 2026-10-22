@@ -39,6 +39,12 @@ interface BookingFormData {
   room?: string;
 }
 
+interface BookedSummary {
+  doctor: string;
+  date: string;
+  time: string;
+}
+
 const subscribeNoop = () => () => {};
 
 /** Clinic subdomain from the current hostname, '' on the root domain (incl. www); not called during SSR. */
@@ -53,6 +59,97 @@ function getHostSubdomain(): string {
   return hasSubdomain ? firstPart : '';
 }
 
+function Icon({ d, className = 'w-5 h-5' }: { d: string; className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d={d} />
+    </svg>
+  );
+}
+
+const icons = {
+  arrow: 'M13 7l5 5m0 0l-5 5m5-5H6',
+  chevron: 'M9 5l7 7-7 7',
+  calendar: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z',
+  pin: 'M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z',
+  phone: 'M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z',
+  search: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z',
+  building: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4',
+  check: 'M5 13l4 4L19 7',
+  alert: 'M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+  info: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+  mobile: 'M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z',
+};
+
+const inputClass =
+  'w-full rounded-md border border-gray-300 bg-white px-3.5 py-2.5 text-base text-gray-900 placeholder:text-gray-400 transition-colors duration-150 hover:border-gray-400 focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/25 disabled:cursor-not-allowed disabled:bg-gray-50';
+
+const labelClass = 'block text-sm font-semibold text-gray-700 mb-1.5';
+
+const nextSteps = [
+  'The clinic reviews your request.',
+  'You get a confirmation by SMS.',
+  'On the day, check in at the front desk or by QR.',
+];
+
+function Spinner({ label }: { label: string }) {
+  return (
+    <div role="status" className="flex flex-col items-center gap-3 py-16">
+      <div className="h-9 w-9 rounded-full border-[3px] border-brand-teal-light border-t-brand-teal animate-spin" />
+      <p className="text-sm font-medium text-gray-500">{label}</p>
+    </div>
+  );
+}
+
+/** White page with the faint grid used across the public site. */
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative min-h-screen bg-white overflow-hidden">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-[28rem]"
+        style={{
+          backgroundImage:
+            'linear-gradient(to right, #e5e7eb 1px, transparent 1px), linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)',
+          backgroundSize: '48px 48px',
+          maskImage: 'radial-gradient(ellipse 80% 70% at 30% 0%, black 20%, transparent 75%)',
+          WebkitMaskImage: 'radial-gradient(ellipse 80% 70% at 30% 0%, black 20%, transparent 75%)',
+        }}
+      />
+      <div className="container relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-10 sm:py-14">{children}</div>
+    </div>
+  );
+}
+
+function PageHeader({ step, title, children }: { step: string; title: React.ReactNode; children?: React.ReactNode }) {
+  return (
+    <header className="mb-8 sm:mb-10">
+      <p className="animate-fade-up-in inline-flex items-center gap-2 rounded-full border border-brand-teal/30 bg-brand-teal-light/70 px-3 py-1 text-xs sm:text-sm font-medium text-brand-teal-deep mb-4">
+        <Icon d={icons.calendar} className="w-3.5 h-3.5" />
+        {step}
+      </p>
+      <h1 className="animate-fade-up-in text-3xl sm:text-4xl lg:text-[2.75rem] font-extrabold text-gray-900 tracking-tight leading-[1.1]">
+        {title}
+      </h1>
+      {children && (
+        <p className="animate-fade-up-in text-base sm:text-lg text-gray-600 mt-3 max-w-2xl" style={{ animationDelay: '90ms' }}>
+          {children}
+        </p>
+      )}
+    </header>
+  );
+}
+
+function SectionTitle({ n, children }: { n: number; children: React.ReactNode }) {
+  return (
+    <h2 className="flex items-center gap-3 text-lg font-bold text-gray-900 tracking-tight mb-4">
+      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-teal-light font-mono text-xs font-semibold text-brand-teal-deep">
+        {n}
+      </span>
+      {children}
+    </h2>
+  );
+}
+
 export default function PublicBookingClient() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [fetchedSlots, setAvailableSlots] = useState<string[]>([]);
@@ -63,6 +160,7 @@ export default function PublicBookingClient() {
   const [selectedClinic, setSelectedClinic] = useState<Clinic | null>(null);
   const [availableClinics, setAvailableClinics] = useState<Clinic[]>([]);
   const [loadingClinics, setLoadingClinics] = useState(true);
+  const [clinicQuery, setClinicQuery] = useState('');
   const subdomain = useSyncExternalStore(subscribeNoop, getHostSubdomain, () => null);
   // On the root domain the visitor first picks a clinic, then books on its subdomain.
   const showClinicSelection = subdomain === '';
@@ -79,7 +177,7 @@ export default function PublicBookingClient() {
     reason: '',
     room: '',
   });
-  const [success, setSuccess] = useState(false);
+  const [booked, setBooked] = useState<BookedSummary | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -176,12 +274,39 @@ export default function PublicBookingClient() {
     };
   }, [slotsEnabled, selectedDate, selectedDoctor, tenantId]);
 
+  const formatTime = (time: string) => {
+    const [hours, minutes] = time.split(':').map(Number);
+    const hour = hours % 12 || 12;
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    return `${hour}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+  };
+
+  const formatDate = (dateKey: string) =>
+    new Date(`${dateKey}T00:00:00`).toLocaleDateString('en-PH', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+
+  const getMinDate = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return toDateKey(tomorrow);
+  };
+
+  const doctorLabel = (id: string) => {
+    const doctor = doctors.find((d) => d._id === id);
+    return doctor ? `Dr. ${doctor.firstName} ${doctor.lastName}` : '';
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    setSuccess(false);
+    setBooked(null);
     if (!availableSlots.includes(formData.appointmentTime)) {
       setError('Please choose one of the available times.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     setSubmitting(true);
@@ -193,7 +318,7 @@ export default function PublicBookingClient() {
         doctorId: selectedDoctor,
         appointmentDate: selectedDate,
       };
-      
+
       if (selectedClinic) {
         payload.tenantId = selectedClinic._id;
       }
@@ -207,7 +332,11 @@ export default function PublicBookingClient() {
       const data = await res.json();
 
       if (data.success) {
-        setSuccess(true);
+        setBooked({
+          doctor: doctorLabel(selectedDoctor),
+          date: formatDate(selectedDate),
+          time: formatTime(formData.appointmentTime),
+        });
         // Reset form
         setFormData({
           patientFirstName: '',
@@ -231,276 +360,206 @@ export default function PublicBookingClient() {
       setError('Failed to submit appointment request. Please try again.');
     } finally {
       setSubmitting(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
-  const formatTime = (time: string) => {
-    const [hours, minutes] = time.split(':').map(Number);
-    const hour = hours % 12 || 12;
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    return `${hour}:${minutes.toString().padStart(2, '0')} ${ampm}`;
-  };
-
-  const getMinDate = () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return toDateKey(tomorrow);
-  };
-
-  // Show clinic selection if no subdomain
+  // Root domain: pick a clinic first
   if (showClinicSelection) {
+    const q = clinicQuery.trim().toLowerCase();
+    const clinics = q
+      ? availableClinics.filter((c) =>
+          [c.displayName, c.name, c.address?.city, c.address?.state]
+            .filter(Boolean)
+            .some((v) => v!.toLowerCase().includes(q)),
+        )
+      : availableClinics;
+
     return (
-      <div className="min-h-screen relative overflow-hidden">
-        {/* Abstract Background Elements */}
-        <div className="fixed inset-0 -z-10">
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"></div>
-          <div className="absolute top-0 -left-4 w-96 h-96 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
-          <div className="absolute top-0 -right-4 w-96 h-96 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
-          <div className="absolute -bottom-8 left-20 w-96 h-96 bg-indigo-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
-          <div className="absolute top-20 right-10 w-72 h-72 border-4 border-blue-200/20 rotate-45 rounded-3xl"></div>
-          <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808008_1px,transparent_1px),linear-gradient(to_bottom,#80808008_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-        </div>
+      <Shell>
+        <PageHeader step="Step 1 of 2 · Choose your clinic" title="Book an appointment">
+          Pick the clinic you want to visit. You&apos;ll choose your doctor and an open time next.
+        </PageHeader>
 
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16 relative z-10">
-          <div className="bg-white/90 backdrop-blur-sm border border-gray-200/50 rounded-2xl sm:rounded-3xl shadow-2xl p-6 sm:p-8 lg:p-10">
-            <div className="text-center mb-8 sm:mb-10">
-              <div className="inline-flex items-center justify-center w-14 h-14 sm:w-18 sm:h-18 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl sm:rounded-3xl mb-4 sm:mb-6 shadow-xl">
-                <svg className="w-7 h-7 sm:w-9 sm:h-9 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-gray-900 mb-3 tracking-tight">Book an Appointment</h1>
-              <p className="text-base sm:text-lg text-gray-600">Select your clinic to continue</p>
+        {loadingClinics ? (
+          <Spinner label="Loading clinics…" />
+        ) : availableClinics.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/70 px-6 py-14 text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-white border border-gray-200 text-gray-400">
+              <Icon d={icons.building} />
             </div>
-
-            {loadingClinics ? (
-              <div className="flex items-center justify-center py-12 sm:py-16">
-                <div className="flex flex-col items-center gap-4">
-                  <div className="relative">
-                    <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-                  </div>
-                  <p className="text-base sm:text-lg text-gray-600 font-medium">Loading clinics...</p>
-                </div>
-              </div>
-            ) : availableClinics.length === 0 ? (
-              <div className="text-center py-12 sm:py-16">
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                </div>
-                <p className="text-gray-600 mb-4 text-base sm:text-lg">No clinics available at the moment.</p>
-                <Link href="/tenant-onboard" className="inline-block px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105">
-                  Register a new clinic
-                </Link>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 max-h-96 overflow-y-auto pr-2">
-                {availableClinics.map((clinic) => (
-                  <button
-                    key={clinic._id}
-                    type="button"
-                    onClick={() => handleClinicSelect(clinic)}
-                    className="w-full p-6 sm:p-8 border-2 border-gray-200 rounded-2xl text-left hover:border-blue-400 hover:bg-gradient-to-br hover:from-blue-50 hover:to-indigo-50 transition-all shadow-md hover:shadow-xl transform hover:scale-[1.02] bg-white/80 backdrop-blur-sm"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-bold text-lg sm:text-xl text-gray-900 mb-2">{clinic.displayName || clinic.name}</h4>
-                        {clinic.address && (clinic.address.city || clinic.address.state) && (
-                          <p className="text-sm sm:text-base text-gray-600 mb-2 flex items-center gap-2">
-                            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                            {[clinic.address.city, clinic.address.state].filter(Boolean).join(', ')}
-                          </p>
-                        )}
-                        {clinic.phone && (
-                          <p className="text-sm text-gray-600 flex items-center gap-2">
-                            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                            </svg>
-                            {clinic.phone}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex-shrink-0">
-                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl flex items-center justify-center shadow-lg">
-                          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                ))}
+            <p className="font-semibold text-gray-900">No clinics are taking online bookings yet</p>
+            <p className="text-sm text-gray-500 mt-1">Please check back soon, or contact your clinic directly.</p>
+          </div>
+        ) : (
+          <>
+            {availableClinics.length > 4 && (
+              <div className="relative mb-5 max-w-md">
+                <Icon d={icons.search} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <label htmlFor="clinic-search" className="sr-only">Search clinics</label>
+                <input
+                  id="clinic-search"
+                  type="search"
+                  value={clinicQuery}
+                  onChange={(e) => setClinicQuery(e.target.value)}
+                  placeholder="Search by clinic name or city"
+                  className={`${inputClass} pl-10`}
+                />
               </div>
             )}
 
-            <div className="mt-6 sm:mt-8 pt-6 border-t border-gray-200/50">
-              <p className="text-sm sm:text-base text-gray-600 text-center">
-                Don&apos;t see your clinic?{' '}
-                <Link href="/tenant-onboard" className="text-blue-600 hover:text-blue-700 font-semibold underline decoration-2 underline-offset-2">
-                  Register a new clinic
-                </Link>
+            {clinics.length === 0 ? (
+              <p className="py-10 text-center text-sm text-gray-500">
+                No clinics match &ldquo;{clinicQuery}&rdquo;.
               </p>
-            </div>
-          </div>
+            ) : (
+              <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {clinics.map((clinic) => {
+                  const name = clinic.displayName || clinic.name;
+                  const place = [clinic.address?.city, clinic.address?.state].filter(Boolean).join(', ');
+                  return (
+                    <li key={clinic._id}>
+                      <button
+                        type="button"
+                        onClick={() => handleClinicSelect(clinic)}
+                        className="group flex h-full w-full items-start gap-4 rounded-xl border border-gray-200 bg-white p-5 text-left transition-[border-color,box-shadow] duration-200 hover:border-brand-teal/50 hover:shadow-[0_12px_40px_rgb(15,23,42,0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal focus-visible:ring-offset-2"
+                      >
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-brand-teal-light text-lg font-bold text-brand-teal-deep">
+                          {name.charAt(0).toUpperCase()}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-semibold text-gray-900 leading-snug group-hover:text-brand-teal-dark">
+                            {name}
+                          </span>
+                          {place && (
+                            <span className="mt-1 flex items-center gap-1.5 text-sm text-gray-500">
+                              <Icon d={icons.pin} className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">{place}</span>
+                            </span>
+                          )}
+                          {clinic.phone && (
+                            <span className="mt-0.5 flex items-center gap-1.5 text-sm text-gray-500">
+                              <Icon d={icons.phone} className="w-3.5 h-3.5 shrink-0" />
+                              {clinic.phone}
+                            </span>
+                          )}
+                        </span>
+                        <Icon
+                          d={icons.chevron}
+                          className="mt-1 w-4 h-4 shrink-0 text-gray-300 transition-[color,transform] duration-150 group-hover:translate-x-0.5 group-hover:text-brand-teal"
+                        />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </>
+        )}
+
+        <div className="mt-10 flex flex-col gap-4 border-t border-gray-200 pt-6 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-gray-500">
+            Run a clinic that isn&apos;t listed?{' '}
+            <Link href="/tenant-onboard" className="font-semibold text-brand-teal-dark hover:underline underline-offset-2">
+              Start a free trial
+            </Link>
+          </p>
+          <Link
+            href="/download"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-brand-teal-dark"
+          >
+            <Icon d={icons.mobile} className="w-4 h-4 text-brand-teal-dark" />
+            Book faster with the eMCR app
+          </Link>
         </div>
-      </div>
+      </Shell>
     );
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen relative overflow-hidden flex items-center justify-center">
-        {/* Abstract Background */}
-        <div className="fixed inset-0 -z-10">
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"></div>
-          <div className="absolute top-0 -left-4 w-96 h-96 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
-          <div className="absolute top-0 -right-4 w-96 h-96 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
-        </div>
-        <div className="flex flex-col items-center gap-4 relative z-10">
-          <div className="relative">
-            <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-          </div>
-          <p className="text-base sm:text-lg text-gray-600 font-medium">Loading...</p>
-        </div>
-      </div>
+      <Shell>
+        <Spinner label="Loading…" />
+      </Shell>
     );
   }
 
+  const clinicName = selectedClinic ? selectedClinic.displayName || selectedClinic.name : '';
+  const clinicAddress = selectedClinic?.address
+    ? [selectedClinic.address.street, selectedClinic.address.city, selectedClinic.address.state].filter(Boolean).join(', ')
+    : '';
+
+  const summary = [
+    { label: 'Doctor', value: doctorLabel(selectedDoctor) },
+    { label: 'Date', value: selectedDate ? formatDate(selectedDate) : '' },
+    { label: 'Time', value: formData.appointmentTime ? formatTime(formData.appointmentTime) : '' },
+  ];
+
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      {/* Abstract Background Elements */}
-      <div className="fixed inset-0 -z-10">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"></div>
-        <div className="absolute top-0 -left-4 w-96 h-96 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
-        <div className="absolute top-0 -right-4 w-96 h-96 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
-        <div className="absolute -bottom-8 left-20 w-96 h-96 bg-indigo-400 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
-        <div className="absolute top-20 right-10 w-72 h-72 border-4 border-blue-200/20 rotate-45 rounded-3xl"></div>
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808008_1px,transparent_1px),linear-gradient(to_bottom,#80808008_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-      </div>
+    <Shell>
+      <PageHeader
+        step={clinicName ? `Booking at ${clinicName}` : 'Online booking'}
+        title={booked ? 'Request sent' : 'Book an appointment'}
+      >
+        {booked
+          ? 'The clinic will confirm your appointment shortly.'
+          : 'Choose a doctor and an open time, then tell us who’s coming.'}
+      </PageHeader>
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16 relative z-10">
-        <div className="bg-white/90 backdrop-blur-sm border border-gray-200/50 rounded-2xl sm:rounded-3xl shadow-2xl p-6 sm:p-8 lg:p-10">
-          <div className="flex flex-col gap-4 sm:gap-6 mb-6 sm:mb-8">
-            <div className="text-center">
-              <div className="inline-flex items-center justify-center w-14 h-14 sm:w-18 sm:h-18 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl sm:rounded-3xl mb-4 sm:mb-6 shadow-xl">
-                <svg className="w-7 h-7 sm:w-9 sm:h-9 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-gray-900 mb-3 tracking-tight">Book an Appointment</h1>
-              <p className="text-base sm:text-lg text-gray-600">Fill out the form below to request an appointment</p>
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_20rem] gap-6 lg:gap-10 items-start">
+        <div>
+          {error && (
+            <div role="alert" className="mb-5 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+              <Icon d={icons.alert} className="w-5 h-5 shrink-0 text-red-600" />
+              <p className="font-medium">{error}</p>
             </div>
+          )}
 
-            {success && (
-              <div className="p-4 sm:p-5 bg-green-50/90 backdrop-blur-sm border-2 border-green-200 rounded-xl sm:rounded-2xl text-sm sm:text-base text-green-800 shadow-lg">
-                <div className="flex items-start gap-3">
-                  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <div>
-                    <p className="font-semibold mb-1">Appointment request submitted successfully!</p>
-                    <p className="text-green-700">You will receive a confirmation shortly.</p>
-                  </div>
-                </div>
+          {booked ? (
+            <div className="rounded-xl border border-gray-200 bg-white p-6 sm:p-8">
+              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-brand-teal-light text-brand-teal-dark">
+                <Icon d={icons.check} className="w-6 h-6" />
               </div>
-            )}
-
-            {error && (
-              <div className="p-4 sm:p-5 bg-red-50/90 backdrop-blur-sm border-2 border-red-200 rounded-xl sm:rounded-2xl text-sm sm:text-base text-red-800 shadow-lg">
-                <div className="flex items-start gap-3">
-                  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                  <p className="font-semibold">{error}</p>
-                </div>
+              <h2 className="text-xl font-bold text-gray-900 tracking-tight">Your request is in</h2>
+              <p className="text-gray-600 mt-1">We&apos;ll text a confirmation to the mobile number you gave us.</p>
+              <dl className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  { label: 'Doctor', value: booked.doctor },
+                  { label: 'Date', value: booked.date },
+                  { label: 'Time', value: booked.time },
+                ].map((row) => (
+                  <div key={row.label} className="rounded-md border border-gray-100 bg-gray-50/70 p-3.5">
+                    <dt className="text-xs text-gray-500">{row.label}</dt>
+                    <dd className="font-semibold text-gray-900 mt-0.5">{row.value || '—'}</dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="mt-6 flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={() => setBooked(null)}
+                  className="inline-flex items-center justify-center gap-2 rounded-md bg-brand-teal px-5 py-2.5 font-semibold text-white transition-colors duration-150 hover:bg-brand-teal-dark"
+                >
+                  Book another visit
+                </button>
+                <Link
+                  href="/download"
+                  className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-300 px-5 py-2.5 font-semibold text-gray-900 transition-colors duration-150 hover:border-gray-900"
+                >
+                  <Icon d={icons.mobile} className="w-4 h-4 text-brand-teal-dark" />
+                  Track it in eMCR
+                </Link>
               </div>
-            )}
-          </div>
-
-          <form onSubmit={handleSubmit}>
-            <div className="flex flex-col gap-6">
-              {/* Patient Information */}
-              <div className="pb-6 sm:pb-8 border-b border-gray-200/50">
-                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4 sm:mb-6 flex items-center gap-2">
-                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center">
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                  </div>
-                  Patient Information
-                </h2>
-                <div className="flex flex-col gap-4 md:flex-row md:flex-wrap">
-                  <div className="md:flex-1 md:min-w-[200px]" style={{ flex: '1 1 calc(50% - 8px)', minWidth: '200px' }}>
-                    <label htmlFor="booking-first-name" className="block text-sm font-semibold text-gray-700 mb-2">
-                      First Name <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      id="booking-first-name"
-                      required
-                      value={formData.patientFirstName}
-                      onChange={(e) => setFormData({ ...formData, patientFirstName: e.target.value })}
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
-                    />
-                  </div>
-                  <div className="md:flex-1 md:min-w-[200px]" style={{ flex: '1 1 calc(50% - 8px)', minWidth: '200px' }}>
-                    <label htmlFor="booking-last-name" className="block text-xs font-medium mb-2">
-                      Last Name <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      id="booking-last-name"
-                      required
-                      value={formData.patientLastName}
-                      onChange={(e) => setFormData({ ...formData, patientLastName: e.target.value })}
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
-                    />
-                  </div>
-                  <div className="md:flex-1 md:min-w-[200px]" style={{ flex: '1 1 calc(50% - 8px)', minWidth: '200px' }}>
-                    <label htmlFor="booking-email" className="block text-xs font-medium mb-2">
-                      Email <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      id="booking-email"
-                      type="email"
-                      required
-                      value={formData.patientEmail}
-                      onChange={(e) => setFormData({ ...formData, patientEmail: e.target.value })}
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
-                    />
-                  </div>
-                  <div className="md:flex-1 md:min-w-[200px]" style={{ flex: '1 1 calc(50% - 8px)', minWidth: '200px' }}>
-                    <label htmlFor="booking-phone" className="block text-xs font-medium mb-2">
-                      Phone <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      id="booking-phone"
-                      type="tel"
-                      required
-                      value={formData.patientPhone}
-                      onChange={(e) => setFormData({ ...formData, patientPhone: e.target.value })}
-                      placeholder="+1234567890"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Appointment Details */}
-              <div className="pb-6 sm:pb-8 border-b border-gray-200/50">
-                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4 sm:mb-6 flex items-center gap-2">
-                  <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg flex items-center justify-center">
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  Appointment Details
-                </h2>
-                <div className="flex flex-col gap-4">
-                  <div>
-                    <label htmlFor="booking-doctor" className="block text-sm font-semibold text-gray-700 mb-2">
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="rounded-xl border border-gray-200 bg-white divide-y divide-gray-100">
+              {/* Doctor & time */}
+              <fieldset className="p-5 sm:p-7">
+                <legend className="sr-only">Doctor and time</legend>
+                <SectionTitle n={1}>Doctor &amp; time</SectionTitle>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <label htmlFor="booking-doctor" className={labelClass}>
                       Doctor <span className="text-red-500">*</span>
                     </label>
                     <select
@@ -509,128 +568,237 @@ export default function PublicBookingClient() {
                       value={selectedDoctor}
                       onChange={(e) => {
                         setSelectedDoctor(e.target.value);
-                        setFormData({ ...formData, doctorId: e.target.value });
+                        setFormData({ ...formData, doctorId: e.target.value, appointmentTime: '' });
                       }}
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
+                      className={inputClass}
                     >
                       <option value="">Select a doctor</option>
                       {doctors.map((doctor) => (
                         <option key={doctor._id} value={doctor._id}>
-                          Dr. {doctor.firstName} {doctor.lastName} - {doctor.specialization}
+                          Dr. {doctor.firstName} {doctor.lastName} — {doctor.specialization}
                         </option>
                       ))}
                     </select>
                   </div>
-                  <div className="flex flex-col gap-4 md:flex-row">
-                    <div className="md:flex-1" style={{ flex: 1 }}>
-                      <label htmlFor="booking-date" className="block text-sm font-semibold text-gray-700 mb-2">
-                        Preferred Date <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        id="booking-date"
-                        type="date"
-                        required
-                        min={getMinDate()}
-                        value={selectedDate}
-                        onChange={(e) => {
-                          setSelectedDate(e.target.value);
-                          setFormData({ ...formData, appointmentDate: e.target.value });
-                        }}
-                        className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
-                      />
-                    </div>
-                    <div className="md:flex-1" style={{ flex: 1 }}>
-                      <label htmlFor="booking-time" className="block text-sm font-semibold text-gray-700 mb-2">
-                        Preferred Time <span className="text-red-500">*</span>
-                      </label>
-                      {availableSlots.length > 0 ? (
-                        <select
-                          id="booking-time"
-                          required
-                          value={formData.appointmentTime}
-                          onChange={(e) => setFormData({ ...formData, appointmentTime: e.target.value })}
-                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
-                        >
-                          <option value="">Select a time</option>
-                          {availableSlots.map((slot) => (
-                            <option key={slot} value={slot}>
-                              {formatTime(slot)}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          id="booking-time"
-                          type="time"
-                          required
-                          value={formData.appointmentTime}
-                          onChange={(e) => setFormData({ ...formData, appointmentTime: e.target.value })}
-                          // Only offered slots can be booked (clinic hours + doctor schedule).
-                          disabled
-                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base disabled:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
-                        />
-                      )}
-                      {selectedDate && selectedDoctor && availableSlots.length === 0 && (
-                        <p className="text-sm text-gray-500 mt-2 flex items-center gap-2">
-                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          No available slots. Please select a different date or doctor.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <label htmlFor="booking-reason" className="block text-sm font-semibold text-gray-700 mb-2">Reason for Visit</label>
-                    <textarea
-                      id="booking-reason"
-                      value={formData.reason}
-                      onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                      rows={4}
-                      placeholder="Brief description of your reason for the appointment..."
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="booking-room" className="block text-sm font-semibold text-gray-700 mb-2">Preferred Room (Optional)</label>
+                  <div className="sm:col-span-2 sm:max-w-xs">
+                    <label htmlFor="booking-date" className={labelClass}>
+                      Date <span className="text-red-500">*</span>
+                    </label>
                     <input
-                      id="booking-room"
-                      value={formData.room}
-                      onChange={(e) => setFormData({ ...formData, room: e.target.value })}
-                      placeholder="e.g., Room 101"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white/50 backdrop-blur-sm hover:border-blue-300 text-base"
+                      id="booking-date"
+                      type="date"
+                      required
+                      min={getMinDate()}
+                      value={selectedDate}
+                      onChange={(e) => {
+                        setSelectedDate(e.target.value);
+                        setFormData({ ...formData, appointmentDate: e.target.value, appointmentTime: '' });
+                      }}
+                      className={inputClass}
                     />
                   </div>
                 </div>
-              </div>
 
-              <hr className="border-gray-200/50" />
-              <div className="flex flex-col gap-4 sm:gap-6 pt-6 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-gray-600 sm:mb-0">
-                  * Required fields. Your appointment request will be reviewed and confirmed.
+                {/* Only offered slots can be booked (clinic hours + doctor schedule). */}
+                <div className="mt-5">
+                  <p id="booking-time-label" className={labelClass}>
+                    Time <span className="text-red-500">*</span>
+                  </p>
+                  {!selectedDoctor || !selectedDate ? (
+                    <p className="flex items-center gap-2 rounded-md border border-dashed border-gray-300 bg-gray-50/70 px-4 py-3 text-sm text-gray-500">
+                      <Icon d={icons.info} className="w-4 h-4 shrink-0 text-gray-400" />
+                      Pick a doctor and date to see open times.
+                    </p>
+                  ) : availableSlots.length === 0 ? (
+                    <p className="flex items-center gap-2 rounded-md border border-dashed border-gray-300 bg-gray-50/70 px-4 py-3 text-sm text-gray-500">
+                      <Icon d={icons.info} className="w-4 h-4 shrink-0 text-gray-400" />
+                      No open times on this day. Try another date or doctor.
+                    </p>
+                  ) : (
+                    <div role="radiogroup" aria-labelledby="booking-time-label" className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                      {availableSlots.map((slot) => {
+                        const active = formData.appointmentTime === slot;
+                        return (
+                          <button
+                            key={slot}
+                            type="button"
+                            role="radio"
+                            aria-checked={active}
+                            onClick={() => setFormData({ ...formData, appointmentTime: slot })}
+                            className={`rounded-md border px-2 py-2 font-mono text-sm tabular-nums transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal focus-visible:ring-offset-1 ${
+                              active
+                                ? 'border-brand-teal bg-brand-teal text-white'
+                                : 'border-gray-200 bg-white text-gray-700 hover:border-brand-teal/50 hover:bg-brand-teal-light/50'
+                            }`}
+                          >
+                            {formatTime(slot)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </fieldset>
+
+              {/* Patient */}
+              <fieldset className="p-5 sm:p-7">
+                <legend className="sr-only">Your details</legend>
+                <SectionTitle n={2}>Your details</SectionTitle>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="booking-first-name" className={labelClass}>
+                      First name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="booking-first-name"
+                      required
+                      autoComplete="given-name"
+                      value={formData.patientFirstName}
+                      onChange={(e) => setFormData({ ...formData, patientFirstName: e.target.value })}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="booking-last-name" className={labelClass}>
+                      Last name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="booking-last-name"
+                      required
+                      autoComplete="family-name"
+                      value={formData.patientLastName}
+                      onChange={(e) => setFormData({ ...formData, patientLastName: e.target.value })}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="booking-email" className={labelClass}>
+                      Email <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="booking-email"
+                      type="email"
+                      required
+                      autoComplete="email"
+                      value={formData.patientEmail}
+                      onChange={(e) => setFormData({ ...formData, patientEmail: e.target.value })}
+                      placeholder="you@example.com"
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="booking-phone" className={labelClass}>
+                      Mobile number <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="booking-phone"
+                      type="tel"
+                      required
+                      autoComplete="tel"
+                      value={formData.patientPhone}
+                      onChange={(e) => setFormData({ ...formData, patientPhone: e.target.value })}
+                      placeholder="0917 123 4567"
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+              </fieldset>
+
+              {/* Reason */}
+              <fieldset className="p-5 sm:p-7">
+                <legend className="sr-only">Reason for visit</legend>
+                <SectionTitle n={3}>Reason for visit</SectionTitle>
+                <label htmlFor="booking-reason" className="sr-only">Reason for visit</label>
+                <textarea
+                  id="booking-reason"
+                  value={formData.reason}
+                  onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                  rows={3}
+                  placeholder="Optional — e.g. follow-up check, fever for 3 days, lab result review"
+                  className={`${inputClass} resize-y`}
+                />
+              </fieldset>
+
+              <div className="flex flex-col gap-4 p-5 sm:p-7 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-gray-500">
+                  <span className="text-red-500">*</span> Required. The clinic will confirm your request.
                 </p>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:from-blue-400 disabled:to-indigo-400 text-white font-semibold rounded-xl transition-all shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none disabled:cursor-not-allowed flex items-center justify-center gap-2 text-base sm:text-lg"
+                  className="group inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-md bg-brand-teal px-6 py-3 font-semibold text-white shadow-[0_6px_20px_rgba(14,165,164,0.3)] transition-colors duration-150 hover:bg-brand-teal-dark disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
                 >
                   {submitting ? (
                     <>
-                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Submitting...
+                      <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                      Sending request…
                     </>
                   ) : (
-                    'Request Appointment'
+                    <>
+                      Request appointment
+                      <Icon d={icons.arrow} className="w-4 h-4 transition-transform duration-150 group-hover:translate-x-0.5" />
+                    </>
                   )}
                 </button>
               </div>
-            </div>
-          </form>
+            </form>
+          )}
         </div>
+
+        {/* Summary */}
+        <aside className="lg:sticky lg:top-28 space-y-4">
+          {selectedClinic && (
+            <div className="rounded-xl border border-gray-200 bg-white p-5">
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-brand-teal-light font-bold text-brand-teal-deep">
+                  {clinicName.charAt(0).toUpperCase()}
+                </span>
+                <div className="min-w-0">
+                  <p className="font-semibold text-gray-900 leading-snug">{clinicName}</p>
+                  {clinicAddress && <p className="text-sm text-gray-500 mt-0.5">{clinicAddress}</p>}
+                  {selectedClinic.phone && (
+                    <a
+                      href={`tel:${selectedClinic.phone}`}
+                      className="mt-1 inline-flex items-center gap-1.5 text-sm font-medium text-brand-teal-dark hover:underline underline-offset-2"
+                    >
+                      <Icon d={icons.phone} className="w-3.5 h-3.5" />
+                      {selectedClinic.phone}
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!booked && (
+            <div className="rounded-xl border border-gray-200 bg-gray-50/70 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-teal-dark mb-3">Your visit</p>
+              <dl className="space-y-2.5">
+                {summary.map((row) => (
+                  <div key={row.label} className="flex items-baseline justify-between gap-3 text-sm">
+                    <dt className="text-gray-500">{row.label}</dt>
+                    <dd className={`text-right font-medium ${row.value ? 'text-gray-900' : 'text-gray-400'}`}>
+                      {row.value || 'Not set'}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
+
+          <div className="rounded-xl border border-gray-200 bg-white p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 mb-3">What happens next</p>
+            <ol className="space-y-3">
+              {nextSteps.map((s, i) => (
+                <li key={s} className="flex gap-3 text-sm text-gray-600">
+                  <span className="font-mono text-[11px] font-semibold text-gray-400 pt-0.5">0{i + 1}</span>
+                  {s}
+                </li>
+              ))}
+            </ol>
+          </div>
+        </aside>
       </div>
-    </div>
+    </Shell>
   );
 }
