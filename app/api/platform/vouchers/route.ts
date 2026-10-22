@@ -13,9 +13,8 @@ import {
   ACTIVATION_DAYS,
   createBatchCodes,
   MAX_BATCH_QUANTITY,
-  VOUCHER_FACE_VALUE,
-  VOUCHER_WHOLESALE_PRICE,
 } from '@/lib/emcr/activation';
+import { getPlatformFees } from '@/lib/platform-config';
 import { loadVoucherOverview, newBatchNumber } from '@/lib/emcr/vouchers';
 
 const CreateSchema = z
@@ -23,13 +22,16 @@ const CreateSchema = z
     tenantId: z.string().refine((v) => Types.ObjectId.isValid(v), 'Choose a clinic'),
     quantity: z.number().int().min(1).max(MAX_BATCH_QUANTITY),
     plan: z.enum(['basic', 'plus']).default('basic'),
-    faceValue: z.number().min(0).max(100000).default(VOUCHER_FACE_VALUE),
-    wholesalePrice: z.number().min(0).max(100000).default(VOUCHER_WHOLESALE_PRICE),
+    // Omitted: the prices set under Platform → Configuration.
+    faceValue: z.number().min(0).max(100000).optional(),
+    wholesalePrice: z.number().min(0).max(100000).optional(),
     days: z.number().int().min(1).max(3 * 366).default(ACTIVATION_DAYS),
     notes: z.string().trim().max(500).optional(),
   })
   .strict()
-  .refine((b) => b.wholesalePrice <= b.faceValue, { message: 'Wholesale price can’t be above the voucher price' });
+  .refine((b) => b.wholesalePrice === undefined || b.faceValue === undefined || b.wholesalePrice <= b.faceValue, {
+    message: 'Wholesale price can’t be above the voucher price',
+  });
 
 /** GET /api/platform/vouchers: every batch, totals and per-clinic stock (platform admins). */
 export async function GET() {
@@ -40,7 +42,7 @@ export async function GET() {
 
 /**
  * POST /api/platform/vouchers
- * Body: { tenantId, quantity, plan?, faceValue? (₱80), wholesalePrice? (₱60), days? (365), notes? }
+ * Body: { tenantId, quantity, plan?, faceValue?, wholesalePrice? (default: Platform → Configuration), days? (365), notes? }
  * Make a batch of voucher codes for a clinic. The batch starts unpaid: its codes can be printed
  * but not redeemed until the cash is received (PATCH …/[id] { action: 'mark_paid' }).
  */
@@ -49,7 +51,15 @@ export async function POST(request: NextRequest) {
   if (isPlatformError(admin)) return admin;
   const parsed = await parseBody(request, CreateSchema);
   if (isValidationError(parsed)) return parsed;
-  const body = parsed.data;
+  const fees = await getPlatformFees();
+  const body = {
+    ...parsed.data,
+    faceValue: parsed.data.faceValue ?? fees.voucherFaceValue,
+    wholesalePrice: parsed.data.wholesalePrice ?? fees.voucherWholesalePrice,
+  };
+  if (body.wholesalePrice > body.faceValue) {
+    return NextResponse.json({ success: false, error: 'Wholesale price can’t be above the voucher price' }, { status: 400 });
+  }
 
   try {
     await connectDB();

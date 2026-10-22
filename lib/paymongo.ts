@@ -1,24 +1,27 @@
 import 'server-only';
 import { createHmac, timingSafeEqual } from 'crypto';
+import { getPlatformPaymongoKeys, isPlatformPaymongoReady } from '@/lib/platform-config';
 
 /**
  * PayMongo (Philippines): hosted checkout for GCash, Maya, cards, GrabPay and QR Ph, in pesos.
  * Server-only; the secret key never reaches the browser.
  *
- * Env: PAYMONGO_SECRET_KEY (sk_test_… / sk_live_…), PAYMONGO_WEBHOOK_SECRET (whsk_…, returned when
- * the webhook is registered for checkout_session.payment.paid).
+ * Every call takes the secret key to use: a clinic's own account (lib/payments) or, when none is
+ * passed, the platform's (Platform → Configuration, else env PAYMONGO_SECRET_KEY), which takes
+ * subscriptions and the med-rep fee.
  */
 
 const API = 'https://api.paymongo.com/v1';
 
 export const PAYMONGO_METHODS = ['gcash', 'paymaya', 'card', 'grab_pay', 'qrph'] as const;
 
-export function isPayMongoConfigured(): boolean {
-  return Boolean(process.env.PAYMONGO_SECRET_KEY);
+/** The platform's PayMongo account is set up (Platform → Configuration or env). */
+export async function isPayMongoConfigured(): Promise<boolean> {
+  return isPlatformPaymongoReady();
 }
 
-function auth() {
-  const key = process.env.PAYMONGO_SECRET_KEY;
+async function auth(secretKey?: string) {
+  const key = secretKey ?? (await getPlatformPaymongoKeys())?.secretKey;
   if (!key) throw new Error('PayMongo is not configured');
   return `Basic ${Buffer.from(`${key}:`).toString('base64')}`;
 }
@@ -63,10 +66,10 @@ export async function createCheckoutSession(opts: {
   cancelUrl: string;
   metadata: Record<string, string> & { purpose: CheckoutPurpose };
   email?: string;
-}): Promise<CheckoutSession> {
+}, secretKey?: string): Promise<CheckoutSession> {
   const res = await fetch(`${API}/checkout_sessions`, {
     method: 'POST',
-    headers: { Authorization: auth(), 'Content-Type': 'application/json', Accept: 'application/json' },
+    headers: { Authorization: await auth(secretKey), 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({
       data: {
         attributes: {
@@ -91,9 +94,9 @@ export async function createCheckoutSession(opts: {
   return parseSession(json.data);
 }
 
-export async function retrieveCheckoutSession(id: string): Promise<CheckoutSession> {
+export async function retrieveCheckoutSession(id: string, secretKey?: string): Promise<CheckoutSession> {
   if (!/^cs_[A-Za-z0-9]+$/.test(id)) throw new Error('Not a checkout session id');
-  const res = await fetch(`${API}/checkout_sessions/${id}`, { headers: { Authorization: auth(), Accept: 'application/json' }, signal: AbortSignal.timeout(15_000) });
+  const res = await fetch(`${API}/checkout_sessions/${id}`, { headers: { Authorization: await auth(secretKey), Accept: 'application/json' }, signal: AbortSignal.timeout(15_000) });
   const json = await res.json().catch(() => null);
   if (!res.ok) throw new Error(`PayMongo ${res.status}: ${json?.errors?.[0]?.detail ?? 'checkout could not be read'}`);
   return parseSession(json.data);
@@ -126,4 +129,22 @@ export function verifyPaymongoSignature(header: string | null, rawBody: string, 
   const a = Buffer.from(expected, 'utf8');
   const b = Buffer.from(sig, 'utf8');
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
+ * Check that a secret key works, without charging anything: list one payment. Used by the
+ * console's and clinic settings' "Test connection".
+ */
+export async function testPaymongoKey(secretKey: string): Promise<{ ok: true; mode: 'live' | 'test' } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(`${API}/payments?limit=1`, {
+      headers: { Authorization: await auth(secretKey), Accept: 'application/json' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (res.status === 401) return { ok: false, error: 'PayMongo refused this key.' };
+    if (!res.ok) return { ok: false, error: `PayMongo answered ${res.status}.` };
+    return { ok: true, mode: secretKey.startsWith('sk_live_') ? 'live' : 'test' };
+  } catch {
+    return { ok: false, error: 'PayMongo could not be reached.' };
+  }
 }

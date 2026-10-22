@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requirePlatformPage } from '@/lib/platform-auth';
 import { loadVoucherOverview } from '@/lib/emcr/vouchers';
+import { getPlatformFees } from '@/lib/platform-config';
 import NewVoucherBatchForm from '@/components/platform/NewVoucherBatchForm';
 import EmcrAccountLookup from '@/components/platform/EmcrAccountLookup';
 import { BatchStatusBadge, CARD, H2, LINK, day, php } from '@/components/platform/shared';
@@ -21,7 +22,7 @@ const n = (v: number) => v.toLocaleString('en-US');
 
 export default async function PlatformVouchersPage() {
   await requirePlatformPage();
-  const { batches, totals: t, byClinic, clinics } = await loadVoucherOverview();
+  const [{ batches, totals: t, byClinic, clinics }, fees] = await Promise.all([loadVoucherOverview(), getPlatformFees()]);
 
   return (
     <div className="space-y-6">
@@ -81,7 +82,7 @@ export default async function PlatformVouchersPage() {
         <section className={`${CARD} p-5`} aria-labelledby="new-batch">
           <h2 id="new-batch" className={H2}>New batch</h2>
           <p className="mb-4 mt-0.5 text-xs text-gray-500">Starts unpaid: print it now, the codes work once you mark it paid.</p>
-          <NewVoucherBatchForm clinics={clinics} />
+          <NewVoucherBatchForm clinics={clinics} defaults={{ faceValue: fees.voucherFaceValue, wholesalePrice: fees.voucherWholesalePrice }} />
         </section>
       </div>
 

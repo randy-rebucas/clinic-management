@@ -2,12 +2,15 @@ import 'server-only';
 import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Tenant from '@/models/Tenant';
-import PaypalOrder from '@/models/PaypalOrder';
+import SubscriptionOrder from '@/models/SubscriptionOrder';
+import PlatformInvoice from '@/models/PlatformInvoice';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { formatInTz } from '@/lib/tz';
 import { checkSubscriptionStatus } from '@/lib/subscription';
 import { getSubscriptionUsage } from '@/lib/subscription-limits';
-import { subscriptionGateway, gatewayCurrency, GATEWAY_NAME } from '@/lib/payment-gateway';
+import { isPayMongoConfigured } from '@/lib/paymongo';
+import { getPlanPricing } from '@/lib/platform-config';
+import { currentOrderId } from '@/lib/subscription-order';
 import { SUBSCRIPTION_PACKAGES } from '@/lib/subscription-packages';
 import { buildUsageRows, planLimits, type UsageKey, type UsageRow } from '@/lib/plan-usage';
 import {
@@ -25,10 +28,10 @@ import {
  * Everything /admin/subscription shows, read on the server: where the plan stands (including
  * the read-only days after it ends), what the clinic uses of each limit the system enforces,
  * what each plan would allow and cost with the "paid until" a payment today would give, the
- * payments made, and any payment started at PayPal but not finished.
+ * payments made, and any payment started at PayMongo but not finished.
  */
 
-/** PaypalOrder deletes pending orders after two hours (TTL index). */
+/** SubscriptionOrder deletes pending orders after two hours (TTL index). */
 const PENDING_LIFETIME_MS = 2 * 60 * 60 * 1000;
 
 /**
@@ -78,6 +81,20 @@ export interface PaymentRow {
   currency: string;
   status: 'completed' | 'refunded' | 'failed';
   reference: string;
+  /** DevCom Digital's sales invoice for it, once issued (cancelled when refunded). */
+  invoice: { id: string; serialNo: string; status: 'issued' | 'cancelled' } | null;
+  /** Issued later: the issuer details or serials aren't ready yet. */
+  invoicePending: boolean;
+}
+
+/** Who the subscription sales invoices are made out to. */
+export interface BillingProfileView {
+  registeredName: string;
+  tin: string;
+  address: string;
+  email: string;
+  /** What prints when a field is blank. */
+  fallback: { registeredName: string; address: string; email: string };
 }
 
 export interface UnfinishedPayment {
@@ -87,7 +104,7 @@ export interface UnfinishedPayment {
   cycle: BillingCycle;
   amount: number;
   currency: string;
-  /** pending: not approved or not confirmed yet. processing: PayPal may have taken it; still being applied. */
+  /** pending: not approved or not confirmed yet. processing: PayMongo may have taken it; still being applied. */
   status: 'pending' | 'processing';
 }
 
@@ -98,9 +115,10 @@ export interface SubscriptionPageData {
   offers: PlanOffer[];
   payments: PaymentRow[];
   unfinished: UnfinishedPayment[];
-  /** A payment gateway is set up (PayMongo or PayPal). */
-  paypalReady: boolean;
-  /** "PayMongo" or "PayPal", for the page's wording. */
+  /** The platform's PayMongo account is set up, so plans can be paid for. */
+  gatewayReady: boolean;
+  billingProfile: BillingProfileView;
+  /** "PayMongo", for the page's wording. */
   gatewayName: string;
 }
 
@@ -109,6 +127,9 @@ const SUPPORT: Record<string, string> = { basic: 'Email', priority: 'Priority', 
 interface TenantDoc {
   name?: string;
   displayName?: string;
+  email?: string;
+  address?: { street?: string; city?: string; state?: string; zipCode?: string; country?: string };
+  billingProfile?: { registeredName?: string; tin?: string; address?: string; email?: string };
   createdAt?: Date;
   subscription?: {
     plan?: string;
@@ -116,6 +137,7 @@ interface TenantDoc {
     billingCycle?: BillingCycle;
     expiresAt?: Date;
     paypalOrderId?: string;
+    lastOrderId?: string;
     paymentHistory?: {
       _id?: Types.ObjectId;
       transactionId: string;
@@ -138,22 +160,26 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
   const tenantId = new Types.ObjectId(session.tenantId);
   const now = new Date();
 
-  const [tz, tenant, status, usage, orders] = await Promise.all([
+  const [tz, tenant, status, usage, orders, invoices] = await Promise.all([
     getTenantTimezone(tenantId),
-    Tenant.findById(tenantId).select('name displayName createdAt subscription').lean<TenantDoc | null>(),
+    Tenant.findById(tenantId).select('name displayName email address billingProfile createdAt subscription').lean<TenantDoc | null>(),
     checkSubscriptionStatus(tenantId),
     getSubscriptionUsage(tenantId).catch((error) => {
       console.error('Subscription page: usage unavailable', error);
       return null;
     }),
-    PaypalOrder.find({
+    SubscriptionOrder.find({
       tenantId,
       $or: [{ status: 'processing' }, { status: 'pending', createdAt: { $gte: new Date(now.getTime() - PENDING_LIFETIME_MS) } }],
     })
       .sort({ createdAt: -1 })
       .limit(5)
       .lean<{ orderId: string; plan: string; billingCycle: BillingCycle; amount: number; currency: string; status: 'pending' | 'processing'; createdAt: Date }[]>(),
+    PlatformInvoice.find({ tenantId })
+      .select('orderId serialNo status')
+      .lean<{ _id: Types.ObjectId; orderId: string; serialNo?: string; status: string }[]>(),
   ]);
+  const invoiceByOrder = new Map(invoices.map((inv) => [inv.orderId, inv]));
 
   const sub = tenant?.subscription;
   const day = (d: Date | string) => formatInTz(d, 'MMM d, yyyy', tz);
@@ -169,7 +195,7 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
   const history = [...(sub?.paymentHistory ?? [])].sort(
     (a, b) => new Date(b.paidAt ?? 0).getTime() - new Date(a.paidAt ?? 0).getTime()
   );
-  const funding = history.find((p) => p.orderId === sub?.paypalOrderId && p.status === 'completed');
+  const funding = history.find((p) => p.orderId === currentOrderId(sub) && p.status === 'completed');
   const started = state === 'trial' ? tenant?.createdAt ?? null : funding?.paidAt ?? null;
   const span = started && expiresAt ? expiresAt.getTime() - new Date(started).getTime() : 0;
 
@@ -190,18 +216,17 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
   // --- What each plan allows, costs, and would run to --------------------------------------
   // Activation extends from the current end only while the plan is active; mirror it exactly.
   const current = { status: sub?.status, expiresAt: sub?.expiresAt, plan: sub?.plan, billingCycle: sub?.billingCycle };
-  const gateway = subscriptionGateway();
-  const cur = gatewayCurrency(gateway);
+  const pricing = await getPlanPricing();
   const offers: PlanOffer[] = PAID_PLANS.map((p) => {
-    const monthly = planPrice(p, 'monthly', cur);
-    const yearly = planPrice(p, 'yearly', cur);
+    const monthly = planPrice(p, 'monthly', pricing);
+    const yearly = planPrice(p, 'yearly', pricing);
     return {
       plan: p,
       label: planLabel(p),
       limits: planLimits(p),
       support: SUPPORT[SUBSCRIPTION_PACKAGES[p].features.supportLevel] ?? SUBSCRIPTION_PACKAGES[p].features.supportLevel,
-      monthly: { ...monthly, paidUntil: day(periodEndAfterPayment(current, 'monthly', now, { plan: p, currency: cur })) },
-      yearly: { ...yearly, paidUntil: day(periodEndAfterPayment(current, 'yearly', now, { plan: p, currency: cur })), monthsSaved: monthsSavedYearly(p, cur) },
+      monthly: { ...monthly, paidUntil: day(periodEndAfterPayment(current, 'monthly', now, { plan: p, pricing })) },
+      yearly: { ...yearly, paidUntil: day(periodEndAfterPayment(current, 'yearly', now, { plan: p, pricing })), monthsSaved: monthsSavedYearly(pricing) },
     };
   });
 
@@ -219,6 +244,7 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
       currency: p.currency || 'USD',
       status: p.status ?? 'completed',
       reference: p.transactionId || p.orderId,
+      ...invoiceFields(invoiceByOrder.get(p.orderId), p.status ?? 'completed'),
     })),
     unfinished: orders
       .filter((o) => isPaidPlan(o.plan))
@@ -228,10 +254,37 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
         plan: planLabel(o.plan),
         cycle: o.billingCycle,
         amount: o.amount,
-        currency: o.currency || 'USD',
+        currency: o.currency || 'PHP',
         status: o.status,
       })),
-    paypalReady: gateway !== null,
-    gatewayName: gateway ? GATEWAY_NAME[gateway] : 'the payment page',
+    gatewayReady: await isPayMongoConfigured(),
+    gatewayName: 'PayMongo',
+    billingProfile: billingProfileOf(tenant),
+  };
+}
+
+function invoiceFields(
+  inv: { _id: Types.ObjectId; serialNo?: string; status: string } | undefined,
+  paymentStatus: string
+): Pick<PaymentRow, 'invoice' | 'invoicePending'> {
+  if (inv?.serialNo && (inv.status === 'issued' || inv.status === 'cancelled')) {
+    return { invoice: { id: String(inv._id), serialNo: inv.serialNo, status: inv.status }, invoicePending: false };
+  }
+  return { invoice: null, invoicePending: paymentStatus === 'completed' && inv?.status !== 'cancelled' };
+}
+
+function billingProfileOf(tenant: TenantDoc | null): BillingProfileView {
+  const p = tenant?.billingProfile ?? {};
+  const a = tenant?.address ?? {};
+  return {
+    registeredName: p.registeredName ?? '',
+    tin: p.tin ?? '',
+    address: p.address ?? '',
+    email: p.email ?? '',
+    fallback: {
+      registeredName: tenant?.displayName || tenant?.name || 'Your clinic',
+      address: [a.street, a.city, [a.state, a.zipCode].filter(Boolean).join(' '), a.country].filter(Boolean).join(', '),
+      email: tenant?.email ?? '',
+    },
   };
 }

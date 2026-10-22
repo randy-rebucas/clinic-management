@@ -26,8 +26,8 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 // Server-to-server endpoints authenticated by their own signatures/secrets.
 const CSRF_EXEMPT_PREFIXES = [
-  '/api/subscription/webhook',
   '/api/paymongo/webhook',
+  '/api/payments/webhook/',
   '/api/webhooks/',
   '/api/lab-results/third-party/webhook',
   '/api/cron/',
@@ -83,11 +83,11 @@ function buildCsp(nonce: string): string {
     `script-src ${scriptSrc}`,
     // Inline style attributes (React style props, Tailwind runtime, chart libs) need this.
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https://images.unsplash.com https://static.vecteezy.com https://res.cloudinary.com https://www.paypalobjects.com",
+    "img-src 'self' data: blob: https://images.unsplash.com https://static.vecteezy.com https://res.cloudinary.com",
     "font-src 'self' data:",
-    `connect-src 'self' https://api.paypal.com https://www.paypal.com${isProd ? '' : ' ws: wss:'}`,
+    `connect-src 'self'${isProd ? '' : ' ws: wss:'}`,
     // Turnstile (lib/turnstile.ts) renders its challenge in an iframe; its script is allowed by 'strict-dynamic'.
-    "frame-src 'self' https://www.paypal.com https://challenges.cloudflare.com",
+    "frame-src 'self' https://challenges.cloudflare.com",
     "worker-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",

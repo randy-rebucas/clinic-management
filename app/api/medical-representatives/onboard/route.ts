@@ -5,6 +5,7 @@ import User from '@/models/User';
 import { sendEmail } from '@/lib/email';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { createCheckoutSession, isPayMongoConfigured } from '@/lib/paymongo';
+import { getPlatformFees } from '@/lib/platform-config';
 import { isMedRepSelfSignupEnabled } from '@/lib/medrep-signup';
 
 interface OnboardingRequest {
@@ -157,8 +158,8 @@ export async function POST(request: NextRequest) {
         }
         // With PayMongo and a fee set, the rep pays online and is activated when PayMongo confirms it.
         let checkoutUrl: string | undefined;
-        const fee = Number(process.env.MEDREP_ACTIVATION_FEE_PHP);
-        if (isPayMongoConfigured() && fee >= 20) {
+        const fee = (await getPlatformFees()).medrepActivationFee;
+        if ((await isPayMongoConfigured()) && fee >= 20) {
             try {
                 const origin = request.headers.get('origin') || (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
                 const checkout = await createCheckoutSession({
