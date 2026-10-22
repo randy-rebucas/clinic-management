@@ -6,10 +6,8 @@ import IpadStoreRedirect from '@/components/IpadStoreRedirect';
 
 /**
  * Target of the eMCR download QR code: sends the scanner straight to their platform's store.
- * Detection is by User-Agent, so it runs per request.
+ * Detection is by User-Agent (headers()), so it runs per request.
  */
-export const dynamic = 'force-dynamic';
-
 export const metadata: Metadata = { title: 'Download eMCR', robots: NO_INDEX };
 
 type Platform = 'android' | 'ios' | 'other';

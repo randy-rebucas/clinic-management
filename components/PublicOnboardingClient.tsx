@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, FormEvent, useEffect, useSyncExternalStore } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toDateKey } from './utils/dateKey';
-import { getHostSubdomain, subscribeNoop } from './utils/hostSubdomain';
 import { SUPPORT_EMAIL } from '@/lib/seo';
 import TurnstileWidget, { TURNSTILE_SITE_KEY } from './TurnstileWidget';
 
@@ -61,14 +60,14 @@ const STEPS = [
   { id: 4, title: 'Medical Info', description: 'Health information' },
 ];
 
-export default function PublicOnboardingClient() {
+/** `subdomain` is the clinic subdomain the server resolved from ROOT_DOMAIN, '' on the root domain. */
+export default function PublicOnboardingClient({ subdomain }: { subdomain: string }) {
   const [currentStep, setCurrentStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [patientCode, setPatientCode] = useState<string | null>(null);
   // On a clinic's subdomain the API knows the clinic; on the root domain the visitor picks one.
-  const subdomain = useSyncExternalStore(subscribeNoop, getHostSubdomain, () => null);
   const needsClinic = subdomain === '';
   const [clinics, setClinics] = useState<{ _id: string; name: string; displayName?: string; address?: { city?: string } }[]>([]);
   const [clinicsLoaded, setClinicsLoaded] = useState(false);

@@ -132,8 +132,8 @@ export const SUBSCRIPTION_PACKAGES: Record<SubscriptionPlan, SubscriptionLimitat
       customBranding: false,
       whiteLabel: false,
       sso: false,
-      mfa: false,
-      auditLogs: false,
+      mfa: true, // every plan: 2FA and audit logs are not plan-gated (see /pricing)
+      auditLogs: true,
       automatedBackups: false,
       backupRetentionDays: 7,
       aiScribe: true, // so trials can try the headline features
@@ -183,8 +183,8 @@ export const SUBSCRIPTION_PACKAGES: Record<SubscriptionPlan, SubscriptionLimitat
       customBranding: false,
       whiteLabel: false,
       sso: false,
-      mfa: false,
-      auditLogs: false,
+      mfa: true,
+      auditLogs: true,
       automatedBackups: true,
       backupRetentionDays: 30,
       aiScribe: false,

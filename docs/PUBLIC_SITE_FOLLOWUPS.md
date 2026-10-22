@@ -1,9 +1,7 @@
 # Public site follow-ups
 
-Open items from the `app/(public)` audit of 2026-10-22. The high-priority fixes shipped on
-`fix/public-site-audit`: booking/registration rate limits, the `/onboard` clinic picker, the paused
-rep sign-up, removal of fake testimonials and stats, the install-reset lock, the terms/privacy rewrite,
-Turnstile wiring, copy and accessibility fixes. Everything below is still open.
+Open items from the `app/(public)` audit of 2026-10-22. The fixes so far are on `fix/public-site-audit`
+(see "Done" at the bottom). Everything unchecked is still open.
 
 ## Owner decisions
 
@@ -31,6 +29,7 @@ Turnstile wiring, copy and accessibility fixes. Everything below is still open.
 - [ ] **PayMongo always on in production.** If it's unset, checkout falls back to PayPal in USD
       ($29/$79/$199), which doesn't match the peso prices on the site.
 - [ ] **`/download` on iPad** needs `NEXT_PUBLIC_EMCR_APP_STORE_URL` once the iOS app ships.
+- [ ] **Remove `INSTALL_SECRET` after setup.** `/install` shows whether it's set; reset is locked anyway.
 
 ## Promises the legal pages now make (need tooling)
 
@@ -41,19 +40,15 @@ Turnstile wiring, copy and accessibility fixes. Everything below is still open.
       close-account path, in-app or by support.
 - [ ] **15 days' notice of material term changes.** Needs a way to email all clinic admins.
 
-## Security / data integrity
+## Self-registered records (follow-through)
 
-- [ ] **Self-registered records can merge into someone's eMCR.** `/book` and `/onboard` store
-      unverified phone numbers, and eMCR claiming (`lib/emcr/claim.ts`) merges records on verified
-      phone + first name + DOB. Flag self-registered records as unverified and keep them out of claim
-      matching until staff confirm them.
-- [ ] **Booking attaches to an existing patient by email alone** (`app/api/appointments/public/route.ts`,
-      the `Patient.findOne({ email })` lookup). Match on email + phone, or create a new record for staff
-      to merge.
-- [ ] **`/api/tenants/public`** returns every active clinic's email and phone with no paging or rate
-      limit. The booking picker shows phone; drop email and add `rateLimiters.public`.
-- [ ] **`/install`** shows whether `INSTALL_SECRET` is set. Low risk now that reset is locked, but
-      remove the secret entirely after setup.
+Public-form records now carry `Patient.selfRegistered` and stay out of eMCR claiming, cross-clinic
+linking and family suggestions until staff save the record (any save in the patient form clears it).
+
+- [ ] **Tell clinics.** Patients who booked or registered online won't be able to claim those records in
+      eMCR until front desk opens and saves them. Worth a line in the staff help docs.
+- [ ] **Older records aren't flagged.** Records created from public forms before this change have no
+      flag. They can't be told apart reliably; leave as-is unless abuse shows up.
 
 ## Before re-enabling rep sign-up (`MEDREP_SELF_SIGNUP_ENABLED`)
 
@@ -67,33 +62,32 @@ Turnstile wiring, copy and accessibility fixes. Everything below is still open.
 - [ ] Build PayMongo return URLs from `NEXT_PUBLIC_APP_URL`, not the request's `Origin` header.
 - [ ] Update `medical-representatives/onboard/success` copy ("clinics can see your profile").
 
-## Booking page polish (`components/PublicBookingClient.tsx`)
+## Content / performance
 
-- [ ] The apex domain and `*.vercel.app` hosts are treated as clinic subdomains, giving an empty doctor
-      list with no message.
-- [ ] `handleClinicSelect` builds the root domain from the last two hostname labels, which breaks on
-      `.com.ph`. Pass `ROOT_DOMAIN` from the server.
-- [ ] The slot list has no loading state and keeps the previous day's slots while new ones load or
-      after a failed load.
-
-## Product claims to back up or remove
-
-- [ ] `lib/subscription-packages.ts` sets `mfa`, `auditLogs` (trial/basic) and `automatedBackups`
-      (trial) to `false`, but `/pricing` says every plan includes them. Nothing enforces these flags.
-      Align the config with the page.
-- [ ] About page: "We aim for 99.9% uptime". There's no uptime monitoring yet; add a status page or
-      soften the wording.
 - [ ] Features/about use Unsplash stock photos captioned as clinic teams. Replace with product
       screenshots or real photos.
-
-## SEO / performance / cleanup
-
 - [ ] `app/layout.tsx` calls `await connection()`, so no marketing page is ever statically rendered.
       Consider static marketing pages if TTFB matters (it's tied to the CSP nonce).
-- [ ] `PublicLayout` is entirely a client component because of the menu. Split the menu and
-      active-link nav into client islands and keep the footer on the server.
-- [ ] `/pricing` JSON-LD: add `UnitPriceSpecification` with `billingDuration: 'P1M'`; stop emitting the
-      trial as a ₱0 Offer; keep the `#software` node consistent between `/` and `/pricing`.
-- [ ] `/resources` is in the sitemap but linked from neither nav nor footer.
-- [ ] Footer column headings are `<h3>` with no `<h2>` above them.
-- [ ] Redundant `export const dynamic = 'force-dynamic'` in `download/page.tsx` and `install/page.tsx`.
+
+## Done
+
+- [x] Rate limits on public booking and registration (per IP, per phone) and a pending-booking cap per phone.
+- [x] Turnstile wired into booking and registration (off until keys are set).
+- [x] `/onboard` clinic picker on the root domain; Back button fixed.
+- [x] Rep self sign-up paused behind `MEDREP_SELF_SIGNUP_ENABLED`.
+- [x] Install reset locked once any clinic exists (`INSTALL_ALLOW_RESET`).
+- [x] Fake testimonials and unsourced usage/uptime stats removed.
+- [x] Terms (no refunds) and privacy policy rewritten.
+- [x] Unbacked claims removed (24/7, phone/chat, proration, add-ons, multi-location, white-label, "DPA compliant").
+- [x] Self-registered records kept out of eMCR claiming, linking and family suggestions.
+- [x] Online booking reuses an existing patient only when email *and* phone match.
+- [x] `/api/tenants/public` rate-limited; clinic email no longer returned.
+- [x] Booking and onboarding use the server-resolved subdomain (`ROOT_DOMAIN`): apex, `.com.ph` and
+      Vercel previews work; unknown clinic subdomains return 404.
+- [x] Booking slots: loading state, error with retry, never shows a previous day's times.
+- [x] Plan config: `mfa` and `auditLogs` on for trial and basic, matching `/pricing`.
+- [x] About page no longer quotes 99.9% uptime.
+- [x] `PublicLayout` is a server component; only `PublicHeader` (menu + active link) runs on the client.
+- [x] `/pricing` JSON-LD: monthly `UnitPriceSpecification`, no ₱0 trial offer.
+- [x] Footer links `/resources`; footer column headings are `<h2>`.
+- [x] Skip link, reduced motion, mobile-nav focus/close, brand-teal error and 404, noindex fixes, iPad detection.

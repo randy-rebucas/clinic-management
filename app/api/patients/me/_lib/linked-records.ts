@@ -91,9 +91,10 @@ function birthDay(value: unknown): string | null {
 export async function linkRecordsByVerifiedPhone(patientId: string, phone: string): Promise<void> {
   await connectDB();
   const self = await Patient.findById(patientId)
-    .select('phone dateOfBirth accountId')
-    .lean<{ _id: Types.ObjectId; phone?: string; dateOfBirth?: Date; accountId?: Types.ObjectId } | null>();
-  if (!self?.phone) return;
+    .select('phone dateOfBirth accountId selfRegistered')
+    .lean<{ _id: Types.ObjectId; phone?: string; dateOfBirth?: Date; accountId?: Types.ObjectId; selfRegistered?: boolean } | null>();
+  // Unreviewed public-form records never join a cross-clinic login (Patient.selfRegistered).
+  if (!self?.phone || self.selfRegistered) return;
 
   const proven = normalizePhone(phone);
   if (!proven || normalizePhone(self.phone) !== proven) return;
@@ -104,6 +105,7 @@ export async function linkRecordsByVerifiedPhone(patientId: string, phone: strin
     _id: { $ne: self._id },
     phone: { $in: phoneVariants(phone) },
     active: { $ne: false },
+    selfRegistered: { $ne: true },
   })
     .select('dateOfBirth accountId')
     .limit(MAX_LINKED_RECORDS)

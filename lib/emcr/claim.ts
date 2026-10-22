@@ -113,6 +113,7 @@ async function recordsOnPhone(phone: string): Promise<CandidateRecord[]> {
   return Patient.find({
     $or: [{ phone: { $in: variants } }, { 'contacts.phone': { $in: variants } }],
     active: { $ne: false },
+    selfRegistered: { $ne: true },
   })
     .select('firstName lastName dateOfBirth phone accountId tenantIds guardians')
     .limit(MAX_CANDIDATES)

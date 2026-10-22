@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Tenant from '@/models/Tenant';
+import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 
 /**
  * Get list of active tenants/clinics for public selection
- * Also supports querying by subdomain to get a specific tenant
+ * Also supports querying by subdomain to get a specific tenant.
+ * Clinic email stays private (the public directory leaves it out too); phone is shown on the picker.
  */
 export async function GET(request: NextRequest) {
+  const limited = await applyRateLimit(request, rateLimiters.public);
+  if (limited) return limited;
+
   try {
     await connectDB();
 
@@ -20,7 +25,7 @@ export async function GET(request: NextRequest) {
         subdomain: subdomain.toLowerCase(),
         status: 'active'
       })
-        .select('name displayName subdomain email phone address')
+        .select('name displayName subdomain phone address')
         .lean();
 
       if (!tenant || Array.isArray(tenant)) {
@@ -41,7 +46,6 @@ export async function GET(request: NextRequest) {
           name: tenant.name,
           displayName: tenant.displayName || tenant.name,
           subdomain: tenant.subdomain,
-          email: tenant.email,
           phone: tenant.phone,
           address: tenant.address,
         },
@@ -54,7 +58,7 @@ export async function GET(request: NextRequest) {
     const tenants = await Tenant.find({ 
       status: 'active' 
     })
-      .select('name displayName subdomain email phone address')
+      .select('name displayName subdomain phone address')
       .sort({ name: 1 })
       .lean();
 
@@ -65,7 +69,6 @@ export async function GET(request: NextRequest) {
         name: tenant.name,
         displayName: tenant.displayName || tenant.name,
         subdomain: tenant.subdomain,
-        email: tenant.email,
         phone: tenant.phone,
         address: tenant.address,
       })),
