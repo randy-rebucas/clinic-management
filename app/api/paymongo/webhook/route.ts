@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyPaymongoSignature, type CheckoutSession } from '@/lib/paymongo';
 import { applyPaidCheckout } from '@/lib/paymongo-apply';
+import { reverseSubscriptionPayment } from '@/lib/subscription';
 
 /**
- * PayMongo webhook (register it for checkout_session.payment.paid). The signature is checked
+ * PayMongo webhook (register it for checkout_session.payment.paid and payment.refunded). The signature is checked
  * against the raw body before anything is read; a payment that can't be applied yet answers 503
  * so PayMongo delivers it again, one that never can answers 200 and is logged for a person.
  */
@@ -24,6 +25,21 @@ export async function POST(request: NextRequest) {
   const attrs = event?.data?.attributes ?? {};
   if (!verifyPaymongoSignature(request.headers.get('paymongo-signature'), raw, secret, attrs.livemode === true)) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+  }
+  if (attrs.type === 'payment.refunded') {
+    // Subscription payments only: the paid time comes back off the plan (lib/subscription.ts).
+    const payment = attrs.data;
+    const pa = payment?.attributes ?? {};
+    const refundedCents = (pa.refunds ?? []).reduce((sum: number, r: any) => sum + (Number(r?.attributes?.amount) || 0), 0);
+    const refunded = pa.status === 'refunded' && !refundedCents ? 'full' : refundedCents / 100;
+    try {
+      const r = await reverseSubscriptionPayment({ transactionId: payment?.id }, refunded);
+      if (r.reversed) console.log(`PayMongo payment ${payment?.id} refunded: subscription time taken back`);
+    } catch (error) {
+      console.error('PayMongo refund webhook failed:', error);
+      return NextResponse.json({ error: 'Retry later' }, { status: 503 });
+    }
+    return NextResponse.json({ received: true });
   }
   if (attrs.type !== 'checkout_session.payment.paid') return NextResponse.json({ received: true });
 
