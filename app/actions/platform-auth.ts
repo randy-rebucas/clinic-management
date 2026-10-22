@@ -8,10 +8,7 @@ import {
   deletePlatformSession,
   isPlatformAdminEmail,
   issuePlatformLoginToken,
-  LOGIN_LINK_TTL_S,
 } from '@/lib/platform-auth';
-import { generatePlatformLoginEmail, isEmailConfigured, sendEmail } from '@/lib/email';
-import { maskEmail } from '@/lib/user-invite';
 import { consumeRateLimit, getClientIp } from '@/lib/middleware/rate-limit';
 import { getTenantContext } from '@/lib/tenant';
 
@@ -38,18 +35,11 @@ export async function requestPlatformLink(_state: PlatformLinkState, formData: F
 
   if (isPlatformAdminEmail(email)) {
     const token = await issuePlatformLoginToken(email);
-    // The configured base URL, not the request's Host header, so a forged Host cannot point the emailed link elsewhere.
+    // The configured base URL, not the request's Host header, so a forged Host cannot point the link elsewhere.
     const url = new URL('/platform/login/verify', process.env.APP_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
     url.searchParams.set('token', token);
-    if (process.env.NODE_ENV === 'development') {
-      // Development only: the link goes to the terminal, and is also emailed when SMTP is set up.
-      console.info(`[platform] Sign-in link for ${email}: ${url}`);
-      if (!isEmailConfigured()) return { sent: true };
-    }
-    const { subject, html, text } = generatePlatformLoginEmail({ url: url.toString(), expiresInMinutes: LOGIN_LINK_TTL_S / 60 });
-    const result = await sendEmail({ to: email, subject, html, text });
-    // The answer stays the same either way; a failure is only logged, without the link.
-    if (!result.success) console.error(`[platform] Sign-in email to ${maskEmail(email)} was not sent: ${result.error}`);
+    // Email delivery is parked for now: the link goes to the server log (Vercel function logs in prod).
+    console.info(`[platform] Sign-in link for ${email}: ${url}`);
   }
   return { sent: true };
 }

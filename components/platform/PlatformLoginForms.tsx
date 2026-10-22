@@ -11,7 +11,7 @@ export function RequestLinkForm() {
   if (state?.sent) {
     return (
       <p role="status" className="rounded-md bg-brand-teal-light px-4 py-3 text-sm text-brand-navy">
-        If that address belongs to a platform admin, we&rsquo;ve emailed it a sign-in link. It works once, for 15 minutes.
+        If that address belongs to a platform admin, a sign-in link has been written to the server log. It works once, for 15 minutes.
       </p>
     );
   }
