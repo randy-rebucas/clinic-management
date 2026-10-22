@@ -15,6 +15,8 @@ export interface NewPayment {
   referenceNo?: string;
   notes?: string;
   processedBy?: string | Types.ObjectId | null;
+  /** The PaymentAccount an online payment went into. */
+  accountId?: string | Types.ObjectId | null;
 }
 
 export type RecordResult =
@@ -45,6 +47,7 @@ export async function recordInvoicePayments(opts: {
       referenceNo: p.referenceNo,
       processedBy: p.processedBy ? new Types.ObjectId(String(p.processedBy)) : undefined,
       notes: p.notes,
+      accountId: p.accountId ? new Types.ObjectId(String(p.accountId)) : undefined,
     }))
     .filter((p) => p.amount > 0);
   if (!payments.length) return { ok: false, status: 400, error: 'Nothing to record' };

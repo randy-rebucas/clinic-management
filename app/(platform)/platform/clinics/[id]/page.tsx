@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { requirePlatformPage } from '@/lib/platform-auth';
 import { loadPlatformTenant } from '@/lib/platform-console';
 import ClinicActions from '@/components/platform/ClinicActions';
+import InvoiceResendButton from '@/components/platform/InvoiceResendButton';
 import { CARD, H2, LINK, LifecycleBadge, SupportStatusBadge, ago, day, money, planLabel } from '@/components/platform/shared';
 
 export const dynamic = 'force-dynamic';
@@ -46,7 +47,7 @@ export default async function PlatformClinicPage({ params }: { params: Promise<{
             <h3 className="mt-6 text-xs font-medium text-gray-500">Payments</h3>
             {c.payments.length ? (
               <div className="mt-2 overflow-x-auto">
-                <table className="w-full min-w-[480px] text-sm">
+                <table className="w-full min-w-[620px] text-sm">
                   <tbody className="divide-y divide-gray-100">
                     {c.payments.map((p) => (
                       <tr key={p.transactionId}>
@@ -54,6 +55,24 @@ export default async function PlatformClinicPage({ params }: { params: Promise<{
                         <td className="py-2 text-gray-700">{planLabel(p.plan)}, {p.billingCycle}</td>
                         <td className="py-2 text-gray-500">{p.status === 'completed' ? '' : planLabel(p.status)}</td>
                         <td className="py-2 text-right tabular-nums text-gray-900">{money(p.amount, p.currency)}</td>
+                        <td className="py-2 pl-4 text-right text-xs">
+                          {p.invoice?.serialNo ? (
+                            <span className="inline-flex flex-wrap items-center justify-end gap-2">
+                              <a href={`/api/platform/invoices/${p.invoice.id}`} target="_blank" rel="noreferrer" className={LINK}>
+                                {p.invoice.serialNo}
+                              </a>
+                              {p.invoice.status === 'cancelled' ? (
+                                <span className="text-rose-700">cancelled</span>
+                              ) : (
+                                <InvoiceResendButton id={p.invoice.id} emailedAt={p.invoice.emailedAt} />
+                              )}
+                            </span>
+                          ) : p.invoice ? (
+                            <span className="text-amber-700" title={p.invoice.heldReason ?? undefined}>Invoice waiting</span>
+                          ) : (
+                            <span className="text-gray-400">No invoice</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

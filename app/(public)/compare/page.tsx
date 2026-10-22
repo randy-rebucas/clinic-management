@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { Metadata } from 'next';
 import { pageMetadata } from '@/lib/seo';
-import { PHP_MONTHLY } from '@/lib/subscription-period';
+import { monthsSavedYearly } from '@/lib/subscription-period';
+import { getPlanPricing } from '@/lib/platform-config';
 import { Icon, icons, NavyBand, PageHero, SectionHeading, buttonPrimary, buttonSecondary } from '@/components/PublicPage';
 
 export const metadata: Metadata = pageMetadata({
@@ -88,16 +89,19 @@ const toneStyle: Record<Tone, { icon: string; className: string; label: string }
   good: { icon: icons.check, className: 'text-brand-teal', label: 'Strong' },
 };
 
-const basicPrice = PHP_MONTHLY.basic.toLocaleString('en-PH');
-
-const vendorQuestions = [
+function vendorQuestions(basicPrice: string, monthsFree: number) {
+  return [
   { q: 'Is it built for Philippine clinics?', a: 'Yes — PhilHealth and HMO claims and the Data Privacy Act are built in, not bolted on.' },
   { q: 'Can patients use it too?', a: 'Yes — the eMCR app gives patients bookings, a live queue, and their results.' },
   { q: 'Can I try it before paying?', a: '14 days free on the trial plan. No credit card needed.' },
-  { q: 'Is the pricing public?', a: `Yes. Plans start at ₱${basicPrice} a month, and annual billing gets 2 months free.` },
+  {
+    q: 'Is the pricing public?',
+    a: `Yes. Plans start at ₱${basicPrice} a month${monthsFree > 0 ? `, and annual billing gets ${monthsFree} month${monthsFree === 1 ? '' : 's'} free` : ''}.`,
+  },
   { q: 'Can I take my data with me?', a: 'Yes — paid plans include data export, so your records are never locked in.' },
   { q: 'Can it connect to other systems?', a: 'Professional and Enterprise plans include a REST API and signed webhooks.' },
-];
+  ];
+}
 
 const switchSteps = [
   { title: 'Start your free trial', description: 'Set up your clinic, doctors, and schedules in minutes.' },
@@ -105,7 +109,12 @@ const switchSteps = [
   { title: 'Go live', description: 'Start the same day; bringing over old records takes longer the more you have.' },
 ];
 
-export default function ComparePage() {
+/** Prices come from Platform → Configuration; the page is rebuilt when they change. */
+export const revalidate = 300;
+
+export default async function ComparePage() {
+  const pricing = await getPlanPricing();
+  const questions = vendorQuestions(pricing.monthly.basic.toLocaleString('en-PH'), monthsSavedYearly(pricing));
   return (
     <div className="min-h-screen bg-white">
       <PageHero
@@ -220,7 +229,7 @@ export default function ComparePage() {
             </p>
           </div>
           <dl className="rounded-xl border border-gray-200 bg-white divide-y divide-gray-100">
-            {vendorQuestions.map((v) => (
+            {questions.map((v) => (
               <div key={v.q} className="px-5 py-4">
                 <dt className="font-semibold text-gray-900">{v.q}</dt>
                 <dd className="mt-1 flex items-start gap-2 text-sm text-gray-600">

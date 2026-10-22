@@ -1,9 +1,9 @@
 import { addMonths, addYears } from 'date-fns';
-import { SUBSCRIPTION_PACKAGES, type SubscriptionPlan } from '@/lib/subscription-packages';
+import type { SubscriptionPlan } from '@/lib/subscription-packages';
 
 /**
  * Plan names and the date arithmetic a payment applies. Shared by the activation that runs
- * when PayPal confirms a payment and the subscription page that previews it, so the "paid
+ * when PayMongo confirms a payment and the subscription page that previews it, so the "paid
  * until" a clinic is shown before paying is the date it gets.
  */
 
@@ -33,30 +33,33 @@ export function isPaidPlan(plan: unknown): plan is PaidPlan {
 }
 
 /**
- * Peso prices, charged through PayMongo for clinics in the Philippines. A year costs ten months.
- * Set by the business; change them here.
+ * The peso price list, charged through PayMongo. Platform admins set it under Platform →
+ * Configuration (lib/platform-config.ts); DEFAULT_PRICING is the list until they first do.
+ * `yearlyMonths` is how many months a year's payment costs (10: two months free).
  */
-export const PHP_MONTHLY: Record<PaidPlan, number> = { basic: 1499, professional: 3999, enterprise: 9999 };
+export type PlanPricing = { monthly: Record<PaidPlan, number>; yearlyMonths: number };
 
-/** The price of a plan, in pesos when `currency` is PHP (PayMongo), otherwise the package's own (PayPal). */
-export function planPrice(plan: PaidPlan, cycle: BillingCycle, currency?: 'PHP'): { amount: number; currency: string } {
-  if (currency === 'PHP') {
-    const monthly = PHP_MONTHLY[plan];
-    return { amount: cycle === 'yearly' ? monthly * 10 : monthly, currency: 'PHP' };
-  }
-  const { price } = SUBSCRIPTION_PACKAGES[plan];
-  return {
-    amount: cycle === 'yearly' ? price.yearly ?? price.monthly * 12 : price.monthly,
-    currency: price.currency || 'USD',
-  };
+export const DEFAULT_PRICING: PlanPricing = {
+  monthly: { basic: 1499, professional: 3999, enterprise: 9999 },
+  yearlyMonths: 10,
+};
+
+/** @deprecated The default monthly prices; read the configured list with getPlanPricing(). */
+export const PHP_MONTHLY: Record<PaidPlan, number> = DEFAULT_PRICING.monthly;
+
+/** The price of a plan in pesos, from `pricing` (the configured list; the defaults otherwise). */
+export function planPrice(
+  plan: PaidPlan,
+  cycle: BillingCycle,
+  pricing: PlanPricing = DEFAULT_PRICING
+): { amount: number; currency: 'PHP' } {
+  const monthly = pricing.monthly[plan];
+  return { amount: cycle === 'yearly' ? monthly * pricing.yearlyMonths : monthly, currency: 'PHP' };
 }
 
 /** Whole months a year's payment saves against twelve monthly ones (0 when it saves nothing). */
-export function monthsSavedYearly(plan: PaidPlan, currency?: 'PHP'): number {
-  if (currency === 'PHP') return 2;
-  const { monthly, yearly } = SUBSCRIPTION_PACKAGES[plan].price;
-  if (!yearly || monthly <= 0) return 0;
-  return Math.max(0, Math.round((monthly * 12 - yearly) / monthly));
+export function monthsSavedYearly(pricing: PlanPricing = DEFAULT_PRICING): number {
+  return Math.max(0, 12 - pricing.yearlyMonths);
 }
 
 /**
@@ -76,7 +79,7 @@ export function periodEndAfterPayment(
   } | null | undefined,
   cycle: BillingCycle,
   now = new Date(),
-  next?: { plan: PaidPlan; currency?: 'PHP' }
+  next?: { plan: PaidPlan; pricing?: PlanPricing }
 ): Date {
   const currentEnd = current?.expiresAt ? new Date(current.expiresAt) : null;
   const active = current?.status === 'active' && !!currentEnd && currentEnd > now;
@@ -85,12 +88,12 @@ export function periodEndAfterPayment(
     const oldPlan = current?.plan;
     const oldCycle: BillingCycle = current?.billingCycle === 'yearly' ? 'yearly' : 'monthly';
     // A plan that was never bought (trial) is worth nothing to carry.
-    const ratio = isPaidPlan(oldPlan) ? dailyPrice(oldPlan, oldCycle, next.currency) / dailyPrice(next.plan, cycle, next.currency) : 0;
+    const ratio = isPaidPlan(oldPlan) ? dailyPrice(oldPlan, oldCycle, next.pricing) / dailyPrice(next.plan, cycle, next.pricing) : 0;
     base = new Date(now.getTime() + ((currentEnd as Date).getTime() - now.getTime()) * ratio);
   }
   return cycle === 'yearly' ? addYears(base, 1) : addMonths(base, 1);
 }
 
-function dailyPrice(plan: PaidPlan, cycle: BillingCycle, currency?: 'PHP'): number {
-  return planPrice(plan, cycle, currency).amount / (cycle === 'yearly' ? 365 : 30);
+function dailyPrice(plan: PaidPlan, cycle: BillingCycle, pricing?: PlanPricing): number {
+  return planPrice(plan, cycle, pricing).amount / (cycle === 'yearly' ? 365 : 30);
 }

@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+vi.mock('server-only', () => ({}));
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn() }));
-vi.mock('@/models/PaypalOrder', () => ({ default: {} }));
+vi.mock('@/lib/platform-config', () => ({ getPlanPricing: vi.fn() }));
+vi.mock('@/lib/platform-invoice', () => ({ cancelSubscriptionInvoice: vi.fn(async () => {}) }));
+vi.mock('@/models/SubscriptionOrder', () => ({ default: {} }));
 vi.mock('@/models/Tenant', () => ({ default: { findOne: vi.fn() } }));
 
 import Tenant from '@/models/Tenant';

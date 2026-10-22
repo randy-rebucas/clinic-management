@@ -79,7 +79,7 @@ export default async function PlatformOverviewPage() {
       <div className="grid gap-6 lg:grid-cols-3">
         <section className={`${CARD} p-5 lg:col-span-2`} aria-labelledby="rev">
           <h2 id="rev" className={H2}>Collected revenue</h2>
-          <p className="mb-4 text-xs text-gray-500">Completed payments by month, as recorded by PayMongo and PayPal.</p>
+          <p className="mb-4 text-xs text-gray-500">Completed payments by month, as recorded by PayMongo.</p>
           <RevenueChart revenue={m.revenue} />
         </section>
 
