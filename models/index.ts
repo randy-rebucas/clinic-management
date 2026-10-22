@@ -306,7 +306,7 @@ export function registerAllModels(): void {
   require('./Product');
   require('./MedicalRepresentativeVisit');
   require('./SupportRequest');
-  require('./PaypalOrder');
+  require('./SubscriptionOrder');
   require('./PushSubscription');
   require('./MobileDevice');
   require('./RefreshToken');
@@ -368,7 +368,7 @@ const models = {
   Product: require('./Product').default,
   MedicalRepresentativeVisit: require('./MedicalRepresentativeVisit').default,
   SupportRequest: require('./SupportRequest').default,
-  PaypalOrder: require('./PaypalOrder').default,
+  SubscriptionOrder: require('./SubscriptionOrder').default,
   PushSubscription: require('./PushSubscription').default,
   MobileDevice: require('./MobileDevice').default,
   RefreshToken: require('./RefreshToken').default,

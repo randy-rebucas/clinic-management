@@ -8,6 +8,7 @@ import { getStorageUsageSummary } from '@/lib/storage-tracking';
 import { checkSubscriptionStatus } from '@/lib/subscription';
 import { getSubscriptionLimitations, SUBSCRIPTION_PACKAGES } from '@/lib/subscription-packages';
 import { Types } from 'mongoose';
+import { isPaidPlan, planPrice } from '@/lib/subscription-period';
 
 export interface PlanRecommendation {
   recommendedPlan: 'basic' | 'professional' | 'enterprise';
@@ -139,12 +140,10 @@ export async function getPlanRecommendations(
           benefits.push('White-label solution');
         }
 
-        // Calculate cost savings (yearly vs monthly)
-        const currentPrice = currentLimits.price.monthly;
-        const recommendedPrice = recommendedLimits.price.monthly;
-        const recommendedYearly = recommendedLimits.price.yearly || recommendedPrice * 12;
+        // Calculate cost savings (yearly vs monthly), at the peso price list clinics pay.
+        const recommendedPrice = isPaidPlan(recommendedPlan) ? planPrice(recommendedPlan, 'monthly').amount : 0;
         const monthlyCost = recommendedPrice * 12;
-        const yearlyCost = recommendedYearly;
+        const yearlyCost = isPaidPlan(recommendedPlan) ? planPrice(recommendedPlan, 'yearly').amount : 0;
         const savings = monthlyCost - yearlyCost;
         const savingsPercentage = (savings / monthlyCost) * 100;
 

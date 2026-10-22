@@ -40,8 +40,10 @@ export interface ITenant extends Document {
     billingCycle?: 'monthly' | 'yearly';
     expiresAt?: Date;
     renewalAt?: Date;
+    /** The order that paid for the current period (see lib/subscription-order.ts). */
+    lastOrderId?: string;
+    /** Older name of lastOrderId, still read as its fallback. */
     paypalOrderId?: string;
-    paypalSubscriptionId?: string;
     trialWarningsSent?: number[];
     usageAlertLevels?: Record<string, number>;
     paymentHistory?: Array<{
@@ -130,9 +132,8 @@ const TenantSchema = new Schema<ITenant>(
       },
       expiresAt: { type: Date },
       renewalAt: { type: Date },
+      lastOrderId: { type: String },
       paypalOrderId: { type: String },
-      paypalSubscriptionId: { type: String },
-      processedWebhookIds: [{ type: String }],
       trialWarningsSent: { type: [Number], default: undefined }, // days-before thresholds already warned
       usageAlertLevels: { type: Schema.Types.Mixed }, // { patients: 90, storage: 80, ... } last alerted threshold
       paymentHistory: [
@@ -140,7 +141,7 @@ const TenantSchema = new Schema<ITenant>(
           transactionId: { type: String, required: true },
           orderId: { type: String, required: true },
           amount: { type: Number, required: true },
-          currency: { type: String, default: 'USD' },
+          currency: { type: String, default: 'PHP' },
           payerEmail: { type: String },
           plan: { type: String, required: true },
           billingCycle: { type: String, enum: ['monthly', 'yearly'], default: 'monthly' },
@@ -159,6 +160,7 @@ const TenantSchema = new Schema<ITenant>(
 // Note: subdomain index is automatically created by unique: true
 TenantSchema.index({ status: 1 });
 TenantSchema.index({ 'subscription.status': 1 });
+TenantSchema.index({ 'subscription.lastOrderId': 1 });
 TenantSchema.index({ 'subscription.paypalOrderId': 1 });
 TenantSchema.index({ createdAt: -1 });
 

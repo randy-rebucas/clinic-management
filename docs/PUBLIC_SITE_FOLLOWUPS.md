@@ -26,8 +26,8 @@ Open items from the `app/(public)` audit of 2026-10-22. The fixes so far are on 
       booking and registration is refused.
 - [ ] **Upstash Redis in production.** Without `UPSTASH_REDIS_REST_URL`/`_TOKEN`, rate limits are per
       serverless instance. The per-phone pending-booking cap is the only database-backed limit.
-- [ ] **PayMongo always on in production.** If it's unset, checkout falls back to PayPal in USD
-      ($29/$79/$199), which doesn't match the peso prices on the site.
+- [ ] **PayMongo always on in production.** If it's unset, plans can't be paid for online (PayPal was
+      removed; subscriptions are pesos only).
 - [ ] **`/download` on iPad** needs `NEXT_PUBLIC_EMCR_APP_STORE_URL` once the iOS app ships.
 - [ ] **Remove `INSTALL_SECRET` after setup.** `/install` shows whether it's set; reset is locked anyway.
 

@@ -84,13 +84,6 @@ export interface SubscriptionLimitations {
     /** Video visits booked through the patient app. */
     teleconsult: boolean;
   };
-  
-  // Pricing
-  price: {
-    monthly: number;
-    yearly?: number; // Optional yearly pricing
-    currency: string;
-  };
 }
 
 export const SUBSCRIPTION_PACKAGES: Record<SubscriptionPlan, SubscriptionLimitations> = {
@@ -139,10 +132,6 @@ export const SUBSCRIPTION_PACKAGES: Record<SubscriptionPlan, SubscriptionLimitat
       aiScribe: true, // so trials can try the headline features
       teleconsult: true,
     },
-    price: {
-      monthly: 0,
-      currency: 'USD',
-    },
   },
   
   basic: {
@@ -189,11 +178,6 @@ export const SUBSCRIPTION_PACKAGES: Record<SubscriptionPlan, SubscriptionLimitat
       backupRetentionDays: 30,
       aiScribe: false,
       teleconsult: false,
-    },
-    price: {
-      monthly: 29,
-      yearly: 290, // 2 months free
-      currency: 'USD',
     },
   },
   
@@ -242,11 +226,6 @@ export const SUBSCRIPTION_PACKAGES: Record<SubscriptionPlan, SubscriptionLimitat
       aiScribe: true,
       teleconsult: true,
     },
-    price: {
-      monthly: 79,
-      yearly: 790, // 2 months free
-      currency: 'USD',
-    },
   },
   
   enterprise: {
@@ -293,11 +272,6 @@ export const SUBSCRIPTION_PACKAGES: Record<SubscriptionPlan, SubscriptionLimitat
       backupRetentionDays: 365,
       aiScribe: true,
       teleconsult: true,
-    },
-    price: {
-      monthly: 199,
-      yearly: 1990, // 2 months free
-      currency: 'USD',
     },
   },
 };

@@ -94,9 +94,9 @@ export default function PricingPage() {
 
   const priced = plans.map((plan) => {
     if (plan.id === 'trial') return { ...plan, monthly: 0, yearly: 0, saved: 0, code: currency };
-    const monthly = planPrice(plan.id as PaidPlan, 'monthly', currency);
-    const yearly = planPrice(plan.id as PaidPlan, 'yearly', currency);
-    return { ...plan, monthly: monthly.amount, yearly: yearly.amount, saved: monthsSavedYearly(plan.id as PaidPlan, currency), code: monthly.currency };
+    const monthly = planPrice(plan.id as PaidPlan, 'monthly');
+    const yearly = planPrice(plan.id as PaidPlan, 'yearly');
+    return { ...plan, monthly: monthly.amount, yearly: yearly.amount, saved: monthsSavedYearly(), code: monthly.currency };
   });
 
   const money = (amount: number, code: string) =>

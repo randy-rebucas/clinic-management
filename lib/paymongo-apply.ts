@@ -1,7 +1,7 @@
 import 'server-only';
 import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
-import PaypalOrder from '@/models/PaypalOrder';
+import SubscriptionOrder from '@/models/SubscriptionOrder';
 import Invoice from '@/models/Invoice';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
 import { activateSubscriptionFromOrder, type ActivationResult } from '@/lib/subscription';
@@ -30,7 +30,7 @@ export async function applyPaidCheckout(session: CheckoutSession): Promise<Apply
     const orderId = m.orderId;
     if (!orderId || !isOid(m.tenantId) || !isPaidPlan(m.plan)) return { ok: false, retry: false, error: 'Subscription checkout without its order details' };
     // The order record lapses after a while unpaid; the checkout's own details rebuild it.
-    await PaypalOrder.updateOne(
+    await SubscriptionOrder.updateOne(
       { orderId },
       {
         $setOnInsert: {

@@ -16,7 +16,7 @@ const subprocessors: [string, string][] = [
   ['Email delivery provider', 'Transactional email (sign-in links, reminders, receipts)'],
   ['Anthropic', 'AI scribe drafts, only when a clinic turns the scribe on'],
   ['Jitsi (meet.jit.si)', 'Video for teleconsultations, only when a clinic uses them'],
-  ['PayMongo and PayPal', 'Subscription and patient bill payments'],
+  ['PayMongo', 'Subscription and patient bill payments'],
   ['Expo and web push services', 'Mobile and browser notifications'],
   ['Sentry', 'Error monitoring'],
 ];

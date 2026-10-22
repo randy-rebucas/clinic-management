@@ -343,7 +343,7 @@ function PlanColumn({
         </p>
         <button
           type="button"
-          disabled={!data.paypalReady}
+          disabled={!data.gatewayReady}
           onClick={() => onChoose({ offer, cycle })}
           className={`${action.primary ? PRIMARY : SECONDARY} w-full`}
         >
@@ -574,10 +574,10 @@ export default function SubscriptionClient({ data, canceled }: { data: Subscript
           </div>
           <CycleSwitch value={cycle} onChange={setCycle} saved={saved} />
         </div>
-        {!data.paypalReady && (
-          <Banner tone="amber" title="Online payment isn’t set up on this server">
-            Plans can’t be paid for here until <code className="font-mono text-xs">PAYPAL_CLIENT_ID</code> and{' '}
-            <code className="font-mono text-xs">PAYPAL_CLIENT_SECRET</code> are set.
+        {!data.gatewayReady && (
+          <Banner tone="amber" title="Online payment isn’t set up yet">
+            Plans can’t be paid for here until the platform’s PayMongo account is connected. Contact support to
+            subscribe in the meantime.
           </Banner>
         )}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
