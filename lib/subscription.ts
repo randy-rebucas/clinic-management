@@ -6,6 +6,7 @@ import connectDB from '@/lib/mongodb';
 import Tenant from '@/models/Tenant';
 import PaypalOrder from '@/models/PaypalOrder';
 import { Types } from 'mongoose';
+import { subMonths, subYears } from 'date-fns';
 import { isPaidPlan, periodEndAfterPayment } from '@/lib/subscription-period';
 
 /** Plans that never expire. A missing expiresAt on any other plan means expired. */
@@ -192,4 +193,42 @@ export async function activateSubscriptionFromOrder(
   }
 
   return { ok: false, status: 409, error: 'Could not apply payment, please retry' };
+}
+
+/**
+ * Take back the paid time of a subscription payment that was refunded in full or charged back
+ * (PayPal PAYMENT.CAPTURE.REFUNDED / REVERSED, PayMongo payment.refunded). The payment's period
+ * comes off the paid-until date, and the plan is cancelled when nothing paid for is left. A
+ * partial refund changes nothing. Idempotent: a payment already marked refunded is skipped.
+ */
+export async function reverseSubscriptionPayment(
+  match: { transactionId?: string; orderId?: string },
+  refunded: number | 'full'
+): Promise<{ tenantId?: Types.ObjectId; reversed: boolean }> {
+  if (!match.transactionId && !match.orderId) return { reversed: false };
+  await connectDB();
+  const tenant = await Tenant.findOne(
+    match.transactionId
+      ? { 'subscription.paymentHistory.transactionId': match.transactionId }
+      : { 'subscription.paymentHistory.orderId': match.orderId }
+  );
+  if (!tenant?.subscription) return { reversed: false };
+  const payment = tenant.subscription.paymentHistory?.find((p: any) =>
+    match.transactionId ? p.transactionId === match.transactionId : p.orderId === match.orderId
+  );
+  if (!payment || payment.status !== 'completed') return { tenantId: tenant._id, reversed: false };
+  if (refunded !== 'full' && refunded + 0.005 < Number(payment.amount)) return { tenantId: tenant._id, reversed: false };
+
+  payment.status = 'refunded';
+  const sub = tenant.subscription;
+  if (sub.expiresAt) {
+    const end = payment.billingCycle === 'yearly' ? subYears(new Date(sub.expiresAt), 1) : subMonths(new Date(sub.expiresAt), 1);
+    sub.expiresAt = end;
+    sub.renewalAt = end;
+  }
+  if (!sub.expiresAt || new Date(sub.expiresAt) <= new Date() || payment.orderId === sub.paypalOrderId) {
+    sub.status = 'cancelled';
+  }
+  await tenant.save();
+  return { tenantId: tenant._id, reversed: true };
 }
