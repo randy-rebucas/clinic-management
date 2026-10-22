@@ -6,6 +6,11 @@ import { sendBroadcastMessage } from '@/lib/automations/broadcast-messaging';
 import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, patientTenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId, escapeRegex } from '@/lib/api/validate';
+import { checkSubscriptionLimit } from '@/lib/subscription-limits';
+import { consumeRateLimit } from '@/lib/middleware/rate-limit';
+
+/** Per clinic: each broadcast texts and emails every patient in the group at the platform's cost. */
+const BROADCAST_LIMIT = { name: 'broadcast', windowMs: 60 * 60 * 1000, maxRequests: 5, identifierOnly: true };
 
 const broadcastSchema = z.object({
   message: z.string().trim().min(1).max(5000),
@@ -40,6 +45,21 @@ export async function POST(request: NextRequest) {
   const parsed = await parseBody(request, broadcastSchema);
   if (isValidationError(parsed)) return parsed;
   const body = parsed.data;
+
+  const plan = await checkSubscriptionLimit(ctx.tenantId, 'useFeature', 'broadcastMessaging');
+  if (!plan.allowed) {
+    return NextResponse.json(
+      { success: false, code: 'PLAN_REQUIRED', error: plan.reason || 'Broadcast messages need a Professional or Enterprise plan.' },
+      { status: 403 }
+    );
+  }
+  const limit = await consumeRateLimit(BROADCAST_LIMIT, '', ctx.tenantId);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { success: false, error: 'Too many broadcasts this hour. Try again later.' },
+      { status: 429, headers: { 'Retry-After': String(Math.max(1, Math.ceil((limit.resetTime - Date.now()) / 1000))) } }
+    );
+  }
 
   try {
     await connectDB();
