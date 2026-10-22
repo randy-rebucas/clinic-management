@@ -308,6 +308,7 @@ export function registerAllModels(): void {
   require('./SupportRequest');
   require('./SubscriptionOrder');
   require('./PlatformSetting');
+  require('./PlatformInvoice');
   require('./PushSubscription');
   require('./MobileDevice');
   require('./RefreshToken');
@@ -371,6 +372,7 @@ const models = {
   SupportRequest: require('./SupportRequest').default,
   SubscriptionOrder: require('./SubscriptionOrder').default,
   PlatformSetting: require('./PlatformSetting').default,
+  PlatformInvoice: require('./PlatformInvoice').default,
   PushSubscription: require('./PushSubscription').default,
   MobileDevice: require('./MobileDevice').default,
   RefreshToken: require('./RefreshToken').default,

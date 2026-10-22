@@ -7,6 +7,7 @@ import { RESETS, type UsageKey, type UsageRow } from '@/lib/plan-usage';
 import { BLOCKED_WHEN_UNPAID, PAID_PLANS, type BillingCycle } from '@/lib/subscription-period';
 import { FigureRow, Icon, Panel, formatCount, type Figure } from '@/components/dashboards/shared';
 import { Modal } from '@/components/ui/Modal';
+import { FIELD } from '@/components/appointments/shared';
 import UsageMeter, { usageAmount } from './UsageMeter';
 
 const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal focus-visible:ring-offset-2';
@@ -517,14 +518,85 @@ function Payments({ payments }: { payments: SubscriptionPageData['payments'] }) 
                 <span className="max-sm:col-start-2 max-sm:row-start-2 max-sm:justify-self-end">
                   <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${s.cls}`}>{s.label}</span>
                 </span>
-                <span className="truncate font-mono text-xs text-gray-500 max-sm:col-span-2" title={p.reference}>
-                  {p.reference}
+                <span className="flex min-w-0 flex-col gap-0.5 max-sm:col-span-2">
+                  <span className="truncate font-mono text-xs text-gray-500" title={p.reference}>
+                    {p.reference}
+                  </span>
+                  {p.invoice ? (
+                    <a
+                      href={`/api/subscription/invoices/${p.invoice.id}?format=pdf&download=1`}
+                      className={`text-xs font-semibold text-brand-teal-dark hover:underline ${FOCUS_RING}`}
+                    >
+                      Invoice {p.invoice.serialNo}
+                      {p.invoice.status === 'cancelled' ? ' (cancelled)' : ''}
+                    </a>
+                  ) : p.invoicePending ? (
+                    <span className="text-xs text-gray-500">Invoice on its way</span>
+                  ) : null}
                 </span>
               </li>
             );
           })}
         </ul>
       )}
+    </Panel>
+  );
+}
+
+/** Who DevCom Digital's sales invoices for the plan are made out to. */
+function BillingDetails({ profile }: { profile: SubscriptionPageData['billingProfile'] }) {
+  const [v, setV] = useState({ registeredName: profile.registeredName, tin: profile.tin, address: profile.address, email: profile.email });
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const field = (key: keyof typeof v, label: string, placeholder: string, opts: { type?: string; max: number }) => (
+    <div>
+      <label htmlFor={`bill-${key}`} className="mb-1.5 block text-sm font-medium text-gray-700">{label}</label>
+      <input
+        id={`bill-${key}`}
+        type={opts.type ?? 'text'}
+        value={v[key]}
+        maxLength={opts.max}
+        placeholder={placeholder}
+        onChange={(e) => setV((prev) => ({ ...prev, [key]: e.target.value }))}
+        className={FIELD}
+      />
+    </div>
+  );
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await fetch('/api/subscription/billing-profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(v),
+      });
+      const json = await res.json().catch(() => null);
+      setNote(res.ok && json?.success ? { ok: true, text: 'Saved. Invoices from now on use these details.' } : { ok: false, text: json?.error || 'That didn’t save.' });
+    } catch {
+      setNote({ ok: false, text: 'The server couldn’t be reached. Nothing was changed.' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Panel title="Billing details" subtitle="Printed on the sales invoice for each plan payment">
+      <form onSubmit={save} className="grid gap-4 px-5 pb-5 sm:grid-cols-2">
+        {field('registeredName', 'Registered name', profile.fallback.registeredName, { max: 200 })}
+        {field('tin', 'TIN', '123-456-789-00000', { max: 20 })}
+        <div className="sm:col-span-2">{field('address', 'Business address', profile.fallback.address || 'Street, city, province', { max: 500 })}</div>
+        {field('email', 'Send invoices to', profile.fallback.email || 'billing@yourclinic.ph', { type: 'email', max: 254 })}
+        <div className="flex flex-wrap items-center gap-3 self-end">
+          <button type="submit" disabled={busy} className={PRIMARY}>{busy ? 'Saving…' : 'Save billing details'}</button>
+          {note && (
+            <p role={note.ok ? 'status' : 'alert'} className={`text-sm ${note.ok ? 'text-emerald-700' : 'text-rose-700'}`}>{note.text}</p>
+          )}
+        </div>
+        <p className="text-xs text-gray-500 sm:col-span-2">Blank fields print the clinic&rsquo;s name, address and email. Invoices already issued keep their details.</p>
+      </form>
     </Panel>
   );
 }
@@ -588,6 +660,7 @@ export default function SubscriptionClient({ data, canceled }: { data: Subscript
       </section>
 
       <Payments payments={data.payments} />
+      <BillingDetails profile={data.billingProfile} />
 
       <ConfirmDialog key={choice ? `${choice.offer.plan}-${choice.cycle}` : 'none'} choice={choice} data={data} onClose={() => setChoice(null)} />
     </div>

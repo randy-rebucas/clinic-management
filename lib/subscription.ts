@@ -10,6 +10,7 @@ import { subMonths, subYears } from 'date-fns';
 import { isPaidPlan, periodEndAfterPayment } from '@/lib/subscription-period';
 import { currentOrderId } from '@/lib/subscription-order';
 import { getPlanPricing } from '@/lib/platform-config';
+import { cancelSubscriptionInvoice } from '@/lib/platform-invoice';
 
 /** Plans that never expire. A missing expiresAt on any other plan means expired. */
 const NON_EXPIRING_PLANS = new Set(['lifetime', 'free']);
@@ -234,5 +235,8 @@ export async function reverseSubscriptionPayment(
     sub.status = 'cancelled';
   }
   await tenant.save();
+  await cancelSubscriptionInvoice(payment.orderId, refunded === 'full' ? 'Payment refunded or charged back' : 'Payment refunded').catch((error) =>
+    console.error(`Cancelling the sales invoice for order ${payment.orderId} failed`, error)
+  );
   return { tenantId: tenant._id, reversed: true };
 }

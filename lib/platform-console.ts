@@ -6,6 +6,7 @@ import User from '@/models/User';
 import SupportRequest, { type SupportStatus, type SupportCategory, type SupportReplyAuthor } from '@/models/SupportRequest';
 import { escapeRegex } from '@/lib/api/validate';
 import { getPlanPricing } from '@/lib/platform-config';
+import PlatformInvoice from '@/models/PlatformInvoice';
 import {
   computePlatformMetrics,
   lifecycleOf,
@@ -155,7 +156,17 @@ export interface PlatformTenantDetail {
     billingCycle: string | null;
     expiresAt: string | null;
   };
-  payments: Array<{ transactionId: string; amount: number; currency: string; plan: string; billingCycle: string; status: string; paidAt: string }>;
+  payments: Array<{
+    transactionId: string;
+    amount: number;
+    currency: string;
+    plan: string;
+    billingCycle: string;
+    status: string;
+    paidAt: string;
+    /** DevCom Digital's sales invoice for it: issued, cancelled, or waiting (held, with why). */
+    invoice: { id: string; serialNo: string | null; status: string; heldReason: string | null; emailedAt: string | null } | null;
+  }>;
   usage: { staff: number; patients: number; appointments30d: number };
   admins: Array<{ id: string; name: string; email: string; lastLogin: string | null }>;
   tickets: Array<{ id: string; subject: string; status: SupportStatus; lastActivityAt: string }>;
@@ -175,7 +186,7 @@ export async function loadPlatformTenant(id: string): Promise<PlatformTenantDeta
   const Role = (await import('@/models/Role')).default;
   const adminRoles = await Role.find({ tenantId, name: { $in: ['admin', 'owner'] } }).select('_id').lean<{ _id: Types.ObjectId }[]>();
 
-  const [staff, patients, appointments30d, admins, tickets] = await Promise.all([
+  const [staff, patients, appointments30d, admins, tickets, invoices] = await Promise.all([
     User.countDocuments({ tenantId, status: 'active' }),
     Patient.countDocuments({ tenantIds: tenantId }),
     Appointment.countDocuments({ tenantId, createdAt: { $gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) } }),
@@ -185,7 +196,9 @@ export async function loadPlatformTenant(id: string): Promise<PlatformTenantDeta
       .limit(10)
       .lean<any[]>(),
     SupportRequest.find({ tenantId }).select('subject status lastActivityAt createdAt').sort({ createdAt: -1 }).limit(10).lean<any[]>(),
+    PlatformInvoice.find({ tenantId }).select('orderId serialNo status heldReason emailedAt').lean<any[]>(),
   ]);
+  const invoiceByOrder = new Map(invoices.map((inv) => [inv.orderId, inv]));
 
   return {
     id,
@@ -215,6 +228,12 @@ export async function loadPlatformTenant(id: string): Promise<PlatformTenantDeta
         billingCycle: p.billingCycle,
         status: p.status || 'completed',
         paidAt: iso(p.paidAt)!,
+        invoice: (() => {
+          const inv = invoiceByOrder.get(p.orderId);
+          return inv
+            ? { id: String(inv._id), serialNo: inv.serialNo ?? null, status: inv.status, heldReason: inv.heldReason ?? null, emailedAt: iso(inv.emailedAt) }
+            : null;
+        })(),
       })),
     usage: { staff, patients, appointments30d },
     admins: admins.map((u) => ({ id: String(u._id), name: u.name, email: u.email, lastLogin: iso(u.lastLogin) })),

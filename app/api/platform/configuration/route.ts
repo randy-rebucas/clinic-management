@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { scheduleHeldInvoices } from '@/lib/platform-invoice';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { requirePlatformApi, isPlatformError } from '@/lib/platform-auth';
@@ -58,6 +59,8 @@ export async function PUT(request: NextRequest) {
       before = await getBillingIssuer();
       after = parsed.data;
       await savePlatformSection(section, parsed.data, admin.email);
+      // Invoices held for want of an issuer (or of serials) go out now, after the response.
+      scheduleHeldInvoices();
     } else if (section === 'pricing') {
       const parsed = pricingSchema.safeParse(values);
       if (!parsed.success) return invalid(parsed.error);

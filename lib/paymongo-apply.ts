@@ -5,6 +5,7 @@ import SubscriptionOrder from '@/models/SubscriptionOrder';
 import Invoice from '@/models/Invoice';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
 import { activateSubscriptionFromOrder, type ActivationResult } from '@/lib/subscription';
+import { scheduleSubscriptionInvoice } from '@/lib/platform-invoice';
 import { recordInvoicePayments } from '@/lib/invoice-payments';
 import { isPaidPlan } from '@/lib/subscription-period';
 import { paidTotal, type CheckoutSession } from '@/lib/paymongo';
@@ -49,6 +50,8 @@ export async function applyPaidCheckout(session: CheckoutSession): Promise<Apply
     );
     const r: ActivationResult = await activateSubscriptionFromOrder(orderId, { transactionId: paymentId, amount: paid, currency: 'PHP' });
     if (!r.ok) return { ok: false, retry: r.status === 409, error: r.error };
+    // DevCom Digital's sales invoice for it, after the response (idempotent; also on a repeat).
+    scheduleSubscriptionInvoice(orderId);
     return { ok: true, applied: !r.alreadyApplied };
   }
 
