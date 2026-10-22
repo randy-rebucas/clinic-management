@@ -6,7 +6,7 @@ import connectDB from '@/lib/mongodb';
 import Tenant from '@/models/Tenant';
 import PaypalOrder from '@/models/PaypalOrder';
 import { Types } from 'mongoose';
-import { periodEndAfterPayment } from '@/lib/subscription-period';
+import { isPaidPlan, periodEndAfterPayment } from '@/lib/subscription-period';
 
 /** Plans that never expire. A missing expiresAt on any other plan means expired. */
 const NON_EXPIRING_PLANS = new Set(['lifetime', 'free']);
@@ -143,7 +143,12 @@ export async function activateSubscriptionFromOrder(
 
     // Extend from the later of now and the current expiry so paid-for days aren't lost.
     const now = new Date();
-    const expiresAt = periodEndAfterPayment(sub, order.billingCycle === 'yearly' ? 'yearly' : 'monthly', now);
+    const expiresAt = periodEndAfterPayment(
+      sub,
+      order.billingCycle === 'yearly' ? 'yearly' : 'monthly',
+      now,
+      isPaidPlan(order.plan) ? { plan: order.plan, currency: order.currency === 'PHP' ? 'PHP' : undefined } : undefined
+    );
 
     const entry = {
       transactionId: payment.transactionId || orderId,
