@@ -294,7 +294,50 @@ ones still work, but they pick the most recently updated record on a shared hous
 | `GET /api/emcr/account` | | → `{ id, hasOwnRecord, guardianOnly, pendingRequests, activation }`. `activation`: `{ active, plan, activatedAt, expiresAt, daysLeft, enforced }` |
 | `POST /api/emcr/activation/redeem` | `{ code }` | Voucher code (`ABCD-EFGH-JKMN`; dashes/spaces/case ignored). Adds a year (stacks on a running year). Always for the signed-in account (`X-Patient-Profile` ignored). → `{ message, activation, soldBy }`. `400` `code`: `INVALID`, `USED`, `NOT_PAID` (the clinic hasn't paid for that voucher batch yet). 10 tries per hour |
 
-`otp/verify`, `claim` and `redeem` return their fields at the top level (not under `data`);
+**Clinic invites** (the easiest way in). Staff tap "Send app invite" on the patient record and hand
+over a printed slip (QR + code `ABCD-2345`) and/or text the link `https://<site>/i/ABCD2345`. That
+page opens `myclinicsoft://invite?c=ABCD2345`. An invite is for the patient themselves (`self`) or
+for a parent or carer (`guardian`, which can include siblings on the same number). It works once
+and lasts 14 days. No name or birth-date questions are asked: the clinic already knows the person.
+The sign-in code goes only to the number staff confirmed, so a found slip is useless without
+that phone.
+
+| Method & path | Body | Notes |
+|---|---|---|
+| `POST /api/emcr/invite/preview` | `{ code }` | `code` can be the typed code, the texted link or the scanned QR. → `{ clinicName, mode: "self" \| "guardian", people: ["Maria D.", …], phoneHint: "+63*******4567", expiresAt }`. Errors: `404 INVITE_INVALID` (unknown or cancelled), `410 INVITE_USED` / `INVITE_EXPIRED` |
+| `POST /api/emcr/invite/send-code` | `{ code }` | Texts a 6-digit code to the invite's phone. → `{ sentTo, expiresInMinutes }`. Rate limits are the same as `otp/request` |
+| `POST /api/emcr/invite/redeem` | `{ code, otp }` | Links what the invite names and signs in. → `{ account, session }` (shape as `otp/verify`). Errors: wrong code `401`; `409 RECORD_CHANGED` (the clinic changed the record since issuing; ask for a new invite); `409 SELF_TAKEN` (this number's account already holds someone else's own record); `410 INVITE_USED` |
+
+**Sign-in credential: mobile number + password, on the eMCR account.** Patients have no password
+until one is created:
+- **When they verify:** after an invite is redeemed or a first SMS sign-in, `account.hasPassword` is `false`. The app must then ask for a password before going on.
+- **By staff:** for a phone that can't get texts, staff tick "Their phone can't get texts" on the invite. That creates the account at once and prints a temporary password on the slip. Signing in with it returns `account.mustChangePassword: true`, and the app must have the person choose their own password.
+
+The SMS code is still how the first password is set and how a forgotten one is reset.
+Email + password on the patient record (`auth/token {method:"password"}`) still works for older
+sign-ins.
+
+| Method & path | Body | Notes |
+|---|---|---|
+| `POST /api/emcr/auth/password` | `{ phone, password }` | → `{ account, session }`. Wrong number or password: `401` (the same answer either way). `409 NO_PROFILE` when no records are linked yet. Same rate limits as `otp/verify` |
+| `POST /api/emcr/account/password` | `{ newPassword, currentPassword? }` | Signed in; guardian sessions are allowed. Without `currentPassword`, the session must come from an SMS code in the last 15 minutes (first password or reset), else `400 OTP_REQUIRED` / `CURRENT_PASSWORD_REQUIRED`. With it: `400 WRONG_CURRENT_PASSWORD`. A temporary password has to be replaced, not reused. → `{ account }` |
+
+`account` (in `otp/verify`, `claim`, `invite/redeem`, `auth/password`, `GET /api/emcr/account`) now has `hasPassword`, `mustChangePassword` and `loginId`.
+
+**Login ID.** An account with its own record also gets a structured sign-in name once it has a
+password, e.g. `qc01.jdc.19900425@myclinicsoft.solutions`:
+- `qc01` is the clinic's **location code** (Clinic Settings, 2–6 letters/digits, unique).
+- `jdc` is the first letter of each word of the patient's names.
+- `19900425` is the birth date.
+- A second person with the same parts gets `.2`, `.3`.
+
+It is sent as `login` to `POST /api/emcr/auth/password`, in place of the mobile number. **It is not
+a mailbox**; nothing is ever sent to it. It is given once and kept, even if the clinic later
+changes its code. There is none for guardian-only accounts, or while no clinic of the person has
+a location code. `auth/password` takes `{ login, password }`, where `login` is the mobile number
+or the login ID; `phone` is still accepted.
+
+`otp/verify`, `claim`, `redeem` and the invite endpoints return their fields at the top level (not under `data`);
 `GET /api/emcr/account` returns them under `data`. After redeeming, other server instances may
 still answer `402` for up to 30 seconds.
 

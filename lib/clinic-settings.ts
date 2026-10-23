@@ -44,6 +44,9 @@ export const CURRENCY_CODES = CURRENCIES.map((c) => c.code) as unknown as readon
 /** The invoice route keeps only these characters and the first 10 of them. */
 export const INVOICE_PREFIX = /^[A-Za-z0-9_-]{1,10}$/;
 
+/** eMCR login ID location code: 2 to 6 letters or digits (stored lowercase). */
+export const LOCATION_CODE = /^[a-z0-9]{2,6}$/;
+
 /** Everything the page edits, in the shape the API takes. */
 export interface ClinicSettingsForm {
   clinicName: string;
@@ -54,6 +57,8 @@ export interface ClinicSettingsForm {
   taxId: string;
   licenseNumber: string;
   ptr: string;
+  /** Lowercase 2–6 letters/digits, or ''. Starts the clinic's eMCR login IDs; kept on the clinic record. */
+  locationCode: string;
   businessHours: DayHours[];
   timezone: string;
   defaultDuration: number;
@@ -94,7 +99,7 @@ export interface ClinicSettingsPageData {
 
 /** Which part of the page a stored settings path belongs to, for "Last changed …: billing, queue". */
 const AREAS: [RegExp, string][] = [
-  [/^(clinicName|clinicAddress|clinicPhone|clinicEmail|clinicWebsite|taxId|licenseNumber|ptr)$/, 'clinic details'],
+  [/^(clinicName|clinicAddress|clinicPhone|clinicEmail|clinicWebsite|taxId|licenseNumber|ptr|locationCode)$/, 'clinic details'],
   [/^(businessHours|timezone)/, 'opening hours'],
   [/^(appointmentSettings|communicationSettings)/, 'appointments'],
   [/^billingSettings/, 'billing'],

@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import MessagePatientButton from './patients/MessagePatientButton';
+import AppInviteDialog from './patients/AppInviteDialog';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
@@ -1100,6 +1101,7 @@ function AppAccessPanel({ patientId, fallbackEmail, firstName }: { patientId: st
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [qr, setQr] = useState<{ data: string; expiresAt: string } | null>(null);
   const [qrBusy, setQrBusy] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
@@ -1210,6 +1212,17 @@ function AppAccessPanel({ patientId, fallbackEmail, firstName }: { patientId: st
               type="button"
               onClick={() => {
                 setDone(null);
+                setInviteOpen(true);
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-md bg-brand-teal-dark px-3.5 py-2 font-semibold text-white hover:bg-brand-teal-deep ${FOCUS_RING}`}
+            >
+              <Svg d={ICONS.qr} />
+              Send app invite
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDone(null);
                 setOpen(true);
               }}
               className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 font-semibold text-gray-900 hover:border-gray-900 ${FOCUS_RING}`}
@@ -1230,6 +1243,7 @@ function AppAccessPanel({ patientId, fallbackEmail, firstName }: { patientId: st
           </div>
         )}
       </div>
+      <AppInviteDialog open={inviteOpen} onOpenChange={setInviteOpen} patientId={patientId} firstName={firstName} />
       <Modal open={!!qr} onOpenChange={(o) => !o && setQr(null)} className="max-w-sm" labelledBy={`${ids}-qr-title`}>
         {qr && (
           <div className="p-6 text-center">

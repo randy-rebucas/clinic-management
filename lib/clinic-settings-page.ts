@@ -46,7 +46,9 @@ export async function loadClinicSettingsPage(tenantIdInput: string): Promise<Cli
 
   const [doc, tenant, last, teleconsult, counter, lastSerial] = await Promise.all([
     Settings.findOne({ tenantId }).lean<Record<string, any> | null>(),
-    Tenant.findById(tenantId).select('settings.timezone subdomain').lean<{ settings?: { timezone?: string }; subdomain?: string } | null>(),
+    Tenant.findById(tenantId)
+      .select('settings.timezone subdomain locationCode')
+      .lean<{ settings?: { timezone?: string }; subdomain?: string; locationCode?: string } | null>(),
     AuditLog.findOne({ tenantId, resource: 'settings' }).sort({ timestamp: -1, createdAt: -1 }).populate('userId', 'name email').lean<any>(),
     // The plan's feature only: an ended plan is the subscription page's business, not this switch's.
     checkSubscriptionStatus(tenantId).then((s) => hasFeature(s.plan || 'trial', 'teleconsult'), () => true),
@@ -91,6 +93,7 @@ export async function loadClinicSettingsPage(tenantIdInput: string): Promise<Cli
       taxId: s.taxId || '',
       licenseNumber: s.licenseNumber || '',
       ptr: s.ptr || '',
+      locationCode: tenant?.locationCode ?? '',
       businessHours: hours,
       timezone: zone,
       defaultDuration: Number(s.appointmentSettings?.defaultDuration) || 30,
