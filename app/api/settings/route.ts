@@ -53,6 +53,13 @@ const settingsUpdateSchema = z.object({
     .max(64)
     .refine((tz) => resolveTimezone(tz) === tz, 'Unknown time zone.')
     .optional(),
+  /** The clinic's location code, the first part of its patients' eMCR login IDs. Lives on the clinic record. '' clears it. */
+  locationCode: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^([a-z0-9]{2,6})?$/, 'The location code is 2 to 6 letters or digits.')
+    .optional(),
   /** Settings.updatedAt the change was made from; a newer save in between is refused. */
   version: z.string().max(40).optional(),
   appointmentSettings: z
@@ -192,8 +199,11 @@ export async function GET() {
     }
 
     // The clinic's zone lives on the clinic record; the copy in generalSettings is only a mirror.
-    const tenant = await Tenant.findById(ctx.tenantObjectId).select('settings.timezone').lean<{ settings?: { timezone?: string } } | null>();
+    const tenant = await Tenant.findById(ctx.tenantObjectId)
+      .select('settings.timezone locationCode')
+      .lean<{ settings?: { timezone?: string }; locationCode?: string } | null>();
     settingsObj.generalSettings = { ...settingsObj.generalSettings, timezone: resolveTimezone(tenant?.settings?.timezone) };
+    settingsObj.locationCode = tenant?.locationCode ?? '';
 
     settingsObj.integrationStatus = {
       twilio: isSMSConfigured(),
@@ -222,7 +232,7 @@ export async function PUT(request: NextRequest) {
 
   const parsed = await parseBody(request, settingsUpdateSchema);
   if (isValidationError(parsed)) return parsed;
-  const { timezone, version, ...fields } = parsed.data;
+  const { timezone, version, locationCode, ...fields } = parsed.data;
 
   try {
     await connectDB();
@@ -270,6 +280,26 @@ export async function PUT(request: NextRequest) {
       .filter(([path, value]) => path !== 'generalSettings.timezone' && norm(read(before, path)) !== norm(value))
       .map(([field, newValue]) => ({ field, oldValue: read(before, field) ?? null, newValue }));
     if (timezone && timezone !== oldZone) changes.push({ field: 'timezone', oldValue: oldZone, newValue: timezone });
+
+    // The location code is unique across clinics: written first, so a taken code saves nothing.
+    if (locationCode !== undefined) {
+      const current = await Tenant.findById(ctx.tenantObjectId).select('locationCode').lean<{ locationCode?: string } | null>();
+      const oldCode = current?.locationCode ?? '';
+      if (locationCode !== oldCode) {
+        try {
+          await Tenant.updateOne(
+            { _id: ctx.tenantObjectId },
+            locationCode ? { $set: { locationCode } } : { $unset: { locationCode: 1 } }
+          );
+        } catch (error: any) {
+          if (error?.code === 11000) {
+            return NextResponse.json({ success: false, error: 'That location code is taken by another clinic. Choose another.' }, { status: 409 });
+          }
+          throw error;
+        }
+        changes.push({ field: 'locationCode', oldValue: oldCode || null, newValue: locationCode || null });
+      }
+    }
 
     // The clinic's zone is written first: if it fails, nothing is saved and the page's version stays good.
     const zoneChanged = Boolean(timezone && timezone !== oldZone);

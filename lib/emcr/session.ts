@@ -7,9 +7,12 @@ import EmcrAccount from '@/models/EmcrAccount';
 import EmcrAccessRequest from '@/models/EmcrAccessRequest';
 import { issuePatientToken, PATIENT_TOKEN_TTL_SECONDS } from '@/app/lib/dal';
 import { issueRefreshToken, REFRESH_TOKEN_TTL_SECONDS } from '@/app/lib/refresh-tokens';
-import { MAX_OTP_ATTEMPTS } from '@/app/api/patients/auth/shared';
+import { MAX_OTP_ATTEMPTS, maskPhone } from '@/app/api/patients/auth/shared';
+import logger from '@/lib/logger';
+import { sendSMS } from '@/lib/sms';
 import { accountSessionSubject, type EmcrAccountLean } from '@/lib/emcr/account';
 import { activationView } from '@/lib/emcr/activation';
+import { fullLoginId } from '@/lib/emcr/login-id';
 
 export const EMCR_OTP_EXPIRY_MINUTES = 5;
 const OTP_LENGTH = 6;
@@ -20,6 +23,34 @@ export function generateOtp(): string {
 
 export async function hashOtp(otp: string): Promise<string> {
   return bcrypt.hash(otp, 10);
+}
+
+/**
+ * Put a fresh sign-in code on the eMCR account for `phone` (created if new) and text it. The
+ * caller decides whether this number may get a code (on file at a clinic, or named on an invite).
+ */
+export async function sendAccountOtp(phone: string): Promise<void> {
+  await connectDB();
+  const otp = generateOtp();
+  await EmcrAccount.findOneAndUpdate(
+    { phone },
+    {
+      $set: { otp: await hashOtp(otp), otpExpiry: new Date(Date.now() + EMCR_OTP_EXPIRY_MINUTES * 60 * 1000), otpAttempts: 0 },
+      $setOnInsert: { phone },
+    },
+    { upsert: true }
+  );
+
+  const sms = await sendSMS({
+    to: phone,
+    message: `Your eMCR sign-in code is ${otp}. It expires in ${EMCR_OTP_EXPIRY_MINUTES} minutes. Never share this code.`,
+  });
+  if (sms.skipped && process.env.NODE_ENV !== 'production') {
+    console.warn(`[dev] eMCR OTP for ${maskPhone(phone)}: ${otp}`);
+  }
+  if (!sms.success && sms.error && !sms.error.includes('logged only')) {
+    logger.error('Failed to send eMCR OTP SMS', new Error(sms.error), { phone: maskPhone(phone) });
+  }
 }
 
 export type AccountOtpResult =
@@ -71,6 +102,11 @@ export async function accountView(account: EmcrAccountLean) {
     // A fresh sign-in on an account without its own record is a guardian session.
     guardianOnly: !account.selfPatientId,
     pendingRequests,
+    // No password yet: the app asks for one right after this sign-in (POST /api/emcr/account/password).
+    hasPassword: !!account.passwordSetAt,
+    mustChangePassword: !!account.mustChangePassword,
+    // qc01.jdc.19900425@myclinicsoft.solutions: signs in like the mobile number. Null for guardian-only accounts.
+    loginId: fullLoginId(account.loginId),
     activation: activationView(account),
   };
 }
@@ -79,12 +115,15 @@ export async function accountView(account: EmcrAccountLean) {
  * Sign the caller in on their eMCR account (the holder's record, or for a guardian-only account
  * the first record they manage). Null when the account has no profile to sign in as yet.
  */
-export async function accountSessionFields(account: EmcrAccountLean): Promise<Record<string, unknown> | null> {
+export async function accountSessionFields(
+  account: EmcrAccountLean,
+  amr: 'otp' | 'password' = 'otp'
+): Promise<Record<string, unknown> | null> {
   const subject = await accountSessionSubject(account);
   if (!subject) return null;
   const { patient, rel } = subject;
   const acc = String(account._id);
-  const token = await issuePatientToken(patient, { amr: 'otp', acc, rel });
+  const token = await issuePatientToken(patient, { amr, acc, rel });
   const refreshToken = await issueRefreshToken('patient', patient._id, patient.sessionVersion ?? 0, undefined, { acc, rel });
   return {
     token,

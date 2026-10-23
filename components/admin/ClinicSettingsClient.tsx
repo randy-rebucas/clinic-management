@@ -12,6 +12,7 @@ import { AUTOMATIONS, AUTOMATION_GROUPS, whenText, type AutomationGroup } from '
 import {
   CURRENCIES,
   INVOICE_PREFIX,
+  LOCATION_CODE,
   WEEKDAY_LABEL,
   clock12,
   minutesOf,
@@ -31,7 +32,7 @@ const ROW = 'flex items-start justify-between gap-4 px-5 py-4';
 
 /** Sections of the page, in order: the in-page index and the unsaved-change marks use these. */
 const SECTIONS = [
-  { id: 'clinic', title: 'Clinic details', keys: ['clinicName', 'clinicAddress', 'clinicPhone', 'clinicEmail', 'clinicWebsite', 'taxId', 'licenseNumber', 'ptr'] },
+  { id: 'clinic', title: 'Clinic details', keys: ['clinicName', 'clinicAddress', 'clinicPhone', 'clinicEmail', 'clinicWebsite', 'taxId', 'licenseNumber', 'ptr', 'locationCode'] },
   { id: 'hours', title: 'Opening hours', keys: ['businessHours', 'timezone'] },
   { id: 'appointments', title: 'Appointments', keys: ['defaultDuration', 'appointmentReminders', 'teleconsultBooking'] },
   { id: 'billing', title: 'Billing', keys: ['currency', 'taxRate', 'invoicePrefix', 'allowPartialPayments'] },
@@ -52,6 +53,7 @@ function problems(f: ClinicSettingsForm): Errors {
   const out: Errors = {};
   if (!f.clinicName.trim()) out.clinicName = ['Enter the clinic’s name. It heads every printout.'];
   if (f.clinicEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.clinicEmail.trim())) out.clinicEmail = ['That doesn’t look like an email address.'];
+  if (f.locationCode.trim() && !LOCATION_CODE.test(f.locationCode.trim().toLowerCase())) out.locationCode = ['2 to 6 letters or digits, e.g. QC01.'];
   for (const d of f.businessHours) {
     if (!d.closed && minutesOf(d.close) <= minutesOf(d.open)) out[`hours-${d.day}`] = [`${WEEKDAY_LABEL[d.day]} closes before it opens.`];
   }
@@ -84,6 +86,7 @@ function changesBody(f: ClinicSettingsForm, base: ClinicSettingsForm) {
   for (const k of ['clinicName', 'clinicAddress', 'clinicPhone', 'clinicEmail', 'clinicWebsite', 'taxId', 'licenseNumber', 'ptr'] as const) {
     if (changed(k)) body[k] = f[k].trim();
   }
+  if (changed('locationCode')) body.locationCode = f.locationCode.trim().toLowerCase();
   if (changed('businessHours')) body.businessHours = f.businessHours;
   if (changed('timezone')) body.timezone = f.timezone;
   const appointments: Record<string, unknown> = {};
@@ -117,6 +120,7 @@ function asStored(f: ClinicSettingsForm): ClinicSettingsForm {
   const out = { ...f };
   for (const k of ['clinicName', 'clinicAddress', 'clinicPhone', 'clinicEmail', 'clinicWebsite', 'taxId', 'licenseNumber', 'ptr'] as const) out[k] = f[k].trim();
   out.invoicePrefix = f.invoicePrefix.trim();
+  out.locationCode = f.locationCode.trim().toLowerCase();
   out.philhealth = { ...f.philhealth, hciAccreditationNo: f.philhealth.hciAccreditationNo.trim() };
   out.bir = { ...f.bir, registeredName: f.bir.registeredName.trim(), permitNumber: f.bir.permitNumber.trim(), serialPrefix: f.bir.serialPrefix.trim().toUpperCase() };
   return out;
@@ -356,6 +360,29 @@ function ClinicSection({ form, set, errors }: { form: ClinicSettingsForm; set: S
         <TextField k="clinicEmail" label="Email" values={form} set={set} errors={errors} maxLength={254} type="email" />
         <TextField k="clinicWebsite" label="Website" hint="Included in welcome messages to new patients." values={form} set={set} errors={errors} maxLength={500} placeholder="https://" />
         <TextField k="taxId" label="TIN" hint="Printed on official receipts." values={form} set={set} errors={errors} maxLength={100} className="font-mono tabular-nums" />
+        <Field
+          id="set-locationCode"
+          label="Location code"
+          hint={
+            <>
+              Starts your patients’ eMCR login IDs, e.g.{' '}
+              <span className="font-mono">{(form.locationCode.trim() || 'qc01').toLowerCase()}.jdc.19900425@myclinicsoft.solutions</span>. Unique to your clinic; IDs
+              already given out keep their old code if you change it.
+            </>
+          }
+          errors={errors.locationCode}
+        >
+          <input
+            id="set-locationCode"
+            value={form.locationCode.toUpperCase()}
+            onChange={(e) => set('locationCode', e.target.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 6).toLowerCase())}
+            autoComplete="off"
+            placeholder="QC01"
+            maxLength={6}
+            {...describe('set-locationCode', errors.locationCode, true)}
+            className={`${FIELD} w-32 font-mono uppercase ${errors.locationCode ? 'border-red-400' : ''}`}
+          />
+        </Field>
       </div>
       <div className="border-t border-gray-100 p-5">
         <p className="text-sm font-semibold text-gray-900">Clinic licence and PTR</p>

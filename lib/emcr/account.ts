@@ -25,6 +25,10 @@ export type EmcrAccountLean = {
   selfPatientId?: Types.ObjectId;
   dependents?: IEmcrDependent[];
   activation?: { plan?: 'basic' | 'plus'; activatedAt?: Date; expiresAt?: Date; remindersSent?: string[] };
+  passwordSetAt?: Date;
+  passwordSetBy?: 'user' | 'staff';
+  mustChangePassword?: boolean;
+  loginId?: string;
   disabled?: boolean;
 };
 

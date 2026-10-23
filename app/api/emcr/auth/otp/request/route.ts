@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import EmcrAccount from '@/models/EmcrAccount';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
-import { sendSMS } from '@/lib/sms';
 import { normalizePhone } from '@/lib/phone';
 import { maskPhone, phoneFilter, phoneRateKey } from '@/app/api/patients/auth/shared';
-import { EMCR_OTP_EXPIRY_MINUTES, generateOtp, hashOtp } from '@/lib/emcr/session';
+import { EMCR_OTP_EXPIRY_MINUTES, sendAccountOtp } from '@/lib/emcr/session';
 
 /**
  * POST /api/emcr/auth/otp/request
@@ -45,26 +43,7 @@ export async function POST(request: NextRequest) {
     const onFile = await Patient.exists({ ...phoneFilter(phone), active: { $ne: false } });
     if (!onFile) return generic;
 
-    const otp = generateOtp();
-    await EmcrAccount.findOneAndUpdate(
-      { phone },
-      {
-        $set: { otp: await hashOtp(otp), otpExpiry: new Date(Date.now() + EMCR_OTP_EXPIRY_MINUTES * 60 * 1000), otpAttempts: 0 },
-        $setOnInsert: { phone },
-      },
-      { upsert: true }
-    );
-
-    const sms = await sendSMS({
-      to: phone,
-      message: `Your eMCR sign-in code is ${otp}. It expires in ${EMCR_OTP_EXPIRY_MINUTES} minutes. Never share this code.`,
-    });
-    if (sms.skipped && process.env.NODE_ENV !== 'production') {
-      console.warn(`[dev] eMCR OTP for ${maskPhone(phone)}: ${otp}`);
-    }
-    if (!sms.success && sms.error && !sms.error.includes('logged only')) {
-      logger.error('Failed to send eMCR OTP SMS', new Error(sms.error), { phone: maskPhone(phone) });
-    }
+    await sendAccountOtp(phone);
     logger.info('eMCR OTP requested', { phone: maskPhone(phone) });
     return generic;
   } catch (error) {
