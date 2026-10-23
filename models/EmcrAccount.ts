@@ -11,6 +11,8 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
  *   the holder has a self record, minors are linked on the child's record (`Patient.guardians`)
  *   instead, so the existing family rules apply.
  * - `activation`: the paid year of eMCR, bought with a cash voucher (lib/emcr/activation.ts).
+ * - `password`: the sign-in credential with `phone` (lib/emcr/password.ts). None until the holder
+ *   chooses one after proving the phone, or staff set a temporary one (`mustChangePassword`).
  */
 export type EmcrDependentSource = 'phone_dob' | 'clinic';
 export type EmcrPlan = 'basic' | 'plus';
@@ -47,6 +49,17 @@ export interface IEmcrAccount extends Document {
   otp?: string;
   otpExpiry?: Date;
   otpAttempts: number;
+  /** bcrypt hash; never selected by default. */
+  password?: string;
+  passwordSetAt?: Date;
+  /** `staff`: a temporary password from the clinic; the holder must replace it at sign-in. */
+  passwordSetBy?: 'user' | 'staff';
+  mustChangePassword?: boolean;
+  /**
+   * Structured sign-in name, used with the password like the phone: `<location>.<initials>.<YYYYMMDD>[.n]`
+   * (the local part only; the domain is lib/emcr/login-id.ts LOGIN_ID_DOMAIN). Not a mailbox.
+   */
+  loginId?: string;
   activation?: {
     plan: EmcrPlan;
     activatedAt: Date;
@@ -94,6 +107,11 @@ const EmcrAccountSchema = new Schema<IEmcrAccount>(
     otp: { type: String, select: false },
     otpExpiry: { type: Date },
     otpAttempts: { type: Number, default: 0 },
+    password: { type: String, select: false },
+    passwordSetAt: { type: Date },
+    passwordSetBy: { type: String, enum: ['user', 'staff'] },
+    mustChangePassword: { type: Boolean },
+    loginId: { type: String, lowercase: true, trim: true },
     activation: {
       plan: { type: String, enum: ['basic', 'plus'] },
       activatedAt: { type: Date },
@@ -109,6 +127,7 @@ const EmcrAccountSchema = new Schema<IEmcrAccount>(
 EmcrAccountSchema.index({ phone: 1 }, { unique: true, partialFilterExpression: { phone: { $type: 'string' } } });
 EmcrAccountSchema.index({ selfPatientId: 1 }, { unique: true, partialFilterExpression: { selfPatientId: { $exists: true } } });
 EmcrAccountSchema.index({ 'dependents.patientId': 1 });
+EmcrAccountSchema.index({ loginId: 1 }, { unique: true, partialFilterExpression: { loginId: { $type: 'string' } } });
 EmcrAccountSchema.index({ 'activation.expiresAt': 1 });
 
 export default mongoose.models.EmcrAccount || mongoose.model<IEmcrAccount>('EmcrAccount', EmcrAccountSchema);

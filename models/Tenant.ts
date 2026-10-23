@@ -23,6 +23,8 @@ export interface ITenant extends Document {
   name: string;
   subdomain: string; // Unique subdomain identifier
   displayName?: string;
+  /** Short code for the clinic's location (2–6 lowercase letters/digits), the first part of eMCR login IDs. Unique. */
+  locationCode?: string;
   email?: string;
   phone?: string;
   address?: {
@@ -94,6 +96,12 @@ const TenantSchema = new Schema<ITenant>(
     displayName: {
       type: String,
       trim: true,
+    },
+    locationCode: {
+      type: String,
+      lowercase: true,
+      trim: true,
+      match: [/^[a-z0-9]{2,6}$/, 'The location code is 2 to 6 letters or digits'],
     },
     email: {
       type: String,
@@ -172,6 +180,7 @@ const TenantSchema = new Schema<ITenant>(
 // Indexes
 // Note: subdomain index is automatically created by unique: true
 TenantSchema.index({ status: 1 });
+TenantSchema.index({ locationCode: 1 }, { unique: true, partialFilterExpression: { locationCode: { $type: 'string' } } });
 TenantSchema.index({ 'subscription.status': 1 });
 TenantSchema.index({ 'subscription.lastOrderId': 1 });
 TenantSchema.index({ 'subscription.paypalOrderId': 1 });
