@@ -26,7 +26,8 @@ import { deleteStoredAttachment } from '@/lib/attachment-file';
  *
  * A Patient record is shared by every clinic in its `tenantIds`; only the calling clinic's data is
  * touched. `delete` removes the clinic's records about the patient and detaches the clinic from the
- * Patient record, which is deleted once no clinic is left. `anonymize` keeps the clinic's medical
+ * Patient record, which is deleted once no clinic is left; sales invoices are kept (BIR) with the
+ * buyer's name and address copied onto them. `anonymize` keeps the clinic's medical
  * record (visits, prescriptions, results, billing) but cuts it off from anyone identifiable: files,
  * messages and contact details go, and the records are left pointing at an anonymous patient.
  */
@@ -67,6 +68,12 @@ export const PATIENT_MENTIONS: (Link & { array?: boolean; alsoUnset?: string[] }
  * requires the clinic to keep, and the eMCR account is the patient's own, not the clinic's.
  */
 export const PATIENT_REFS_KEPT = ['AuditLog.dataSubject', 'EmcrAccount.selfPatientId'];
+
+/**
+ * Kept in delete mode as well: sales invoices are retained for BIR, with the buyer copied onto
+ * them first (snapshotBuyer) so they still say who they were sold to.
+ */
+const RETAINED_RECORDS = new Set<Model<any>>([Invoice]);
 
 /** Not part of the medical record; removed in both modes. */
 const NON_CLINICAL = [DocumentModel, PatientMessage, MobileDevice, Survey, EmcrAccessRequest, EmcrInvite];
@@ -116,6 +123,20 @@ async function deleteDocuments(tenantId: Types.ObjectId, patientId: Types.Object
   return failed;
 }
 
+/** Copy the buyer onto the clinic's invoices for the patient before their name and address go. */
+async function snapshotBuyer(tenantId: Types.ObjectId, patientId: Types.ObjectId) {
+  const p = await Patient.findById(patientId)
+    .select('firstName middleName lastName suffix address')
+    .lean<{ firstName?: string; middleName?: string; lastName?: string; suffix?: string; address?: Record<string, string> } | null>();
+  if (!p) return;
+  const name = [p.firstName, p.middleName, p.lastName, p.suffix].filter(Boolean).join(' ');
+  const { street, city, state, zipCode } = p.address ?? {};
+  await Invoice.updateMany(
+    { tenantId, patient: patientId, 'billedTo.name': { $exists: false } },
+    { $set: { billedTo: { name, address: { street, city, state, zipCode } } } }
+  );
+}
+
 /** Delete the stored copies of files attached to the matching records (or, on a patient, this clinic's). */
 async function deleteAttachedFiles(model: Model<any>, filter: Record<string, unknown>, field = 'attachments', tenantId?: Types.ObjectId) {
   const rows = await model.find(filter).select(`${field}.url ${field}.tenantId`).lean<Record<string, { url?: string; tenantId?: unknown }[]>[]>();
@@ -160,7 +181,9 @@ async function erase(tenantId: Types.ObjectId, patientId: Types.ObjectId, shared
   await deleteAttachedFiles(LabResult, { tenantId, patient: patientId });
   await deleteAttachedFiles(Imaging, { tenantId, patient: patientId }, 'images');
   await deleteAttachedFiles(Patient, { _id: patientId }, 'attachments', tenantId);
+  await snapshotBuyer(tenantId, patientId);
   for (const { model, field } of PATIENT_RECORDS) {
+    if (RETAINED_RECORDS.has(model)) continue;
     await model.deleteMany({ tenantId, [field]: patientId });
   }
   await relinkMentions(tenantId, patientId, null);
@@ -178,6 +201,7 @@ async function erase(tenantId: Types.ObjectId, patientId: Types.ObjectId, shared
 
 async function anonymize(tenantId: Types.ObjectId, patientId: Types.ObjectId, shared: boolean): Promise<ErasureResult> {
   let subject = patientId;
+  await snapshotBuyer(tenantId, patientId);
 
   if (shared) {
     // Other clinics still treat this person, so the record itself can't be anonymized: this
