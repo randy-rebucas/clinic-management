@@ -103,7 +103,12 @@ export async function ensureStaffUser(options: {
       return null;
     }
 
-    const role = await findTenantRole(roleNames, tenantId);
+    let role = await findTenantRole(roleNames, tenantId);
+    if (!role && tenantId) {
+      // A clinic onboarded before this role existed gets it now, with the standard access.
+      const { findOrCreateStandardRole } = await import('../lib/standard-roles');
+      role = await findOrCreateStandardRole(tenantId, roleNames[0]);
+    }
     if (!role) {
       console.warn(`Role "${roleNames[0]}" not found; no user account created for ${label} ${doc._id}`);
       return null;

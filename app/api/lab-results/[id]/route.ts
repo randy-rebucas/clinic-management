@@ -3,11 +3,13 @@ import connectDB from '@/lib/mongodb';
 import LabResult from '@/models/LabResult';
 import Patient from '@/models/Patient';
 import Visit from '@/models/Visit';
+import User from '@/models/User';
 import { requirePermission } from '@/app/lib/auth-helpers';
 import { logRecordOpened } from '@/lib/audit';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, escapeRegex } from '@/lib/api/validate';
 import { updateLabResultSchema } from '@/lib/lab-result-schema';
+import { LAB_STAFF_FIELDS, LAB_STAFF_TRANSITIONS, RESULT_FIELDS, canReviewLabs, isLabRole } from '@/lib/lab-results';
 
 export async function GET(
   request: NextRequest,
@@ -32,7 +34,9 @@ export async function GET(
       .select('-thirdPartyLab.apiKey -attachments.url')
       .populate({ path: 'patient', select: 'firstName lastName patientCode email phone dateOfBirth', match: { tenantIds: tenantObjectId } })
       .populate({ path: 'visit', select: 'visitCode date visitType', match: { tenantId: tenantObjectId } })
-      .populate('orderedBy', 'name email')
+      .populate({ path: 'orderedBy', select: 'name email', match: { tenantId: tenantObjectId } })
+      .populate('receivedBy', 'name email')
+      .populate('performedBy', 'name email')
       .populate('reviewedBy', 'name email');
 
     if (!labResult) return notFound('Lab result');
@@ -91,11 +95,22 @@ export async function PUT(
     if (isValidationError(parsed)) return parsed;
     const body = parsed.data;
 
+    if (body.status === 'reviewed' && !canReviewLabs(session.role)) {
+      return NextResponse.json({ success: false, error: 'Results are reviewed by the clinician' }, { status: 403 });
+    }
+    // Lab staff work the request; changing what was ordered stays with the clinicians.
+    if (isLabRole(session.role) && Object.keys(body).some((k) => body[k as keyof typeof body] !== undefined && !LAB_STAFF_FIELDS.has(k))) {
+      return NextResponse.json({ success: false, error: 'Lab staff can only update progress and results' }, { status: 403 });
+    }
+
     if (body.patient && !(await Patient.exists({ _id: body.patient, tenantIds: tenantObjectId }))) {
       return NextResponse.json({ success: false, error: 'Invalid patient' }, { status: 400 });
     }
     if (body.visit && !(await Visit.exists({ _id: body.visit, tenantId: tenantObjectId }))) {
       return NextResponse.json({ success: false, error: 'Invalid visit' }, { status: 400 });
+    }
+    if (body.orderedBy && body.orderedBy !== session.userId && !(await User.exists({ _id: body.orderedBy, tenantId: tenantObjectId }))) {
+      return NextResponse.json({ success: false, error: 'Invalid staff member' }, { status: 400 });
     }
 
     const update: Record<string, unknown> = {};
@@ -121,11 +136,51 @@ export async function PUT(
     }
 
     const query = tenantFilter(tenantId, { _id: id });
-    const oldLabResult = await LabResult.findOne(query).select('status').lean() as any;
+    const oldLabResult = await LabResult.findOne(query).select('status receivedBy performedBy').lean() as any;
     if (!oldLabResult) return notFound('Lab result');
-    const statusChangedToCompleted = oldLabResult.status !== 'completed' && body.status === 'completed';
 
-    const labResult = await LabResult.findOneAndUpdate(query, { $set: update }, {
+    const labStaff = isLabRole(session.role);
+    if (labStaff) {
+      const allowed = LAB_STAFF_TRANSITIONS[oldLabResult.status];
+      if (!allowed) {
+        return NextResponse.json(
+          { success: false, error: 'This result has been reviewed or cancelled; changes now go through the clinician' },
+          { status: 403 }
+        );
+      }
+      if (body.status && !allowed.includes(body.status)) {
+        return NextResponse.json(
+          { success: false, error: 'Lab staff can receive and complete requests; cancelling or reopening stays with the clinician' },
+          { status: 403 }
+        );
+      }
+    }
+
+    const unset: Record<string, ''> = {};
+    const changesResult = RESULT_FIELDS.some((f) => body[f as keyof typeof body] !== undefined);
+    if (oldLabResult.status === 'reviewed' && changesResult && body.status !== 'reviewed') {
+      // The sign-off covered the old values: changed results go back for review.
+      update.status = 'completed';
+      unset.reviewedBy = '';
+      unset.reviewedAt = '';
+    }
+    const newStatus = (update.status as string | undefined) ?? oldLabResult.status;
+    const statusChangedToCompleted = oldLabResult.status !== 'completed' && newStatus === 'completed';
+    const statusChangedToReviewed = oldLabResult.status !== 'reviewed' && newStatus === 'reviewed';
+    // A result the lab completes is only shared with the patient after a clinician reviews it.
+    if (labStaff && statusChangedToCompleted) update.awaitingReview = true;
+    if (statusChangedToReviewed) unset.awaitingReview = '';
+
+    // Who took the request in, and who entered the results: the first person to do each.
+    if (body.status === 'in-progress' && !oldLabResult.receivedBy) {
+      update.receivedBy = session.userId;
+      update.receivedAt = new Date();
+    }
+    if ((body.results || body.status === 'completed') && !oldLabResult.performedBy) {
+      update.performedBy = session.userId;
+    }
+
+    const labResult = await LabResult.findOneAndUpdate(query, { $set: update, ...(Object.keys(unset).length ? { $unset: unset } : {}) }, {
       new: true,
       runValidators: true,
     }).select('-thirdPartyLab.apiKey -attachments.url');
@@ -134,10 +189,25 @@ export async function PUT(
 
     await labResult.populate({ path: 'patient', select: 'firstName lastName patientCode email phone', match: { tenantIds: tenantObjectId } });
     await labResult.populate({ path: 'visit', select: 'visitCode date', match: { tenantId: tenantObjectId } });
-    await labResult.populate('orderedBy', 'name email');
+    await labResult.populate({ path: 'orderedBy', select: 'name email', match: { tenantId: tenantObjectId } });
+    await labResult.populate('receivedBy', 'name email');
+    await labResult.populate('performedBy', 'name email');
     await labResult.populate('reviewedBy', 'name email');
 
-    if (statusChangedToCompleted && !labResult.notificationSent) {
+    if (labStaff && statusChangedToCompleted) {
+      const held = { _id: labResult._id, orderedBy: labResult.orderedBy, request: labResult.request };
+      after(async () => {
+        try {
+          const { notifyDoctorToReview } = await import('@/lib/automations/lab-notifications');
+          await notifyDoctorToReview(held, tenantObjectId);
+        } catch (error) {
+          console.error('Error asking for lab result review:', error);
+        }
+      });
+    }
+
+    const tellPatient = statusChangedToReviewed || (statusChangedToCompleted && !labResult.awaitingReview);
+    if (tellPatient && !labResult.notificationSent) {
       const labResultId = labResult._id;
       after(async () => {
         try {

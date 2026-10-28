@@ -76,12 +76,12 @@ export async function calculateStorageUsage(
     // 2. Calculate storage from attachments in other models
     let attachmentsBytes = 0;
 
-    const attachmentTotals = async (model: any, match: Record<string, unknown>) => {
+    const attachmentTotals = async (model: any, match: Record<string, unknown>, fileMatch: Record<string, unknown> = {}) => {
       const [agg] = await model.aggregate([
         { $match: match },
         { $project: { attachments: 1 } },
         { $unwind: '$attachments' },
-        { $match: { 'attachments.size': { $gt: 0 } } },
+        { $match: { 'attachments.size': { $gt: 0 }, ...fileMatch } },
         {
           $group: {
             _id: null,
@@ -101,9 +101,9 @@ export async function calculateStorageUsage(
       return { total: agg?.total || 0, base64: agg?.base64 || 0 };
     };
 
-    // Patient belongs to many tenants via `tenantIds`.
+    // Patient belongs to many tenants via `tenantIds`; each clinic is charged for the files it uploaded.
     const totals = await Promise.all([
-      attachmentTotals(Patient, { tenantIds: tenantIdObj }),
+      attachmentTotals(Patient, { tenantIds: tenantIdObj }, { 'attachments.tenantId': tenantIdObj }),
       attachmentTotals(Visit, { tenantId: tenantIdObj }),
       attachmentTotals(LabResult, { tenantId: tenantIdObj }),
     ]);

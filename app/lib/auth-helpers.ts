@@ -56,6 +56,7 @@ export function hasRole(userRole: string, requiredRoles: string[]): boolean {
     receptionist: 1,
     accountant: 2,
     'medical-representative': 1,
+    'medical-technologist': 2,
   };
   const userLevel = roleHierarchy[userRole] || 0;
   return requiredRoles.some(role => roleHierarchy[role] <= userLevel);

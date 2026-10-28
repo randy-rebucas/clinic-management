@@ -3,6 +3,29 @@
 export const LAB_STATUSES = ['ordered', 'in-progress', 'completed', 'reviewed', 'cancelled'] as const;
 export const OUTSTANDING = ['ordered', 'in-progress'];
 
+/** Laboratory staff: they receive the requests and enter the results. */
+export const LAB_ROLE = 'medical-technologist';
+export const isLabRole = (role?: string | null) => role === LAB_ROLE;
+
+/** Marking a result reviewed is a clinician's sign-off, never the lab's own. */
+export const canReviewLabs = (role?: string | null) => !isLabRole(role);
+
+/** What lab staff may change on a request: its progress and results, not the order itself. */
+export const LAB_STAFF_FIELDS = new Set(['status', 'results', 'resultDate', 'interpretation', 'referenceRanges', 'abnormalFlags', 'thirdPartyLab']);
+
+/**
+ * Where lab staff may move a request from each status: forward only (receive it, complete it).
+ * Cancelling, reopening and anything after review stay with the clinicians.
+ */
+export const LAB_STAFF_TRANSITIONS: Record<string, string[]> = {
+  ordered: ['ordered', 'in-progress', 'completed'],
+  'in-progress': ['in-progress', 'completed'],
+  completed: ['completed'],
+};
+
+/** Fields that change what a result says; editing them after review undoes the review. */
+export const RESULT_FIELDS = ['results', 'resultDate', 'interpretation', 'referenceRanges', 'abnormalFlags'];
+
 /** Mongo `$expr` that is true when any value in `abnormalFlags` is high or low. */
 export const HAS_ABNORMAL_EXPR = {
   $gt: [

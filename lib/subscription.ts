@@ -15,6 +15,17 @@ import { cancelSubscriptionInvoice } from '@/lib/platform-invoice';
 /** Plans that never expire. A missing expiresAt on any other plan means expired. */
 const NON_EXPIRING_PLANS = new Set(['lifetime', 'free']);
 
+/** Mongo filter matching tenants whose subscription is active — the query form of `isActive` below. */
+export function activeSubscriptionFilter(now = new Date()) {
+  return {
+    'subscription.status': 'active',
+    $or: [
+      { 'subscription.expiresAt': { $gt: now } },
+      { 'subscription.expiresAt': null, 'subscription.plan': { $in: [...NON_EXPIRING_PLANS] } },
+    ],
+  };
+}
+
 export interface SubscriptionStatus {
   isActive: boolean;
   isExpired: boolean;

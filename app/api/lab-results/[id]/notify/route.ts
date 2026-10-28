@@ -6,6 +6,7 @@ import { sendSMS } from '@/lib/sms';
 import { sendEmail, generateLabResultEmail } from '@/lib/email';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
 import { normalizePhone } from '@/lib/phone';
+import { isLabRole } from '@/lib/lab-results';
 
 export async function POST(
   request: NextRequest,
@@ -17,6 +18,10 @@ export async function POST(
 
   const permissionCheck = await requirePermission(session, 'lab-results', 'update');
   if (permissionCheck) return permissionCheck;
+  // Telling the patient follows the clinician's review, so it is theirs to do.
+  if (isLabRole(session.role)) {
+    return NextResponse.json({ success: false, error: 'The clinician tells the patient once the result is reviewed' }, { status: 403 });
+  }
 
   try {
     await connectDB();

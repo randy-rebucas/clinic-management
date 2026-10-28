@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import SupportRequest from '@/models/SupportRequest';
 import Tenant from '@/models/Tenant';
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
   });
 
   const tenant = await Tenant.findById(ctx.tenantId).select('name displayName').lean<any>();
-  void notifyPlatformTeam(String(ticket._id), parsed.data.subject, tenant?.displayName || tenant?.name || 'a clinic', ctx.session.email, parsed.data.message, true);
+  after(() => notifyPlatformTeam(String(ticket._id), parsed.data.subject, tenant?.displayName || tenant?.name || 'a clinic', ctx.session.email, parsed.data.message, true));
 
   return NextResponse.json(
     { success: true, data: { id: String(ticket._id), reference: supportReference(String(ticket._id)) } },

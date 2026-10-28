@@ -1,3 +1,4 @@
+import { after } from 'next/server';
 import 'server-only';
 import { Types } from 'mongoose';
 import { z } from 'zod';
@@ -136,10 +137,10 @@ export async function addSupportReply(opts: {
   });
 
   if (opts.authorType === 'platform') {
-    void notifyRequester(ticket.email, opts.id, ticket.subject, opts.message, status);
+    after(() => notifyRequester(ticket.email, opts.id, ticket.subject, opts.message, status));
     await notifyRequesterInApp(ticket, opts.id, `Support replied: ${ticket.subject}`, opts.message);
   } else {
-    void notifyPlatformTeam(opts.id, ticket.subject, opts.clinicName ?? 'a clinic', opts.authorEmail, opts.message, false);
+    after(() => notifyPlatformTeam(opts.id, ticket.subject, opts.clinicName ?? 'a clinic', opts.authorEmail, opts.message, false));
   }
   return { status };
 }

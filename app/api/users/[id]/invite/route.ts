@@ -17,11 +17,12 @@ const PROFILE_FIELDS: Record<string, string> = {
   nurse: 'nurseProfile',
   receptionist: 'receptionistProfile',
   accountant: 'accountantProfile',
+  'medical-technologist': 'medicalTechnologistProfile',
   admin: 'adminProfile',
 };
 
 /**
- * POST /api/users/:id/invite[?profile=nurse|receptionist|accountant|doctor|admin] — admin only, same clinic.
+ * POST /api/users/:id/invite[?profile=nurse|receptionist|accountant|medical-technologist|doctor|admin] — admin only, same clinic.
  * Issues a fresh single-use set-password link (the previous link stops working) and emails it.
  * For a user who never set a password this re-sends the invitation; for anyone else it is an
  * admin-triggered password reset (the current password keeps working until the link is used).

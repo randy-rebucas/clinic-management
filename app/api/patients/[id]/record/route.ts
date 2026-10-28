@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
@@ -14,6 +14,7 @@ import { requireTenantSession, isTenantSessionError, isValidId, notFound, patien
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { dayRangeInTz } from '@/lib/tz';
 import { logDataAccess } from '@/lib/audit';
+import { ownAttachments } from '@/lib/patient-attachments';
 
 /** Newest items per module shown on the patient page; totals are counted in full. */
 const RECENT = 25;
@@ -43,10 +44,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (!isValidId(id)) return notFound('Patient');
     const pid = new Types.ObjectId(id);
 
-    const patient = (await Patient.findOne(patientTenantFilter(tenantId, { _id: pid })).lean()) as Record<string, unknown> | null;
+    const patient = (await Patient.findOne(patientTenantFilter(tenantId, { _id: pid }), { 'attachments.url': 0 }).lean()) as Record<string, unknown> | null;
     if (!patient) return notFound('Patient');
 
-    const attachments = ((patient.attachments as { _id: unknown; filename?: string; contentType?: string; size?: number; uploadDate?: Date; notes?: string; url?: string }[] | undefined) ?? []).map((a) => ({
+    const attachments = ownAttachments(patient.attachments as { _id: unknown; tenantId?: unknown; filename?: string; contentType?: string; size?: number; uploadDate?: Date; notes?: string; url?: string }[] | undefined, tenantId).map((a) => ({
       _id: String(a._id),
       filename: a.filename,
       contentType: a.contentType,
@@ -159,7 +160,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       !((patient.allergies as unknown[] | undefined)?.length) && 'allergies',
     ].filter(Boolean) as string[];
 
-    void logDataAccess(session.userId, session.email ?? '', session.role ?? '', 'patient', id, id, request.headers.get('x-forwarded-for')?.split(',')[0]?.trim(), request.headers.get('user-agent') ?? undefined, request.nextUrl.pathname, tenantId);
+    after(() => logDataAccess(session.userId, session.email ?? '', session.role ?? '', 'patient', id, id, request.headers.get('x-forwarded-for')?.split(',')[0]?.trim(), request.headers.get('user-agent') ?? undefined, request.nextUrl.pathname, tenantId));
 
     return NextResponse.json({
       success: true,

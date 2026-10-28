@@ -25,6 +25,7 @@ import {
   Specialization,
   Patient,
   MedicalRepresentative,
+  MedicalTechnologist,
   Accountant,
   Receptionist,
   Nurse,
@@ -103,6 +104,7 @@ const COLLECTION_GROUPS = {
       { model: Nurse, name: 'nurses' },
       { model: Receptionist, name: 'receptionists' },
       { model: Accountant, name: 'accountants' },
+      { model: MedicalTechnologist, name: 'medicaltechnologists' },
       { model: MedicalRepresentative, name: 'medicalrepresentatives' },
       { model: Staff, name: 'staff' },
       { model: User, name: 'users' },
@@ -177,6 +179,7 @@ const ALL_COLLECTIONS = [
   // Profile models
   { model: MedicalRepresentative, name: 'medicalrepresentatives' },
   { model: Accountant, name: 'accountants' },
+  { model: MedicalTechnologist, name: 'medicaltechnologists' },
   { model: Receptionist, name: 'receptionists' },
   { model: Nurse, name: 'nurses' },
   { model: Doctor, name: 'doctors' },
@@ -256,6 +259,8 @@ async function resetAllCollections(): Promise<boolean> {
     console.log(`\nTotal: ${total} documents across ${stats.length} collections\n`);
 
     // Confirmation
+    // .env.local can hold production credentials (vercel env pull): show what is about to be wiped.
+    log(`Database: ${mongoose.connection.host}/${mongoose.connection.name}`, 'warning');
     log('⚠️  WARNING: This will delete ALL data from the database!', 'warning');
     const confirm1 = await question('Type "RESET" to confirm: ');
     if (confirm1 !== 'RESET') {
@@ -320,6 +325,7 @@ async function cleanSelectiveCollections(): Promise<boolean> {
       return true;
     }
 
+    log(`Database: ${mongoose.connection.host}/${mongoose.connection.name}`, 'warning');
     console.log('\nCollection Counts:');
     stats.forEach(({ name, count }) => {
       console.log(`  ${name}: ${count} documents`);

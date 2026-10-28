@@ -7,6 +7,8 @@ export interface IAttachment extends Document {
   url?: string; // if stored externally (S3, CDN) — recommended
   gridFsId?: Types.ObjectId; // if using GridFS
   uploadedBy?: Types.ObjectId;
+  /** Clinic that uploaded the file; set on patient files, whose record is shared between clinics. */
+  tenantId?: Types.ObjectId;
   uploadDate: Date;
   notes?: string;
 }
@@ -19,6 +21,7 @@ export const AttachmentSchema: Schema = new Schema(
     url: { type: String }, // if stored externally (S3, CDN) — recommended
     gridFsId: { type: Schema.Types.ObjectId }, // if using GridFS
     uploadedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant' },
     uploadDate: { type: Date, default: Date.now },
     notes: { type: String },
   },

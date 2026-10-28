@@ -90,6 +90,7 @@ async function resolveRole(user: any, tenantId: string | null): Promise<Resolved
     if (u.receptionistProfile) return 'receptionist';
     if (u.accountantProfile) return 'accountant';
     if (u.medicalRepresentativeProfile) return 'medical-representative';
+    if (u.medicalTechnologistProfile) return 'medical-technologist';
     return null;
   };
 
@@ -259,6 +260,7 @@ export async function login(
     await connectDB();
 
     const user = await User.findOne(tenantUserQuery(sanitizedEmail, tenantId))
+      .select('+password')
       .populate('role', 'name displayName');
 
     // Always run bcrypt so response time does not reveal whether the account exists
@@ -369,6 +371,14 @@ export async function verifyLoginTotp(
     if (!user || user.status !== 'active' || !user.totpEnabled) {
       await clearPending2fa();
       return { message: 'Your sign-in attempt expired. Please sign in again.' };
+    }
+
+    // Same rule as the password step: a pending sign-in started elsewhere (the rep login API)
+    // must not end in a staff web session.
+    if ((user.role as any)?.name === 'medical-representative' || user.medicalRepresentativeProfile) {
+      await clearPending2fa();
+      await auditFailedLogin(user, 'Medical representative account on the staff web login', ip, tenantId);
+      return { message: MOBILE_APP_ONLY };
     }
 
     if (!(await verifyUserTotp(user._id.toString(), code))) {

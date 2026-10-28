@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
-export type RoleName = 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
+export type RoleName = 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative' | 'medical-technologist';
 
 export interface IRole extends Document {
   // Tenant reference for multi-tenant support
@@ -32,7 +32,7 @@ const RoleSchema: Schema = new Schema(
     
     name: {
       type: String,
-      enum: ['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative'],
+      enum: ['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative', 'medical-technologist'],
       required: [true, 'Role name is required'],
     },
     displayName: {

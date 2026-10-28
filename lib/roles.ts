@@ -12,7 +12,7 @@
  * when checking access, so this page never edits it.
  */
 
-export const ROLE_NAMES = ['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative'] as const;
+export const ROLE_NAMES = ['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative', 'medical-technologist'] as const;
 export type StandardRole = (typeof ROLE_NAMES)[number];
 export const isStandardRole = (v: unknown): v is StandardRole => typeof v === 'string' && (ROLE_NAMES as readonly string[]).includes(v);
 
@@ -23,6 +23,7 @@ export const STANDARD_ROLE: Record<StandardRole, { displayName: string; descript
   nurse: { displayName: 'Nurse', description: 'Clinical staff with access to patient care and lab results', level: 60 },
   receptionist: { displayName: 'Receptionist', description: 'Front desk staff with access to appointments and patient management', level: 40 },
   accountant: { displayName: 'Accountant', description: 'Financial staff with access to billing and invoices', level: 30 },
+  'medical-technologist': { displayName: 'Medical technologist', description: 'Laboratory staff who receive lab requests and enter results', level: 50 },
   'medical-representative': { displayName: 'Medical representative', description: 'Pharmaceutical representatives who visit the clinic’s doctors', level: 10 },
 };
 
@@ -49,6 +50,14 @@ export const BUILT_IN: Record<string, Record<string, string[]>> = {
   accountant: {
     read: ['patients', 'invoices', 'reports', 'visits'],
     write: ['invoices'],
+    delete: [],
+  },
+  // Receives the doctors' lab requests and enters the results; marking them reviewed stays with
+  // the doctors (`canReviewLabs` in lib/lab-results.ts).
+  'medical-technologist': {
+    read: ['patients', 'lab-results'],
+    write: [],
+    update: ['lab-results'],
     delete: [],
   },
   'medical-representative': {

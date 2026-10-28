@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
-import { Nurse, Receptionist, Accountant, User } from '@/models';
+import { Nurse, Receptionist, Accountant, MedicalTechnologist, User } from '@/models';
 import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
 import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
@@ -13,7 +13,12 @@ import type { UserStatus } from '@/lib/users';
 /** A staff roster is small; the page loads it whole and filters on the client. */
 const MAX_PER_TYPE = 500;
 
-const MODELS = { nurse: Nurse, receptionist: Receptionist, accountant: Accountant } as const;
+const MODELS = {
+  nurse: Nurse,
+  receptionist: Receptionist,
+  accountant: Accountant,
+  'medical-technologist': MedicalTechnologist,
+} as const;
 
 const LIST_FIELDS =
   'firstName lastName email phone title employeeId department specialization licenseNumber certification address hireDate status createdAt';
@@ -107,7 +112,7 @@ export async function GET() {
 
     const or = STAFF_TYPES.map((type, i) => ({ [STAFF_TYPE[type].profileField]: { $in: lists[i].map((p) => p._id) } }));
     const accounts = await User.find(tenantFilter(tenantId, { $or: or }))
-      .select('status mustSetPassword inviteExpiresAt lastLogin nurseProfile receptionistProfile accountantProfile')
+      .select('status mustSetPassword inviteExpiresAt lastLogin nurseProfile receptionistProfile accountantProfile medicalTechnologistProfile')
       .lean<LeanAccount[]>();
 
     const byProfile = new Map<string, LeanAccount>();

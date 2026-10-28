@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import { requirePermission } from '@/app/lib/auth-helpers';
@@ -129,7 +129,8 @@ export async function GET(request: NextRequest) {
     const skip = (pageNum - 1) * limitNum;
 
     const [patients, total] = await Promise.all([
-      Patient.find(filter).sort(sort).skip(skip).limit(limitNum).lean(),
+      // Files are inline data and include other clinics' uploads; the list never shows them.
+      Patient.find(filter, { attachments: 0, readNotificationIds: 0 }).sort(sort).skip(skip).limit(limitNum).lean(),
       Patient.countDocuments(filter),
     ]);
 
@@ -214,19 +215,21 @@ export async function POST(request: NextRequest) {
 
     // The welcome text goes to the phone (always present) and the email only when there is one;
     // sendWelcomeMessage checks each channel and the clinic's autoWelcomeMessages setting.
-    import('@/lib/automations/welcome-messages').then(({ sendWelcomeMessage }) => {
-      sendWelcomeMessage({
-        patientId: patient._id,
-        tenantIds: [tenantId],
-        sendSMS: true,
-        sendEmail: true,
-        sendNotification: false,
+    after(() =>
+      import('@/lib/automations/welcome-messages').then(({ sendWelcomeMessage }) => {
+        return sendWelcomeMessage({
+          patientId: patient._id,
+          tenantIds: [tenantId],
+          sendSMS: true,
+          sendEmail: true,
+          sendNotification: false,
+        }).catch((error) => {
+          console.error('Error sending welcome message:', error);
+        });
       }).catch((error) => {
-        console.error('Error sending welcome message:', error);
-      });
-    }).catch((error) => {
-      console.error('Error loading welcome messages module:', error);
-    });
+        console.error('Error loading welcome messages module:', error);
+      })
+    );
 
     return NextResponse.json({ success: true, data: patient }, { status: 201 });
   } catch (error: any) {

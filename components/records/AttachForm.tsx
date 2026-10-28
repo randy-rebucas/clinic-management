@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useRef, useState } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 import { FIELD, FOCUS_RING, Svg } from '../appointments/shared';
 import { fileSize } from './labels';
 
@@ -15,11 +15,14 @@ export default function AttachForm({
   onUpload,
   placeholder = 'Chest X-ray, PA view',
   noun = 'visit',
+  children,
 }: {
   onUpload: (file: File, notes: string) => Promise<boolean>;
   placeholder?: string;
   /** What the file is attached to, for the size message. */
   noun?: string;
+  /** Extra options shown above the file picker. */
+  children?: ReactNode;
 }) {
   const ids = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -58,6 +61,7 @@ export default function AttachForm({
         if (input.current) input.current.value = '';
       }}
     >
+      {children}
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
         <div>
           <label htmlFor={`${ids}-file`} className="mb-1.5 block text-sm font-medium text-gray-700">

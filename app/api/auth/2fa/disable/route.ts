@@ -5,6 +5,7 @@ import { verifySession } from '@/app/lib/dal';
 import { unauthorizedResponse } from '@/app/lib/auth-helpers';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { verifyUserTotp } from '../totp';
+import { signOutOtherSessions } from '@/lib/account';
 
 /**
  * POST /api/auth/2fa/disable
@@ -53,6 +54,8 @@ export async function POST(request: NextRequest) {
         $set: { totpEnabled: false },
       }
     );
+    // A session taken while 2FA protected the account must not outlive it; this one carries on.
+    await signOutOtherSessions(session);
 
     return NextResponse.json({ success: true, message: '2FA has been disabled.' });
   } catch (error: any) {

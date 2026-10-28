@@ -27,6 +27,7 @@ import {
   Room,
   Patient,
   MedicalRepresentative,
+  MedicalTechnologist,
   Accountant,
   Receptionist,
   Nurse,
@@ -356,6 +357,17 @@ async function createBaseSettings(): Promise<boolean> {
 
 async function resetDatabase(): Promise<boolean> {
   try {
+    log('Connecting to database...', 'info');
+    await connectDB();
+    registerAllModels();
+
+    if (mongoose.connection.readyState !== 1) {
+      log('Database not connected', 'error');
+      return false;
+    }
+
+    // .env.local can hold production credentials (vercel env pull): show what is about to be wiped.
+    log(`Database: ${mongoose.connection.host}/${mongoose.connection.name}`, 'warning');
     log('\n⚠️  WARNING: This will delete ALL data from the database!', 'warning');
     const confirm1 = await question('Type "RESET" to confirm: ');
     if (confirm1 !== 'RESET') {
@@ -366,15 +378,6 @@ async function resetDatabase(): Promise<boolean> {
     const confirm2 = await question('Are you absolutely sure? This cannot be undone! (yes/no): ');
     if (confirm2.toLowerCase() !== 'yes') {
       log('Reset cancelled', 'info');
-      return false;
-    }
-
-    log('Connecting to database...', 'info');
-    await connectDB();
-    registerAllModels();
-
-    if (mongoose.connection.readyState !== 1) {
-      log('Database not connected', 'error');
       return false;
     }
 
@@ -413,6 +416,7 @@ async function resetDatabase(): Promise<boolean> {
         // Profile models (these have post-save hooks that create Users)
         MedicalRepresentative.deleteMany({}).then(result => { deletionResults['medicalrepresentatives'] = result.deletedCount; }),
         Accountant.deleteMany({}).then(result => { deletionResults['accountants'] = result.deletedCount; }),
+        MedicalTechnologist.deleteMany({}).then(result => { deletionResults['medicaltechnologists'] = result.deletedCount; }),
         Receptionist.deleteMany({}).then(result => { deletionResults['receptionists'] = result.deletedCount; }),
         Nurse.deleteMany({}).then(result => { deletionResults['nurses'] = result.deletedCount; }),
         Doctor.deleteMany({}).then(result => { deletionResults['doctors'] = result.deletedCount; }),

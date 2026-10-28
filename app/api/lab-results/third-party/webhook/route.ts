@@ -1,43 +1,31 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createHmac, timingSafeEqual } from 'crypto';
+import { NextRequest, NextResponse, after } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import LabResult from '@/models/LabResult';
-import { handleLabResultWebhook } from '@/lib/lab-integration';
-
-/**
- * Verify HMAC-SHA256 webhook signature.
- * The lab provider must send: X-Webhook-Signature: sha256=<hex>
- * Set LAB_WEBHOOK_SECRET in environment to enable.
- */
-function verifyWebhookSignature(rawBody: string, signatureHeader: string | null): boolean {
-  const secret = process.env.LAB_WEBHOOK_SECRET;
-  if (!secret || !signatureHeader) return false;
-
-  const [algorithm, receivedHex] = signatureHeader.split('=');
-  if (algorithm !== 'sha256' || !receivedHex) return false;
-
-  const expected = createHmac('sha256', secret).update(rawBody, 'utf8').digest('hex');
-  try {
-    return timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(receivedHex, 'hex'));
-  } catch {
-    return false;
-  }
-}
+import { handleLabResultWebhook, labWebhookSecret, verifyWebhookSignature } from '@/lib/lab-integration';
 
 // Webhook endpoint for receiving lab results from third-party labs
 export async function POST(request: NextRequest) {
   try {
-    await connectDB();
     const rawBody = await request.text();
 
+    // A lab with its own secret is held to the requests sent to it; the shared secret can't say
+    // which lab is calling.
+    const labCode = request.headers.get('x-lab-code')?.trim() || null;
+    const ownSecret = labCode ? labWebhookSecret(labCode) : null;
+    const secret = ownSecret ?? process.env.LAB_WEBHOOK_SECRET;
+
     // The webhook writes clinical results, so a valid signature is always required.
-    if (!process.env.LAB_WEBHOOK_SECRET) {
+    if (!secret) {
       return NextResponse.json(
         { success: false, error: 'Lab webhook is not configured' },
         { status: 503 }
       );
     }
-    if (!verifyWebhookSignature(rawBody, request.headers.get('x-webhook-signature'))) {
+    const signatureOk = verifyWebhookSignature(rawBody, {
+      signature: request.headers.get('x-webhook-signature'),
+      timestamp: request.headers.get('x-webhook-timestamp'),
+    }, secret);
+    if (!signatureOk) {
       return NextResponse.json(
         { success: false, error: 'Invalid webhook signature' },
         { status: 401 }
@@ -71,12 +59,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid webhook payload' }, { status: 400 });
     }
 
+    await connectDB();
+
     // Only requests this system actually sent; when the lab echoes our request code,
     // it must match too. An id shared by several clinics' requests is rejected.
     const filter: Record<string, unknown> = {
       'thirdPartyLab.externalRequestId': resultPayload.externalRequestId,
       'thirdPartyLab.status': { $in: ['sent', 'received'] },
     };
+    if (ownSecret) filter['thirdPartyLab.labCode'] = labCode;
     if (typeof body.requestCode === 'string' && body.requestCode) {
       filter.requestCode = body.requestCode;
     }
@@ -96,6 +87,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // A result already applied (a retry or a replay) changes nothing; a correction comes with a
+    // new result id.
+    const resultId = resultPayload.externalResultId ? String(resultPayload.externalResultId) : null;
+    if (resultId && labResult.thirdPartyLab?.externalResultId === resultId) {
+      return NextResponse.json({ success: true, data: { requestCode: labResult.requestCode, status: 'received', duplicate: true } });
+    }
+
     // Update lab result with received data
     labResult.results = resultPayload.results;
     labResult.resultDate = new Date(resultPayload.resultDate);
@@ -103,14 +101,32 @@ export async function POST(request: NextRequest) {
     labResult.abnormalFlags = resultPayload.abnormalFlags;
     labResult.interpretation = resultPayload.interpretation;
     labResult.status = 'completed';
+    // Results from outside go to the ordering clinician before the patient hears; a correction to a
+    // reviewed result needs a fresh review.
+    labResult.awaitingReview = true;
+    labResult.reviewedBy = undefined;
+    labResult.reviewedAt = undefined;
 
     if (labResult.thirdPartyLab) {
-      labResult.thirdPartyLab.externalResultId = resultPayload.externalResultId;
+      labResult.thirdPartyLab.externalResultId = resultId ?? undefined;
       labResult.thirdPartyLab.status = 'received';
       labResult.thirdPartyLab.receivedAt = new Date();
     }
 
     await labResult.save();
+
+    if (labResult.tenantId) {
+      const held = { _id: labResult._id, orderedBy: labResult.orderedBy, request: labResult.request };
+      const tenantId = labResult.tenantId;
+      after(async () => {
+        try {
+          const { notifyDoctorToReview } = await import('@/lib/automations/lab-notifications');
+          await notifyDoctorToReview(held, tenantId);
+        } catch (error) {
+          console.error('Error asking for lab result review:', error);
+        }
+      });
+    }
 
     return NextResponse.json({
       success: true,
@@ -127,4 +143,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

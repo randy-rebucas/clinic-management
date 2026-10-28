@@ -110,18 +110,6 @@ async function readJson(res: Response) {
 }
 
 /** Data URLs can't be opened as a top-level page, so hand the browser a blob URL instead. */
-function openAttachment(url: string) {
-  const m = /^data:([^;,]+);base64,(.*)$/.exec(url);
-  if (!m) {
-    window.open(url, '_blank', 'noopener');
-    return;
-  }
-  const bytes = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
-  const blobUrl = URL.createObjectURL(new Blob([bytes], { type: m[1] }));
-  window.open(blobUrl, '_blank', 'noopener');
-  setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-}
-
 type Confirm = 'close' | 'cancel' | null;
 
 export default function VisitDetailClient({ visitId, permissions }: { visitId: string; permissions: VisitDetailPermissions }) {
@@ -802,13 +790,15 @@ function AttachmentsPanel({ visit: v, canUpload, onUpload }: { visit: Visit; can
       ) : (
         <ul className="divide-y divide-gray-100">
           {files.map((f, i) => {
-            const image = Boolean(f.url && f.contentType?.startsWith('image/'));
+            // Files open through the visit's file route, which checks access and logs each opening.
+            const href = f._id ? `/api/visits/${v._id}/files/${f._id}` : null;
+            const image = Boolean(href && f.contentType?.startsWith('image/'));
             return (
               <li key={f._id || i} className="motion-row-in flex items-center gap-4 px-5 py-3" style={{ animationDelay: `${Math.min(i * 18, 220)}ms` }}>
                 <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-gray-50 text-gray-500">
                   {image ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- stored inline as a data URL
-                    <img src={f.url} alt="" className="h-full w-full object-cover" />
+                    // eslint-disable-next-line @next/next/no-img-element -- served by the app's file route, not a static asset
+                    <img src={href!} alt="" className="h-full w-full object-cover" />
                   ) : (
                     <Svg d={ICONS.doc} className="h-5 w-5" />
                   )}
@@ -825,20 +815,20 @@ function AttachmentsPanel({ visit: v, canUpload, onUpload }: { visit: Visit; can
                     {has(f.notes) && <> · {f.notes}</>}
                   </span>
                 </span>
-                {f.url && (
+                {href && (
                   <span className="flex shrink-0 items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => openAttachment(f.url!)}
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       aria-label={`Open ${f.filename}`}
                       title="Open in a new tab"
                       className={`rounded-md p-2 text-gray-500 transition-colors hover:bg-brand-teal-light hover:text-brand-teal-deep ${FOCUS_RING}`}
                     >
                       <Svg d={ICONS.external} />
-                    </button>
+                    </a>
                     <a
-                      href={f.url}
-                      download={f.filename}
+                      href={`${href}?download=1`}
                       aria-label={`Download ${f.filename}`}
                       title="Download"
                       className={`rounded-md p-2 text-gray-500 transition-colors hover:bg-brand-teal-light hover:text-brand-teal-deep ${FOCUS_RING}`}

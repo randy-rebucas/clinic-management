@@ -53,6 +53,8 @@ export interface IAppointment extends Document {
 
   // Automation markers / links
   reminderSentAt?: Date;
+  /** Set while a reminder run is sending this one (lib/automations/shared.ts claimForSend). */
+  reminderClaimedAt?: Date;
   insuranceCheckedAt?: Date;
   recurringParentId?: Types.ObjectId;
   recurringOccurrenceDate?: string;
@@ -182,6 +184,7 @@ const AppointmentSchema: Schema = new Schema(
 
     // Automation markers / links
     reminderSentAt: { type: Date },
+    reminderClaimedAt: { type: Date },
     insuranceCheckedAt: { type: Date },
     recurringParentId: { type: Schema.Types.ObjectId, ref: 'Appointment' },
     recurringOccurrenceDate: { type: String }, // clinic-local yyyy-MM-dd

@@ -8,10 +8,10 @@ import {
   requireTenantSession,
   isTenantSessionError,
   patientTenantFilter,
-  tenantFilter,
   notFound,
 } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
+import { erasePatientAtClinic } from '@/lib/patient-erasure';
 
 const deletionSchema = z.object({
   patientId: zObjectId,
@@ -25,8 +25,7 @@ const deletionSchema = z.object({
  * WARNING: This is a destructive operation
  *
  * A Patient document can be shared by several clinics (tenantIds). Only the calling
- * clinic's records are touched; the shared Patient document is anonymized/deleted only
- * when no other clinic still references it, otherwise this clinic is detached from it.
+ * clinic's records are touched; see lib/patient-erasure.ts for what each mode removes.
  */
 export async function POST(request: NextRequest) {
   const ctx = await requireTenantSession();
@@ -58,65 +57,12 @@ export async function POST(request: NextRequest) {
       return notFound('Patient');
     }
 
-    const otherTenants = ((patient.tenantIds || []) as any[]).filter(
-      (t) => String(t) !== tenantId
-    );
-    const sharedWithOtherClinics = otherTenants.length > 0;
-
-    const Visit = (await import('@/models/Visit')).default;
-    const Appointment = (await import('@/models/Appointment')).default;
-    const Prescription = (await import('@/models/Prescription')).default;
-    const LabResult = (await import('@/models/LabResult')).default;
-    const Invoice = (await import('@/models/Invoice')).default;
-    const Document = (await import('@/models/Document')).default;
-
-    const scoped = () => tenantFilter(tenantId, { patient: patientId });
-
     // Option 1: Anonymize (recommended for medical records - keep for legal requirements)
     // Option 2: Delete (for complete removal - use with caution)
     const deletionMode = parsed.data.mode || 'anonymize';
-
-    if (deletionMode === 'anonymize') {
-      await Visit.updateMany(scoped(), { $set: { notes: '[Data anonymized]' } });
-
-      if (sharedWithOtherClinics) {
-        await Patient.updateOne({ _id: patientId }, { $pull: { tenantIds: tenantObjectId } });
-      } else {
-        await Patient.updateOne({ _id: patientId }, {
-          $set: {
-            firstName: '[ANONYMIZED]',
-            lastName: '[ANONYMIZED]',
-            email: `anonymized-${patientId}@deleted.local`,
-            phone: '[ANONYMIZED]',
-            address: {
-              street: '[ANONYMIZED]',
-              city: '[ANONYMIZED]',
-              province: '[ANONYMIZED]',
-              zipCode: '[ANONYMIZED]',
-            },
-            dateOfBirth: null,
-            identifiers: {},
-            emergencyContact: {},
-            notes: '[Data anonymized per PH DPA request]',
-          },
-        });
-      }
-    } else {
-      await Promise.all([
-        Visit.deleteMany(scoped()),
-        Appointment.deleteMany(scoped()),
-        Prescription.deleteMany(scoped()),
-        LabResult.deleteMany(scoped()),
-        Invoice.deleteMany(scoped()),
-        Document.updateMany(scoped(), { $set: { status: 'deleted' } }),
-      ]);
-
-      await Patient.updateOne({ _id: patientId }, { $pull: { tenantIds: tenantObjectId } });
-      // Only remove the shared patient record once no clinic references it any more.
-      await Patient.deleteOne({
-        _id: patientId,
-        $or: [{ tenantIds: { $exists: false } }, { tenantIds: { $size: 0 } }],
-      });
+    const result = await erasePatientAtClinic(tenantObjectId, patientId, deletionMode);
+    if (result.filesNotRemoved.length) {
+      console.error('Data deletion: Cloudinary files not removed', { tenantId, files: result.filesNotRemoved });
     }
 
     await logDataDeletion(
@@ -144,7 +90,8 @@ export async function POST(request: NextRequest) {
       metadata: {
         mode: deletionMode,
         reason: reason || 'PH DPA - Right to be Forgotten',
-        detachedOnly: sharedWithOtherClinics,
+        detachedOnly: result.detachedOnly,
+        filesNotRemoved: result.filesNotRemoved,
       },
       isSensitive: true,
     });
@@ -153,6 +100,8 @@ export async function POST(request: NextRequest) {
       success: true,
       message: `Patient data ${deletionMode === 'anonymize' ? 'anonymized' : 'deleted'} successfully`,
       mode: deletionMode,
+      // Stored files that are still on Cloudinary and need removing by hand.
+      filesNotRemoved: result.filesNotRemoved.length,
     });
   } catch (error: any) {
     console.error('Error deleting patient data:', error);

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import Document from '@/models/Document';
 import logger from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
@@ -32,7 +32,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'File not available' }, { status: 404 });
     }
 
-    void createAuditLog({
+    after(() => createAuditLog({
       userEmail: ctx.patient.email,
       userRole: 'patient',
       tenantId: document.tenantId?.toString(),
@@ -42,7 +42,7 @@ export async function GET(
       dataSubject: document.patient,
       isSensitive: true,
       description: `Patient downloaded own document ${document.documentCode ?? id}`,
-    });
+    }));
 
     return new NextResponse(new Uint8Array(file.buffer), {
       headers: fileResponseHeaders(file.contentType, document.originalFilename || document.filename, {

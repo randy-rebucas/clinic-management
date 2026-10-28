@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Document from '@/models/Document';
@@ -286,7 +286,7 @@ export async function POST(request: NextRequest) {
 
     const document = await Document.create(documentData);
 
-    void createAuditLog({
+    after(() => createAuditLog({
       userId: session.userId,
       userEmail: session.email,
       userRole: session.role,
@@ -297,7 +297,7 @@ export async function POST(request: NextRequest) {
       dataSubject: patientId,
       isSensitive: Boolean(patientId),
       description: `Uploaded document ${document.documentCode}${isConfidential ? ' (staff only)' : ''}`,
-    });
+    }));
 
     await document.populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } });
     await document.populate('uploadedBy', 'name');

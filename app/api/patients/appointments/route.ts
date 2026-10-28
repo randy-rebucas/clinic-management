@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { z } from 'zod';
 import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
@@ -346,7 +346,7 @@ export async function POST(request: NextRequest) {
       match: { tenantId },
     });
 
-    sendBookingConfirmation(appointment, tz).catch(console.error);
+    after(() => sendBookingConfirmation(appointment, tz).catch(console.error));
 
     logger.info('Patient booked appointment', {
       patientId: sessionData.patientId,

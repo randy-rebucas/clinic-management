@@ -22,6 +22,7 @@ import {
   Room,
   Patient,
   MedicalRepresentative,
+  MedicalTechnologist,
   Accountant,
   Receptionist,
   Nurse,
@@ -107,6 +108,7 @@ export async function POST(request: NextRequest) {
         // Profile models (these have post-save hooks that create Users)
         MedicalRepresentative.deleteMany({}).then(result => { deletionResults['medicalrepresentatives'] = result.deletedCount; }),
         Accountant.deleteMany({}).then(result => { deletionResults['accountants'] = result.deletedCount; }),
+        MedicalTechnologist.deleteMany({}).then(result => { deletionResults['medicaltechnologists'] = result.deletedCount; }),
         Receptionist.deleteMany({}).then(result => { deletionResults['receptionists'] = result.deletedCount; }),
         Nurse.deleteMany({}).then(result => { deletionResults['nurses'] = result.deletedCount; }),
         Doctor.deleteMany({}).then(result => { deletionResults['doctors'] = result.deletedCount; }),

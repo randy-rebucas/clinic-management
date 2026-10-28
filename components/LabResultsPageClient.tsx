@@ -83,12 +83,13 @@ function pageWindow(page: number, pages: number): (number | 'gap')[] {
   return out;
 }
 
-export default function LabResultsPageClient({ canWrite, isDoctor }: LabResultsPageContext) {
+export default function LabResultsPageClient({ canWrite, isDoctor, isLab }: LabResultsPageContext) {
   const router = useRouter();
   const [mine, setMine] = useState(isDoctor);
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
-  const [status, setStatus] = useState<LabStatus | ''>('');
+  // The lab opens on new requests: the ones it still has to receive.
+  const [status, setStatus] = useState<LabStatus | ''>(isLab ? 'ordered' : '');
   const [abnormal, setAbnormal] = useState(false);
   const [waiting, setWaiting] = useState<{ key: string; label: string } | null>(null);
   const [urgency, setUrgency] = useState('');
@@ -162,28 +163,33 @@ export default function LabResultsPageClient({ canWrite, isDoctor }: LabResultsP
         <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
           <div className="min-w-0">
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">Lab results</h1>
-            <p className="text-sm sm:text-base text-gray-600 mt-1">Tests ordered, results waiting for review, and what&apos;s still at the lab.</p>
+            <p className="text-sm sm:text-base text-gray-600 mt-1">
+              {isLab ? 'Requests from the doctors, and the results still to enter.' : 'Tests ordered, results waiting for review, and what’s still at the lab.'}
+            </p>
           </div>
           <div className="flex items-center gap-2">
-            <div role="group" aria-label="Whose lab orders" className="inline-flex gap-1 rounded-md border border-gray-200 bg-white p-1">
-              {[
-                { on: !mine, label: 'Whole clinic', set: false },
-                { on: mine, label: 'Mine', set: true },
-              ].map((o) => (
-                <button
-                  key={o.label}
-                  type="button"
-                  aria-pressed={o.on}
-                  onClick={() => {
-                    setMine(o.set);
-                    setPage(1);
-                  }}
-                  className={`rounded px-3.5 py-1.5 text-sm font-semibold transition-colors duration-150 ${FOCUS_RING} ${o.on ? 'bg-brand-teal-dark text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
+            {/* "Mine" means tests I ordered; the lab orders none. */}
+            {!isLab && (
+              <div role="group" aria-label="Whose lab orders" className="inline-flex gap-1 rounded-md border border-gray-200 bg-white p-1">
+                {[
+                  { on: !mine, label: 'Whole clinic', set: false },
+                  { on: mine, label: 'Mine', set: true },
+                ].map((o) => (
+                  <button
+                    key={o.label}
+                    type="button"
+                    aria-pressed={o.on}
+                    onClick={() => {
+                      setMine(o.set);
+                      setPage(1);
+                    }}
+                    className={`rounded px-3.5 py-1.5 text-sm font-semibold transition-colors duration-150 ${FOCUS_RING} ${o.on ? 'bg-brand-teal-dark text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            )}
             {canWrite && (
               <Link
                 href="/lab-results/new"

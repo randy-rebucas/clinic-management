@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import bcrypt from 'bcryptjs';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
@@ -156,7 +156,7 @@ export async function POST(
     await revokeAllPatientAccess(String(patient._id));
 
     const { createAuditLog } = await import('@/lib/audit');
-    void createAuditLog({
+    after(() => createAuditLog({
       userId: session.userId,
       userEmail: session.email,
       userRole: session.role,
@@ -167,7 +167,7 @@ export async function POST(
       dataSubject: id,
       isSensitive: true,
       description: `Staff set the patient app password${updates.email ? ' and login email' : ''}`,
-    });
+    }));
 
     logger.info('Staff set patient app credentials', {
       patientId: id,

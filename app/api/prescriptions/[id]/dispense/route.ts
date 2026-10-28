@@ -63,19 +63,25 @@ export async function POST(
 
     let items: Item[];
     if (body.items && body.items.length) {
-      items = [];
+      // Lines for the same medication are added together before the check, so repeating a line
+      // can't dispense more than was prescribed.
+      const perMedication = new Map<number, number>();
       for (const it of body.items) {
         if (it.medicationIndex >= medications.length) {
           return NextResponse.json({ success: false, error: 'Invalid medication index' }, { status: 400 });
         }
-        const remaining = prescribed[it.medicationIndex] - already[it.medicationIndex];
-        if (prescribed[it.medicationIndex] > 0 && it.quantity > remaining) {
+        perMedication.set(it.medicationIndex, (perMedication.get(it.medicationIndex) ?? 0) + it.quantity);
+      }
+      items = [];
+      for (const [medicationIndex, quantity] of perMedication) {
+        const remaining = prescribed[medicationIndex] - already[medicationIndex];
+        if (prescribed[medicationIndex] > 0 && quantity > remaining) {
           return NextResponse.json(
-            { success: false, error: `Quantity for ${medications[it.medicationIndex].name} exceeds the remaining ${Math.max(0, remaining)}` },
+            { success: false, error: `Quantity for ${medications[medicationIndex].name} exceeds the remaining ${Math.max(0, remaining)}` },
             { status: 400 }
           );
         }
-        items.push(it);
+        items.push({ medicationIndex, quantity });
       }
     } else {
       const total = body.quantityDispensed || 0;
@@ -101,6 +107,11 @@ export async function POST(
     // Deduct stock first; a shortage of a stocked item blocks the dispense.
     const warnings: string[] = [];
     const deducted: Array<{ itemId: Types.ObjectId; quantity: number; after: number }> = [];
+    const restoreStock = async () => {
+      for (const d of deducted) {
+        await InventoryItem.updateOne({ _id: d.itemId, tenantId: tenantObjectId }, { $inc: { quantity: d.quantity } });
+      }
+    };
     for (const it of items) {
       const med = medications[it.medicationIndex];
       // A stock item linked to the medicine, or else one not linked to any medicine with the same name.
@@ -122,15 +133,61 @@ export async function POST(
         { new: true }
       );
       if (!updated) {
-        for (const d of deducted) {
-          await InventoryItem.updateOne({ _id: d.itemId, tenantId: tenantObjectId }, { $inc: { quantity: d.quantity } });
-        }
+        await restoreStock();
         return NextResponse.json(
           { success: false, error: `Insufficient stock for ${med.name} (available: ${stockItem.quantity ?? 0})` },
           { status: 409 }
         );
       }
       deducted.push({ itemId: stockItem._id, quantity: it.quantity, after: updated.quantity });
+    }
+
+    const dispenses = prescription.pharmacyDispenses || [];
+    const after = already.slice();
+    for (const it of items) after[it.medicationIndex] += it.quantity;
+    const tracked = prescribed.map((q, i) => ({ q, d: after[i] })).filter((x) => x.q > 0);
+    const fullyDispensed = tracked.length > 0
+      ? tracked.every((x) => x.d >= x.q)
+      : after.every((d) => d > 0);
+
+    // Recorded only if no other dispense landed since this one read the prescription; otherwise
+    // the remaining quantities checked above are stale, and the stock goes back.
+    let saved;
+    try {
+      saved = await Prescription.findOneAndUpdate(
+        {
+          _id: prescription._id,
+          tenantId: tenantObjectId,
+          status: { $nin: ['cancelled', 'dispensed', 'completed'] },
+          [`pharmacyDispenses.${dispenses.length}`]: { $exists: false },
+        },
+        {
+          $push: {
+            pharmacyDispenses: {
+              pharmacyId: body.pharmacyId,
+              pharmacyName: body.pharmacyName,
+              dispensedAt: new Date(),
+              dispensedBy: body.dispensedBy || session.name || session.email || 'Pharmacy Staff',
+              quantityDispensed,
+              items,
+              notes: body.notes,
+              trackingNumber: body.trackingNumber,
+            },
+          },
+          $set: { status: fullyDispensed ? 'dispensed' : 'partially-dispensed' },
+        },
+        { new: true, runValidators: true }
+      );
+    } catch (error) {
+      await restoreStock();
+      throw error;
+    }
+    if (!saved) {
+      await restoreStock();
+      return NextResponse.json(
+        { success: false, error: 'This prescription was dispensed by someone else just now. Reload it and try again.' },
+        { status: 409 }
+      );
     }
 
     // Every deduction held, so the stock ledger can record them against this prescription.
@@ -141,38 +198,16 @@ export async function POST(
         type: 'dispense',
         change: -d.quantity,
         quantityAfter: d.after,
-        prescription: prescription._id,
-        prescriptionCode: prescription.prescriptionCode,
+        prescription: saved._id,
+        prescriptionCode: saved.prescriptionCode,
         performedBy: session.userId,
       });
     }
 
-    prescription.pharmacyDispenses = prescription.pharmacyDispenses || [];
-    prescription.pharmacyDispenses.push({
-      pharmacyId: body.pharmacyId,
-      pharmacyName: body.pharmacyName,
-      dispensedAt: new Date(),
-      dispensedBy: body.dispensedBy || session.name || session.email || 'Pharmacy Staff',
-      quantityDispensed,
-      items,
-      notes: body.notes,
-      trackingNumber: body.trackingNumber,
-    });
+    await saved.populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } });
+    await saved.populate({ path: 'prescribedBy', select: 'name email', match: { tenantId: tenantObjectId } });
 
-    const after = already.slice();
-    for (const it of items) after[it.medicationIndex] += it.quantity;
-    const tracked = prescribed.map((q, i) => ({ q, d: after[i] })).filter((x) => x.q > 0);
-    const fullyDispensed = tracked.length > 0
-      ? tracked.every((x) => x.d >= x.q)
-      : after.every((d) => d > 0);
-    prescription.status = fullyDispensed ? 'dispensed' : 'partially-dispensed';
-
-    await prescription.save();
-
-    await prescription.populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } });
-    await prescription.populate({ path: 'prescribedBy', select: 'name email', match: { tenantId: tenantObjectId } });
-
-    return NextResponse.json({ success: true, data: prescription, warnings });
+    return NextResponse.json({ success: true, data: saved, warnings });
   } catch (error: any) {
     console.error('Error recording dispense:', error);
     return NextResponse.json(

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Tenant from '@/models/Tenant';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
+import { activeSubscriptionFilter } from '@/lib/subscription';
 
 /**
  * Get list of active tenants/clinics for public selection
@@ -54,9 +55,10 @@ export async function GET(request: NextRequest) {
     
     // If subdomain is 'www' or empty, treat as root domain and return all tenants
 
-    // Get all active tenants
-    const tenants = await Tenant.find({ 
-      status: 'active' 
+    // Get all active tenants with a current subscription
+    const tenants = await Tenant.find({
+      status: 'active',
+      ...activeSubscriptionFilter(),
     })
       .select('name displayName subdomain phone address')
       .sort({ name: 1 })

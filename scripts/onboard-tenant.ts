@@ -114,6 +114,13 @@ async function createRolesWithPermissions(tenantId: mongoose.Types.ObjectId) {
       defaultPermissions: DEFAULT_ROLE_PERMISSIONS.accountant,
     },
     {
+      name: 'medical-technologist',
+      displayName: 'Medical technologist',
+      description: 'Laboratory staff who receive lab requests and enter results',
+      level: 50,
+      defaultPermissions: DEFAULT_ROLE_PERMISSIONS['medical-technologist'],
+    },
+    {
       name: 'medical-representative',
       displayName: 'Medical Representative',
       description: 'External medical representatives with limited access',

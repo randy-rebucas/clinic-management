@@ -8,8 +8,8 @@ import { forbiddenResponse, isAdmin, refuseAccess } from '@/app/lib/auth-helpers
 import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zShortText } from '@/lib/api/validate';
 import { createAuditLog } from '@/lib/audit';
-import { DEFAULT_ROLE_PERMISSIONS } from '@/lib/permissions';
-import { ROLE_NAMES, STANDARD_ROLE } from '@/lib/roles';
+import { createStandardRole } from '@/lib/standard-roles';
+import { ROLE_NAMES } from '@/lib/roles';
 
 // Roles are the fixed set in lib/roles.ts; "creating" one adds a standard role this clinic lacks.
 const createRoleSchema = z.object({
@@ -80,23 +80,13 @@ export async function POST(request: NextRequest) {
     const parsed = await parseBody(request, createRoleSchema);
     if (isValidationError(parsed)) return parsed;
     const { name } = parsed.data;
-    const standard = STANDARD_ROLE[name];
-    const access = DEFAULT_ROLE_PERMISSIONS[name] ?? [];
-
-    const role = await Role.create({
-      tenantId: tenantObjectId,
-      name,
-      displayName: parsed.data.displayName || standard.displayName,
-      description: parsed.data.description || standard.description,
-      level: standard.level,
-      isActive: true,
-      defaultPermissions: access,
+    const { role, created } = await createStandardRole(tenantObjectId, name, {
+      displayName: parsed.data.displayName,
+      description: parsed.data.description,
     });
-    const docs = await Permission.insertMany(
-      access.map((p) => ({ tenantId: tenantObjectId, role: role._id, resource: p.resource, actions: p.actions }))
-    );
-    role.permissions = docs.map((d) => d._id);
-    await role.save();
+    if (!created) {
+      return NextResponse.json({ success: false, error: 'This clinic already has that role' }, { status: 409 });
+    }
 
     await createAuditLog({
       userId: session.userId,

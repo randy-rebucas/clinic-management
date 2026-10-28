@@ -22,7 +22,7 @@ const LIMIT = { name: 'rx-pdf', windowMs: 10 * 60 * 1000, maxRequests: 20 };
 /**
  * GET /api/rx/:token — the patient's e-prescription as a sealed PDF (patient copy).
  * The token comes from POST /api/patients/me/prescriptions/:id/pdf-link and lasts 10 minutes.
- * Every download is its own sealed, numbered copy, like a staff reprint.
+ * Repeat downloads of an unchanged prescription carry the same seal; a staff reprint numbers a new copy.
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const limited = await consumeRateLimit(LIMIT, getClientIp(request.headers));
@@ -58,6 +58,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       tenantId,
       userId: prescription.prescribedBy?._id ? String(prescription.prescribedBy._id) : undefined,
       copyType: 'patient',
+      reuse: true,
     });
     const showSignature = settings.prescriptionDigitalSignatureEnabled !== false;
     const signatureSrc =

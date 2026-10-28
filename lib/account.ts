@@ -9,6 +9,7 @@ import Doctor from '@/models/Doctor';
 import Nurse from '@/models/Nurse';
 import Receptionist from '@/models/Receptionist';
 import Accountant from '@/models/Accountant';
+import MedicalTechnologist from '@/models/MedicalTechnologist';
 import AuditLog from '@/models/AuditLog';
 import { createSession, revokeUserSessions, type SessionPayload } from '@/app/lib/dal';
 
@@ -18,7 +19,7 @@ import { createSession, revokeUserSessions, type SessionPayload } from '@/app/li
  * when there is one; User.name is kept in step with it.
  */
 
-export const PROFILE_FIELDS = ['adminProfile', 'doctorProfile', 'nurseProfile', 'receptionistProfile', 'accountantProfile'] as const;
+export const PROFILE_FIELDS = ['adminProfile', 'doctorProfile', 'nurseProfile', 'receptionistProfile', 'accountantProfile', 'medicalTechnologistProfile'] as const;
 export type ProfileField = (typeof PROFILE_FIELDS)[number];
 
 // Every staff profile model requires a phone except Admin.
@@ -28,6 +29,7 @@ const PROFILE_MODELS: Record<ProfileField, { model: Model<any>; phoneRequired: b
   nurseProfile: { model: Nurse, phoneRequired: true },
   receptionistProfile: { model: Receptionist, phoneRequired: true },
   accountantProfile: { model: Accountant, phoneRequired: true },
+  medicalTechnologistProfile: { model: MedicalTechnologist, phoneRequired: true },
 };
 
 export interface AccountProfile {

@@ -32,14 +32,16 @@ const EXPORTABLE_COLUMNS = new Set([
  * - format=csv: CSV file download
  * - format=json: JSON array
  *
- * Requires staff authentication + patients:read permission.
+ * Requires staff authentication + patients:update permission.
  */
 export async function POST(request: NextRequest) {
   const ctx = await requireTenantSession();
   if (isTenantSessionError(ctx)) return ctx;
   const { session, tenantId } = ctx;
 
-  const permissionCheck = await requirePermission(session, 'patients', 'read');
+  // A bulk copy of patient records, not a lookup: limited to roles that manage patients, so
+  // read-only roles (accounts, lab, medical reps) can see records but not take them away.
+  const permissionCheck = await requirePermission(session, 'patients', 'update');
   if (permissionCheck) return permissionCheck;
 
   try {

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Queue from '@/models/Queue';
 import Appointment from '@/models/Appointment';
@@ -200,11 +200,13 @@ export async function POST(request: NextRequest) {
     const settings = await getSettings(tenantId);
     if (settings?.automationSettings?.autoQueueOptimization) {
       const { autoOptimizeQueueOnJoin } = await import('@/lib/automations/queue-optimization');
-      autoOptimizeQueueOnJoin(queue._id, tenantId).catch(console.error);
+      after(() => autoOptimizeQueueOnJoin(queue._id, tenantId).catch(console.error));
     }
-    import('@/lib/automations/queue-notifications')
-      .then(({ notifyQueuePositions }) => notifyQueuePositions(tenantObjectId))
-      .catch((error) => console.error('[Queue API] Error sending queue position updates:', error));
+    after(() =>
+      import('@/lib/automations/queue-notifications')
+        .then(({ notifyQueuePositions }) => notifyQueuePositions(tenantObjectId))
+        .catch((error) => console.error('[Queue API] Error sending queue position updates:', error))
+    );
 
     return NextResponse.json({ success: true, data: queue }, { status: 201 });
   } catch (error: any) {

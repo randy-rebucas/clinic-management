@@ -103,6 +103,14 @@ const nextConfig: NextConfig = {
       '/api/invoices/[id]/receipt',
       '/api/rx/[token]',
       '/api/health-summary/[token]',
+      // Platform sales invoices: downloaded as PDF, or emailed with the PDF attached (lib/platform-invoice.ts).
+      '/api/platform/invoices/[id]',
+      '/api/platform/invoices/[id]/resend',
+      '/api/subscription/invoices/[id]',
+      '/api/cron/platform-invoices',
+      '/api/platform/configuration',
+      '/api/paymongo/webhook',
+      '/api/subscription/paymongo-confirm',
     ].map((route) => [route.replace(/[[\]]/g, '\\$&'), ['./node_modules/@sparticuz/chromium/bin/**/*']])
   ),
 

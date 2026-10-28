@@ -19,6 +19,8 @@ const Input = z.object({
   transcript: z.string().trim().min(20, 'Dictate or type a bit more of the consult first.').max(MAX_TRANSCRIPT_CHARS, 'The transcript is too long. Shorten it and try again.'),
   patientId: zObjectId.optional(),
   visitType: z.string().trim().max(40).optional(),
+  // The doctor confirms the patient agreed; it is recorded with each draft (DPA consent, cross-border transfer).
+  consent: z.literal(true, { error: 'Confirm that the patient agreed to the AI scribe first.' }),
 });
 
 const LIMIT = { name: 'ai-scribe', windowMs: 60 * 60 * 1000, maxRequests: 40, identifierOnly: true, message: 'You have used the AI scribe a lot this hour. Try again later.' };
@@ -92,7 +94,7 @@ export async function POST(request: NextRequest) {
       resource: 'visit',
       description: 'Drafted a visit note with the AI scribe',
       dataSubject: patientId,
-      metadata: { feature: 'ai-scribe', transcriptChars: transcript.length, diagnoses: result.draft.diagnoses.length, medications: result.draft.medications.length },
+      metadata: { feature: 'ai-scribe', patientConsent: true, transcriptChars: transcript.length, diagnoses: result.draft.diagnoses.length, medications: result.draft.medications.length },
       ipAddress: getClientIp(request.headers),
     });
     return NextResponse.json({ success: true, data: result });

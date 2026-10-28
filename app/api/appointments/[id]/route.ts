@@ -200,31 +200,35 @@ export async function PUT(
 
     const statusChangedToCancelled = oldAppointment.status !== 'cancelled' && fields.status === 'cancelled';
     if (statusChangedToCancelled) {
-      import('@/lib/automations/waitlist-management').then(({ fillCancelledSlot }) => {
-        fillCancelledSlot(appointment._id, tenantObjectId)
-          .catch((error) => {
-            console.error('Error filling cancelled slot from waitlist:', error);
-          });
-      }).catch((error) => {
-        console.error('Error loading waitlist management module:', error);
-      });
+      after(() =>
+        import('@/lib/automations/waitlist-management').then(({ fillCancelledSlot }) => {
+          return fillCancelledSlot(appointment._id, tenantObjectId)
+            .catch((error) => {
+              console.error('Error filling cancelled slot from waitlist:', error);
+            });
+        }).catch((error) => {
+          console.error('Error loading waitlist management module:', error);
+        })
+      );
     }
 
     const oldStatus = oldAppointment.status;
     const newStatus = fields.status;
     if (oldStatus !== newStatus && newStatus && _skipAutomation !== true) {
-      import('@/lib/automations/queue-from-appointment').then(({ updateQueueFromAppointment }) => {
-        updateQueueFromAppointment({
-          appointmentId: appointment._id,
-          patientId: appointment.patient,
-          newAppointmentStatus: newStatus,
-          tenantId: tenantObjectId,
+      after(() =>
+        import('@/lib/automations/queue-from-appointment').then(({ updateQueueFromAppointment }) => {
+          return updateQueueFromAppointment({
+            appointmentId: appointment._id,
+            patientId: appointment.patient,
+            newAppointmentStatus: newStatus,
+            tenantId: tenantObjectId,
+          }).catch((error) => {
+            console.error('[Appointment API] Error in queue automation:', error);
+          });
         }).catch((error) => {
-          console.error('[Appointment API] Error in queue automation:', error);
-        });
-      }).catch((error) => {
-        console.error('[Appointment API] Error loading queue automation module:', error);
-      });
+          console.error('[Appointment API] Error loading queue automation module:', error);
+        })
+      );
     }
 
     return NextResponse.json({ success: true, data: appointment });

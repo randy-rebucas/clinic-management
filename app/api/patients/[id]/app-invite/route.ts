@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { Types } from 'mongoose';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
@@ -245,7 +245,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         : await sendInviteSms({ code, phone, tenantId, firstName: body.mode === 'self' ? patient.firstName : undefined });
 
     const { createAuditLog } = await import('@/lib/audit');
-    void createAuditLog({
+    after(() => createAuditLog({
       userId: session.userId,
       userEmail: session.email,
       userRole: session.role,
@@ -258,7 +258,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       description:
         `Staff issued an eMCR app invite (${body.mode === 'self' ? 'for the patient' : 'for a parent or carer'}, ` +
         `${tempPassword ? 'printed with a temporary password' : body.channel}, to ${maskPhone(phone)}${dependentIds.length ? `, plus ${dependentIds.length} more record(s)` : ''}, valid ${INVITE_TTL_DAYS} days)`,
-    });
+    }));
 
     return NextResponse.json(
       {
@@ -309,7 +309,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
     const revoked = await revokeInvites(tenantId, patient._id);
     if (revoked) {
       const { createAuditLog } = await import('@/lib/audit');
-      void createAuditLog({
+      after(() => createAuditLog({
         userId: session.userId,
         userEmail: session.email,
         userRole: session.role,
@@ -320,7 +320,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
         dataSubject: id,
         isSensitive: true,
         description: 'Staff cancelled an unused eMCR app invite',
-      });
+      }));
     }
     return NextResponse.json({ success: true, revoked });
   } catch (error) {

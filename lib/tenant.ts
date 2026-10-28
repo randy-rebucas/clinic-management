@@ -105,11 +105,13 @@ export function extractSubdomain(host?: string | null): string | null {
  * This is used in server components and API routes (memoized per request)
  */
 export const getTenantContext = cache(async (): Promise<TenantContext> => {
-  try {
-    const headersList = await headers();
-    const host = headersList.get('host') || headersList.get('x-forwarded-host');
-    const subdomain = extractSubdomain(host);
+  // Outside the try: headers() throws to mark the route dynamic during
+  // prerendering, and swallowing that would bake a tenant-less static page.
+  const headersList = await headers();
+  const host = headersList.get('host') || headersList.get('x-forwarded-host');
+  const subdomain = extractSubdomain(host);
 
+  try {
     if (!subdomain) {
       return {
         tenantId: null,

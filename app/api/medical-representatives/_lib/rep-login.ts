@@ -100,7 +100,7 @@ export async function verifyRepCredentials(
 	const userQuery: Record<string, unknown> = { email: sanitizedEmail };
 	if (tenantId) userQuery.tenantId = tenantId;
 
-	const user = await User.findOne(userQuery).populate('role');
+	const user = await User.findOne(userQuery).select('+password').populate('role');
 
 	// Verify the password before revealing anything about the account
 	const passwordMatch = await bcrypt.compare(password, user?.password || getDummyHash());

@@ -4,6 +4,7 @@ import Patient from '@/models/Patient';
 import { requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, patientTenantFilter } from '@/lib/api/tenant-session';
 import { validateUpload } from '@/lib/upload-validation';
+import { AttachmentStoreError, storeAttachment } from '@/lib/attachment-file';
 
 export async function POST(
   request: NextRequest,
@@ -47,26 +48,37 @@ export async function POST(
       );
     }
 
+    const url = await storeAttachment(check, {
+      tenantId,
+      kind: 'patient',
+      parent: { model: Patient, filter: patientTenantFilter(tenantId, { _id: id }) },
+    });
     const attachment = {
       filename: check.filename,
       contentType: check.contentType,
       size: check.buffer.length,
-      url: `data:${check.contentType};base64,${check.buffer.toString('base64')}`,
+      url,
       uploadDate: new Date(),
       notes: typeof notes === 'string' && notes ? notes.slice(0, 2000) : undefined,
       uploadedBy: session.userId,
+      tenantId: ctx.tenantObjectId,
     };
 
+    // Only the new file's details go back: the record holds other clinics' files too.
     const patient = await Patient.findOneAndUpdate(
       patientTenantFilter(tenantId, { _id: id }),
       { $push: { attachments: attachment } },
-      { new: true }
-    );
+      { new: true, projection: { attachments: { $slice: -1 } } }
+    ).lean<{ attachments?: Array<Record<string, unknown>> }>();
 
     if (!patient) return notFound('Patient');
 
-    return NextResponse.json({ success: true, data: patient });
+    const { url: _stored, ...added } = patient.attachments?.[0] ?? {};
+    return NextResponse.json({ success: true, data: patient.attachments?.length ? added : null });
   } catch (error: any) {
+    if (error instanceof AttachmentStoreError) {
+      return NextResponse.json({ success: false, error: error.message }, { status: error.status });
+    }
     console.error('Error uploading file:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to upload file' },
