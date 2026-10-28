@@ -19,6 +19,12 @@ export interface IInvoice extends Document {
   tenantId?: Types.ObjectId;
   
   patient: Types.ObjectId;
+  /**
+   * The buyer as they were when the patient's data was erased (lib/patient-erasure.ts). Sales
+   * invoices are kept for BIR, so the invoice still names who it was sold to; printed in place
+   * of the patient record when set.
+   */
+  billedTo?: { name?: string; address?: { street?: string; city?: string; state?: string; zipCode?: string } };
   visit?: Types.ObjectId;
   invoiceNumber: string;
   items: IBillingItem[];
@@ -177,6 +183,10 @@ const InvoiceSchema: Schema = new Schema(
     },
     
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },
+    billedTo: {
+      name: String,
+      address: { street: String, city: String, state: String, zipCode: String },
+    },
     visit: { type: Schema.Types.ObjectId, ref: 'Visit' },
     invoiceNumber: { type: String, required: true },
     items: [BillingItemSchema],

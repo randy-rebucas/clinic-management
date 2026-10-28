@@ -34,8 +34,13 @@ function log(message: string, type: 'info' | 'success' | 'error' | 'warning' = '
  * that points at Tenant any other way stops the script until it is classified here.
  */
 
-/** Platform billing: sales invoices and the orders behind them are kept for BIR record retention. */
-const RETAINED = new Set(['PlatformInvoice', 'SubscriptionOrder']);
+/**
+ * Kept when a clinic is deleted:
+ * - platform billing: sales invoices and the orders behind them, for BIR record retention;
+ * - eMCR vouchers the clinic sold (batches and their codes): patients bought them, and an unused
+ *   code must still activate.
+ */
+const RETAINED = new Set(['PlatformInvoice', 'SubscriptionOrder', 'VoucherBatch', 'ActivationCode']);
 
 /** Shared between clinics through `tenantIds`: the clinic is removed, and a record no other clinic uses is deleted. */
 const SHARED = new Set(['Patient', 'MedicalRepresentative']);

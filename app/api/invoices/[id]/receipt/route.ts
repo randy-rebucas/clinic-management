@@ -97,6 +97,10 @@ export async function GET(
 
     // Manually populate items.serviceId if needed (convert to plain object first)
     const invoiceData = invoice.toObject ? invoice.toObject() : invoice;
+    // The patient's data was erased; the invoice is kept for BIR with the buyer as they were.
+    if (invoiceData.billedTo?.name) {
+      invoiceData.patient = { _id: invoiceData.patient?._id, firstName: invoiceData.billedTo.name, address: invoiceData.billedTo.address };
+    }
     
     // Populate serviceId for each item if it exists
     if (invoiceData.items && Array.isArray(invoiceData.items)) {
