@@ -8,13 +8,14 @@ import { sendSMS } from '@/lib/sms';
 import { buildAppointmentActionUrl } from '@/lib/appointment-links';
 import { dayRangeOffsetInTz } from '@/lib/tz';
 import { Types } from 'mongoose';
-import { forEachTenant, delivered, displayDate, displayTime, errorMessage, BATCH_LIMIT, type AutomationTenant } from './shared';
+import { forEachTenant, delivered, displayDate, displayTime, errorMessage, claimForSend, releaseClaim, BATCH_LIMIT, type AutomationTenant } from './shared';
 
 type ReminderRow = { id: string; code?: string; success: boolean; sid?: string; error?: string };
 
 /**
- * SMS reminders for tomorrow's (clinic-local) appointments. `reminderSentAt` marks each
- * appointment so reruns don't resend; a failed send is retried on the next run that day.
+ * SMS reminders for tomorrow's (clinic-local) appointments. Each appointment is claimed before
+ * its SMS goes out and marked with `reminderSentAt` after, so reruns and overlapping runs don't
+ * resend; a failed send gives the claim back and is retried on the next run that day.
  */
 async function sendTenantAppointmentReminders(tenant: AutomationTenant): Promise<ReminderRow[]> {
   const settings = await getSettings(tenant.tenantId);
@@ -53,9 +54,16 @@ async function sendTenantAppointmentReminders(tenant: AutomationTenant): Promise
         message += ` Confirm: ${buildAppointmentActionUrl(baseUrl, id, 'yes')}`;
       }
 
-      const smsResult = await sendSMS({ to: patient.phone, message });
+      const own = { _id: appointment._id, tenantId: tenant.tenantObjectId };
+      if (!(await claimForSend(Appointment, { ...own, reminderSentAt: { $exists: false } }, 'reminderClaimedAt'))) continue;
+      const smsResult = await sendSMS({ to: patient.phone, message }).catch(async (error) => {
+        await releaseClaim(Appointment, own, 'reminderClaimedAt');
+        throw error;
+      });
       if (delivered(smsResult)) {
-        await Appointment.updateOne({ _id: appointment._id, tenantId: tenant.tenantObjectId }, { $set: { reminderSentAt: new Date() } });
+        await Appointment.updateOne(own, { $set: { reminderSentAt: new Date() }, $unset: { reminderClaimedAt: '' } });
+      } else {
+        await releaseClaim(Appointment, own, 'reminderClaimedAt');
       }
       results.push({ id, code: appointment.appointmentCode, success: smsResult.success, sid: smsResult.sid, error: smsResult.error });
     } catch (error) {
@@ -95,9 +103,16 @@ async function sendTenantVisitReminders(tenant: AutomationTenant): Promise<Remin
         (visit.visitCode ? ` Visit Code: ${visit.visitCode}.` : '') +
         ' Please contact the clinic if you need to reschedule.';
 
-      const smsResult = await sendSMS({ to: patient.phone, message });
+      const own = { _id: visit._id, tenantId: tenant.tenantObjectId };
+      if (!(await claimForSend(Visit, { ...own, followUpReminderSent: { $ne: true } }, 'followUpReminderClaimedAt'))) continue;
+      const smsResult = await sendSMS({ to: patient.phone, message }).catch(async (error) => {
+        await releaseClaim(Visit, own, 'followUpReminderClaimedAt');
+        throw error;
+      });
       if (delivered(smsResult)) {
-        await Visit.updateOne({ _id: visit._id, tenantId: tenant.tenantObjectId }, { $set: { followUpReminderSent: true } });
+        await Visit.updateOne(own, { $set: { followUpReminderSent: true }, $unset: { followUpReminderClaimedAt: '' } });
+      } else {
+        await releaseClaim(Visit, own, 'followUpReminderClaimedAt');
       }
       results.push({ id, code: visit.visitCode, success: smsResult.success, sid: smsResult.sid, error: smsResult.error });
     } catch (error) {

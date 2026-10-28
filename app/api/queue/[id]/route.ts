@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Queue from '@/models/Queue';
@@ -137,36 +137,42 @@ export async function PUT(
 
     const newStatus = fields.status;
     if (oldStatus !== newStatus && newStatus && _skipAutomation !== true) {
-      import('@/lib/automations/appointment-from-queue').then(({ updateAppointmentFromQueue }) => {
-        updateAppointmentFromQueue({
-          queueId: currentQueue._id,
-          patientId: currentQueue.patient,
-          appointmentId: currentQueue.appointment,
-          newQueueStatus: newStatus,
-          tenantId: tenantObjectId,
+      after(() =>
+        import('@/lib/automations/appointment-from-queue').then(({ updateAppointmentFromQueue }) => {
+          return updateAppointmentFromQueue({
+            queueId: currentQueue._id,
+            patientId: currentQueue.patient,
+            appointmentId: currentQueue.appointment,
+            newQueueStatus: newStatus,
+            tenantId: tenantObjectId,
+          }).catch((error) => {
+            console.error('[Queue API] Error in appointment automation:', error);
+          });
         }).catch((error) => {
-          console.error('[Queue API] Error in appointment automation:', error);
-        });
-      }).catch((error) => {
-        console.error('[Queue API] Error loading appointment automation module:', error);
-      });
+          console.error('[Queue API] Error loading appointment automation module:', error);
+        })
+      );
 
-      import('@/lib/automations/queue-notifications').then(({ notifyQueuePatient }) => {
-        notifyQueuePatient({
-          queueId: currentQueue._id,
-          tenantId: tenantObjectId,
-          newStatus,
+      after(() =>
+        import('@/lib/automations/queue-notifications').then(({ notifyQueuePatient }) => {
+          return notifyQueuePatient({
+            queueId: currentQueue._id,
+            tenantId: tenantObjectId,
+            newStatus,
+          }).catch((error) => {
+            console.error('[Queue API] Error sending queue notification:', error);
+          });
         }).catch((error) => {
-          console.error('[Queue API] Error sending queue notification:', error);
-        });
-      }).catch((error) => {
-        console.error('[Queue API] Error loading queue-notifications module:', error);
-      });
+          console.error('[Queue API] Error loading queue-notifications module:', error);
+        })
+      );
     } else if (fields.doctor !== undefined || fields.priority !== undefined) {
       // Moving someone to another doctor or changing priority reshuffles the lines.
-      import('@/lib/automations/queue-notifications')
-        .then(({ notifyQueuePositions }) => notifyQueuePositions(tenantObjectId))
-        .catch((error) => console.error('[Queue API] Error sending queue position updates:', error));
+      after(() =>
+        import('@/lib/automations/queue-notifications')
+          .then(({ notifyQueuePositions }) => notifyQueuePositions(tenantObjectId))
+          .catch((error) => console.error('[Queue API] Error sending queue position updates:', error))
+      );
     }
 
     return NextResponse.json({ success: true, data: updatedQueue });

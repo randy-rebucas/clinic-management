@@ -1,52 +1,9 @@
 import { config } from 'dotenv';
-import { resolve } from 'path';
-import mongoose, { Types } from 'mongoose';
+import { resolve, join } from 'path';
+import { readdirSync } from 'fs';
+import { pathToFileURL } from 'url';
+import mongoose, { Model, Types } from 'mongoose';
 import readline from 'readline';
-import connectDB from '../lib/mongodb';
-import { registerAllModels } from '../models';
-import Tenant from '../models/Tenant';
-import {
-  // Audit & Notifications
-  AuditLog,
-  Notification,
-  // Queue & Membership
-  Queue,
-  Membership,
-  // Documents & Referrals
-  Referral,
-  Document,
-  // Billing
-  Invoice,
-  // Clinical records
-  Procedure,
-  Imaging,
-  LabResult,
-  Prescription,
-  Visit,
-  Appointment,
-  // Inventory & Catalog
-  InventoryItem,
-  Medicine,
-  Service,
-  Room,
-  Specialization,
-  // Patient
-  Patient,
-  // Profile models
-  MedicalRepresentative,
-  Accountant,
-  Receptionist,
-  Nurse,
-  Doctor,
-  Admin,
-  Staff,
-  // Auth
-  User,
-  Permission,
-  Role,
-  // Settings
-  Settings,
-} from '../models';
 
 // Load environment variables
 config({ path: resolve(process.cwd(), '.env.local') });
@@ -72,155 +29,214 @@ function log(message: string, type: 'info' | 'success' | 'error' | 'warning' = '
 }
 
 /**
- * All collections that have a tenantId field referencing the Tenant model
- * These collections store data that belongs to a specific tenant.
- * We delete all documents where tenantId matches the tenant being deleted.
- * 
- * Collections are ordered by dependency (dependent records first, then their dependencies)
+ * Which collections hold a clinic's data is read from the schemas, not kept by hand: every model
+ * with a top-level `tenantId` is the clinic's and is deleted, except the ones named below. A model
+ * that points at Tenant any other way stops the script until it is classified here.
  */
-const TENANT_SCOPED_COLLECTIONS = [
-  // Audit & Notifications (can reference users/patients)
-  { model: AuditLog, name: 'auditlogs' },
-  { model: Notification, name: 'notifications' },
-  // Queue & Membership (can reference patients/appointments)
-  { model: Queue, name: 'queues' },
-  { model: Membership, name: 'memberships' },
-  // Documents & Referrals (can reference patients/visits/appointments)
-  { model: Referral, name: 'referrals' },
-  { model: Document, name: 'documents' },
-  // Billing (can reference patients/visits)
-  { model: Invoice, name: 'invoices' },
-  // Clinical records (can reference patients/visits)
-  { model: Procedure, name: 'procedures' },
-  { model: Imaging, name: 'imaging' },
-  { model: LabResult, name: 'labresults' },
-  { model: Prescription, name: 'prescriptions' },
-  { model: Visit, name: 'visits' },
-  { model: Appointment, name: 'appointments' },
-  // Inventory & Catalog
-  { model: InventoryItem, name: 'inventoryitems' },
-  { model: Medicine, name: 'medicines' },
-  { model: Service, name: 'services' },
-  { model: Room, name: 'rooms' },
-  { model: Specialization, name: 'specializations' },
-  // Patient (core entity)
-  { model: Patient, name: 'patients' },
-  // Profile models (can reference users)
-  { model: MedicalRepresentative, name: 'medicalrepresentatives' },
-  { model: Accountant, name: 'accountants' },
-  { model: Receptionist, name: 'receptionists' },
-  { model: Nurse, name: 'nurses' },
-  { model: Doctor, name: 'doctors' },
-  { model: Admin, name: 'admins' },
-  { model: Staff, name: 'staff' },
-  // Auth (references roles/permissions)
-  { model: User, name: 'users' },
-  { model: Permission, name: 'permissions' },
-  { model: Role, name: 'roles' },
-  // Settings (one per tenant)
-  { model: Settings, name: 'settings' },
-];
+
+/** Platform billing: sales invoices and the orders behind them are kept for BIR record retention. */
+const RETAINED = new Set(['PlatformInvoice', 'SubscriptionOrder']);
+
+/** Shared between clinics through `tenantIds`: the clinic is removed, and a record no other clinic uses is deleted. */
+const SHARED = new Set(['Patient', 'MedicalRepresentative']);
+
+/** `tenantIds` here is an audience, not ownership (an empty list means every clinic), so it is left alone. */
+const IGNORED = new Set(['PlatformAnnouncement']);
 
 interface DeletionStats {
   collection: string;
   deletedCount: number;
+  detachedCount?: number;
 }
 
-async function getTenantByIdOrSubdomain(identifier: string): Promise<InstanceType<typeof Tenant> | null> {
-  await connectDB();
-  
+interface Plan {
+  owned: Model<any>[];
+  shared: Model<any>[];
+}
+
+async function loadAllModels(): Promise<void> {
+  const dir = resolve(__dirname, '../models');
+  for (const file of readdirSync(dir)) {
+    if (!/\.ts$/.test(file) || file === 'index.ts' || file.endsWith('.d.ts')) continue;
+    await import(pathToFileURL(join(dir, file)).href);
+  }
+}
+
+/** A path, or an array path's items, referencing Tenant. */
+function refersToTenant(schemaType: any): boolean {
+  return schemaType?.options?.ref === 'Tenant' || schemaType?.caster?.options?.ref === 'Tenant';
+}
+
+/** Sort every registered model into owned / shared, or explain why it can't be. */
+function planDeletion(): Plan {
+  const owned: Model<any>[] = [];
+  const shared: Model<any>[] = [];
+  const unclassified: string[] = [];
+
+  for (const name of mongoose.modelNames().sort()) {
+    if (name === 'Tenant' || RETAINED.has(name) || IGNORED.has(name)) continue;
+    const model = mongoose.model(name);
+    if (SHARED.has(name)) {
+      shared.push(model);
+      continue;
+    }
+    if (model.schema.path('tenantId')) {
+      owned.push(model);
+      continue;
+    }
+    // Any other top-level path pointing at Tenant (e.g. a new `tenantIds` list) needs a decision.
+    const other = Object.entries(model.schema.paths)
+      .filter(([path, schemaType]) => !path.includes('.') && refersToTenant(schemaType))
+      .map(([path]) => path);
+    if (other.length) unclassified.push(`${name}.${other.join(', ')}`);
+  }
+
+  if (unclassified.length) {
+    throw new Error(
+      `These models point at Tenant in a way this script does not know how to delete: ${unclassified.join('; ')}. ` +
+        'Add them to RETAINED, SHARED or IGNORED in scripts/delete-tenant.ts first.'
+    );
+  }
+  return { owned, shared };
+}
+
+async function getTenantByIdOrSubdomain(identifier: string) {
+  const Tenant = mongoose.model('Tenant');
   // Try to find by ObjectId first
   if (Types.ObjectId.isValid(identifier)) {
     const tenant = await Tenant.findById(identifier);
     if (tenant) return tenant;
   }
-  
+
   // Try to find by subdomain
-  const tenant = await Tenant.findOne({ subdomain: identifier.toLowerCase().trim() });
-  return tenant;
+  return Tenant.findOne({ subdomain: identifier.toLowerCase().trim() });
 }
 
-async function getTenantStats(tenantId: Types.ObjectId): Promise<{ [key: string]: number }> {
-  const stats: { [key: string]: number } = {};
-  
-  for (const collection of TENANT_SCOPED_COLLECTIONS) {
-    try {
-      const count = await collection.model.countDocuments({ tenantId });
-      if (count > 0) {
-        stats[collection.name] = count;
-      }
-    } catch (error) {
-      // Collection might not exist yet or model not registered
-      stats[collection.name] = 0;
+async function getTenantStats(plan: Plan, tenantId: Types.ObjectId): Promise<Record<string, string>> {
+  const stats: Record<string, string> = {};
+  for (const model of plan.owned) {
+    const count = await model.countDocuments({ tenantId });
+    if (count > 0) stats[model.collection.name] = `${count.toLocaleString()} to delete`;
+  }
+  for (const model of plan.shared) {
+    const [only, alsoOthers] = await Promise.all([
+      model.countDocuments({ tenantIds: { $size: 1, $all: [tenantId] } }),
+      model.countDocuments({ tenantIds: tenantId, 'tenantIds.1': { $exists: true } }),
+    ]);
+    if (only + alsoOthers > 0) {
+      stats[model.collection.name] = `${only.toLocaleString()} to delete, ${alsoOthers.toLocaleString()} shared with other clinics to detach`;
     }
   }
-  
   return stats;
 }
 
-/**
- * Delete all documents that reference the tenant via tenantId field
- * This function deletes all documents across all collections where tenantId matches
- */
-async function deleteTenantData(tenantId: Types.ObjectId): Promise<DeletionStats[]> {
-  const results: DeletionStats[] = [];
-  
-  log('Deleting all data referencing this tenant...', 'info');
-  log(`Searching for documents with tenantId: ${tenantId}`, 'info');
-  
-  for (const collection of TENANT_SCOPED_COLLECTIONS) {
+/** Remove the clinic's uploaded documents from Cloudinary before their records go. */
+async function deleteCloudinaryFiles(tenantId: Types.ObjectId): Promise<{ deleted: number; failed: string[] }> {
+  // lib/document-file is server-only; its cloudinaryRefForDocument is this same call.
+  const { cloudinaryRefFromStored, deleteFromCloudinary, isCloudinaryConfigured } = await import('../lib/cloudinary');
+  const docs = await mongoose.model('Document').find({ tenantId }).select('url metadata').lean<{ _id: Types.ObjectId; url?: string; metadata?: any }[]>();
+  let deleted = 0;
+  const failed: string[] = [];
+  for (const doc of docs) {
+    const ref = cloudinaryRefFromStored(doc.url, doc.metadata);
+    if (!ref) continue;
+    const result = await deleteFromCloudinary(ref.publicId, { resourceType: ref.resourceType, deliveryType: ref.deliveryType });
+    if (result.success) deleted++;
+    else failed.push(`${ref.publicId}: ${result.error ?? 'failed'}`);
+  }
+
+  // Files attached to patients, visits and lab results live under one folder per clinic
+  // (lib/attachment-file.ts), so they go by prefix.
+  if (!isCloudinaryConfigured()) return { deleted, failed };
+  const { v2: cloudinary } = await import('cloudinary');
+  const prefix = `clinic-attachments/${String(tenantId)}/`;
+  for (const resource_type of ['image', 'raw'] as const) {
     try {
-      // Delete all documents where tenantId field matches the tenant being deleted
-      // This catches all references to the tenant across all collections
-      const result = await collection.model.deleteMany({ tenantId });
-      if (result.deletedCount > 0) {
-        results.push({
-          collection: collection.name,
-          deletedCount: result.deletedCount,
-        });
-        log(`  ✓ Deleted ${result.deletedCount} documents from ${collection.name}`, 'success');
-      }
+      const res = await cloudinary.api.delete_resources_by_prefix(prefix, { resource_type, type: 'authenticated' });
+      deleted += Object.values(res.deleted ?? {}).filter((v) => v === 'deleted').length;
     } catch (error: any) {
-      log(`  ✗ Error deleting ${collection.name}: ${error.message}`, 'error');
-      results.push({
-        collection: collection.name,
-        deletedCount: 0,
-      });
+      failed.push(`${prefix} (${resource_type}): ${error?.message ?? 'failed'}`);
     }
   }
-  
+  return { deleted, failed };
+}
+
+/** Detach the clinic from shared records, deleting the ones that belonged to it alone. */
+async function detachShared(model: Model<any>, tenantId: Types.ObjectId): Promise<DeletionStats> {
+  const onlyThisClinic = { tenantIds: { $size: 1, $all: [tenantId] } };
+  const { deletedCount } = await model.deleteMany(onlyThisClinic);
+
+  if (model.modelName === 'Patient') {
+    // Sign-in set up by this clinic is scoped to it; an unscoped password would open every clinic.
+    await model.updateMany({ tenantIds: tenantId, passwordTenantId: tenantId }, { $unset: { password: '', passwordTenantId: '' } });
+    await model.updateMany(
+      { tenantIds: tenantId, loginQrTenantId: tenantId },
+      { $unset: { loginQrTokenHash: '', loginQrTokenExpiry: '', loginQrTenantId: '' } }
+    );
+  }
+  const pull: Record<string, unknown> = { tenantIds: tenantId };
+  if (model.modelName === 'Patient') {
+    pull.attachments = { tenantId };
+    pull.guardians = { tenantId };
+  }
+  const { modifiedCount } = await model.updateMany({ tenantIds: tenantId }, { $pull: pull });
+
+  return { collection: model.collection.name, deletedCount, detachedCount: modifiedCount };
+}
+
+/**
+ * Delete everything the clinic owns and detach it from shared records.
+ */
+async function deleteTenantData(plan: Plan, tenantId: Types.ObjectId): Promise<DeletionStats[]> {
+  const results: DeletionStats[] = [];
+
+  log('Removing uploaded files from Cloudinary...', 'info');
+  const files = await deleteCloudinaryFiles(tenantId);
+  log(`  ✓ Deleted ${files.deleted} Cloudinary files`, 'success');
+  for (const f of files.failed) log(`  ✗ Not deleted from Cloudinary: ${f}`, 'error');
+
+  log('Deleting all data owned by this tenant...', 'info');
+  for (const model of plan.owned) {
+    try {
+      const result = await model.deleteMany({ tenantId });
+      results.push({ collection: model.collection.name, deletedCount: result.deletedCount });
+      if (result.deletedCount > 0) {
+        log(`  ✓ Deleted ${result.deletedCount} documents from ${model.collection.name}`, 'success');
+      }
+    } catch (error: any) {
+      log(`  ✗ Error deleting ${model.collection.name}: ${error.message}`, 'error');
+      results.push({ collection: model.collection.name, deletedCount: 0 });
+    }
+  }
+
+  for (const model of plan.shared) {
+    try {
+      const stats = await detachShared(model, tenantId);
+      results.push(stats);
+      log(`  ✓ ${model.collection.name}: deleted ${stats.deletedCount}, detached ${stats.detachedCount}`, 'success');
+    } catch (error: any) {
+      log(`  ✗ Error detaching ${model.collection.name}: ${error.message}`, 'error');
+      results.push({ collection: model.collection.name, deletedCount: 0 });
+    }
+  }
+
   return results;
 }
 
 /**
- * Verify that all tenant references have been deleted
- * This checks all collections to ensure no documents still reference the tenant
+ * Verify that no owned or shared record still references the tenant.
  */
-async function verifyTenantDeletion(tenantId: Types.ObjectId): Promise<{ [key: string]: number }> {
-  const remaining: { [key: string]: number } = {};
-  
-  for (const collection of TENANT_SCOPED_COLLECTIONS) {
-    try {
-      const count = await collection.model.countDocuments({ tenantId });
-      if (count > 0) {
-        remaining[collection.name] = count;
-      }
-    } catch (error) {
-      // Collection might not exist or model not registered - ignore
-    }
+async function verifyTenantDeletion(plan: Plan, tenantId: Types.ObjectId): Promise<Record<string, number>> {
+  const remaining: Record<string, number> = {};
+  for (const model of plan.owned) {
+    const count = await model.countDocuments({ tenantId });
+    if (count > 0) remaining[model.collection.name] = count;
   }
-  
+  for (const model of plan.shared) {
+    const count = await model.countDocuments({ tenantIds: tenantId });
+    if (count > 0) remaining[model.collection.name] = count;
+  }
   return remaining;
-}
-
-async function deleteTenant(tenantId: Types.ObjectId): Promise<boolean> {
-  try {
-    const result = await Tenant.deleteOne({ _id: tenantId });
-    return result.deletedCount > 0;
-  } catch (error: any) {
-    log(`Error deleting tenant: ${error.message}`, 'error');
-    return false;
-  }
 }
 
 async function main() {
@@ -229,17 +245,16 @@ async function main() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
   try {
-    // Connect to database
-    log('Connecting to database...', 'info');
-    await connectDB();
-    registerAllModels();
+    const uri = process.env.MONGODB_URI;
+    if (!uri) throw new Error('MONGODB_URI is not set');
 
-    if (mongoose.connection.readyState !== 1) {
-      log('Database not connected', 'error');
-      rl.close();
-      process.exit(1);
-      return;
-    }
+    log('Connecting to database...', 'info');
+    await mongoose.connect(uri, { autoIndex: false, autoCreate: false });
+    await loadAllModels();
+    const plan = planDeletion();
+
+    log(`Database: ${mongoose.connection.host}/${mongoose.connection.name}`, 'warning');
+    log(`Kept for record retention: ${[...RETAINED].join(', ')}`, 'info');
 
     // Get tenant identifier
     const identifier = await question('Enter Tenant ID or Subdomain: ');
@@ -253,11 +268,12 @@ async function main() {
     // Find tenant
     log('Finding tenant...', 'info');
     const tenant = await getTenantByIdOrSubdomain(identifier.trim());
-    
+
     if (!tenant) {
       log(`Tenant not found: ${identifier}`, 'error');
       log('Please check the tenant ID or subdomain and try again.', 'info');
       rl.close();
+      await mongoose.disconnect();
       process.exit(1);
       return;
     }
@@ -275,27 +291,26 @@ async function main() {
 
     // Get statistics
     log('Analyzing tenant data...', 'info');
-    const stats = await getTenantStats(tenant._id);
-    
+    const stats = await getTenantStats(plan, tenant._id);
+
     if (Object.keys(stats).length === 0) {
       log('No data found for this tenant', 'info');
     } else {
       console.log('Data Summary:');
-      Object.entries(stats).forEach(([collection, count]) => {
-        console.log(`  ${collection.padEnd(30)} ${count.toLocaleString().padStart(10)} documents`);
+      Object.entries(stats).forEach(([collection, summary]) => {
+        console.log(`  ${collection.padEnd(30)} ${summary}`);
       });
-      const total = Object.values(stats).reduce((sum, count) => sum + count, 0);
-      console.log(`  ${'Total'.padEnd(30)} ${total.toLocaleString().padStart(10)} documents\n`);
+      console.log('');
     }
 
     // Confirmation
     log('⚠️  WARNING: This will permanently delete the tenant and ALL associated data!', 'warning');
     log('This action CANNOT be undone!', 'warning');
-    const confirm1 = await question('\nType "DELETE" to confirm: ');
-    if (confirm1 !== 'DELETE') {
+    const confirm1 = await question(`\nType the subdomain "${tenant.subdomain}" to confirm: `);
+    if (confirm1.trim() !== tenant.subdomain) {
       log('Deletion cancelled', 'info');
       rl.close();
-      await mongoose.connection.close();
+      await mongoose.disconnect();
       process.exit(0);
       return;
     }
@@ -304,22 +319,22 @@ async function main() {
     if (confirm2.toLowerCase() !== 'yes') {
       log('Deletion cancelled', 'info');
       rl.close();
-      await mongoose.connection.close();
+      await mongoose.disconnect();
       process.exit(0);
       return;
     }
 
     // Delete tenant data
     log('\nStarting deletion process...', 'info');
-    log('This will delete ALL documents that have a tenantId reference to this tenant', 'info');
-    const deletionResults = await deleteTenantData(tenant._id);
-    
+    const deletionResults = await deleteTenantData(plan, tenant._id);
+
     const totalDeleted = deletionResults.reduce((sum, r) => sum + r.deletedCount, 0);
-    
+    const totalDetached = deletionResults.reduce((sum, r) => sum + (r.detachedCount ?? 0), 0);
+
     // Verify deletion
     log('\nVerifying all tenant references have been removed...', 'info');
-    const remaining = await verifyTenantDeletion(tenant._id);
-    
+    const remaining = await verifyTenantDeletion(plan, tenant._id);
+
     if (Object.keys(remaining).length > 0) {
       log('Warning: Some documents still reference this tenant:', 'warning');
       Object.entries(remaining).forEach(([collection, count]) => {
@@ -329,18 +344,18 @@ async function main() {
       if (proceed.toLowerCase() !== 'yes') {
         log('Deletion cancelled', 'info');
         rl.close();
-        await mongoose.connection.close();
+        await mongoose.disconnect();
         process.exit(0);
         return;
       }
     } else {
       log('✓ All tenant references verified as deleted', 'success');
     }
-    
+
     // Delete tenant itself
     log('\nDeleting tenant record...', 'info');
-    const tenantDeleted = await deleteTenant(tenant._id);
-    
+    const tenantDeleted = (await mongoose.model('Tenant').deleteOne({ _id: tenant._id })).deletedCount > 0;
+
     if (!tenantDeleted) {
       log('Warning: Tenant record may not have been deleted', 'warning');
     } else {
@@ -351,30 +366,32 @@ async function main() {
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('✅ Deletion Complete!');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-    
+
     console.log('Deletion Summary:');
     deletionResults
-      .filter(r => r.deletedCount > 0)
-      .forEach(({ collection, deletedCount }) => {
-        console.log(`  ${collection.padEnd(30)} ${deletedCount.toLocaleString().padStart(10)} documents`);
+      .filter((r) => r.deletedCount > 0 || r.detachedCount)
+      .forEach(({ collection, deletedCount, detachedCount }) => {
+        const detached = detachedCount ? `  (${detachedCount.toLocaleString()} detached)` : '';
+        console.log(`  ${collection.padEnd(30)} ${deletedCount.toLocaleString().padStart(10)} documents${detached}`);
       });
-    
+
     console.log(`\n  ${'Total Documents Deleted'.padEnd(30)} ${totalDeleted.toLocaleString().padStart(10)}`);
+    console.log(`  ${'Shared Records Detached'.padEnd(30)} ${totalDetached.toLocaleString().padStart(10)}`);
     console.log(`  ${'Tenant Deleted'.padEnd(30)} ${tenantDeleted ? 'Yes' : 'No'}`);
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     log('Tenant deletion completed successfully', 'success');
-    
+
     rl.close();
-    await mongoose.connection.close();
+    await mongoose.disconnect();
     process.exit(0);
   } catch (error: any) {
     log(`Error: ${error.message}`, 'error');
     console.error(error);
     rl.close();
     try {
-      await mongoose.connection.close();
-    } catch (closeError) {
+      await mongoose.disconnect();
+    } catch {
       // Ignore close errors
     }
     process.exit(1);
@@ -387,4 +404,3 @@ main().catch((error) => {
   rl.close();
   process.exit(1);
 });
-

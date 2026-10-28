@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
@@ -119,19 +119,21 @@ export async function POST(request: NextRequest) {
       patientCode: patient.patientCode,
     });
 
-    import('@/lib/automations/welcome-messages').then(({ sendWelcomeMessage }) => {
-      sendWelcomeMessage({
-        patientId: patient._id,
-        tenantId: tenantObjectId,
-        sendSMS: true,
-        sendEmail: true,
-        sendNotification: false,
+    after(() =>
+      import('@/lib/automations/welcome-messages').then(({ sendWelcomeMessage }) => {
+        return sendWelcomeMessage({
+          patientId: patient._id,
+          tenantId: tenantObjectId,
+          sendSMS: true,
+          sendEmail: true,
+          sendNotification: false,
+        }).catch((error) => {
+          console.error('Error sending welcome message:', error);
+        });
       }).catch((error) => {
-        console.error('Error sending welcome message:', error);
-      });
-    }).catch((error) => {
-      console.error('Error loading welcome messages module:', error);
-    });
+        console.error('Error loading welcome messages module:', error);
+      })
+    );
 
     return NextResponse.json({
       success: true,

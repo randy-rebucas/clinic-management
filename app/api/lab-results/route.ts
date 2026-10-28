@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import LabResult from '@/models/LabResult';
 import Patient from '@/models/Patient';
@@ -157,6 +157,18 @@ export async function POST(request: NextRequest) {
     await labResult.populate({ path: 'patient', select: 'firstName lastName patientCode email phone', match: { tenantIds: tenantObjectId } });
     await labResult.populate({ path: 'visit', select: 'visitCode date', match: { tenantId: tenantObjectId } });
     await labResult.populate('orderedBy', 'name email');
+
+    if (labResult.status === 'ordered') {
+      const request = { _id: labResult._id, requestCode: labResult.requestCode, request: labResult.request };
+      after(async () => {
+        try {
+          const { notifyLabStaffOfRequest } = await import('@/lib/automations/lab-notifications');
+          await notifyLabStaffOfRequest(request, tenantObjectId);
+        } catch (error) {
+          console.error('Error notifying lab staff of a new request:', error);
+        }
+      });
+    }
 
     return NextResponse.json({ success: true, data: labResult }, { status: 201 });
   } catch (error: any) {

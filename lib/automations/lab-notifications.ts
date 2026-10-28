@@ -9,7 +9,8 @@ import { sendEmail, generateLabResultEmail } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
 import { sendPushToPatientDevices } from '@/lib/push-notifications';
 import { Types } from 'mongoose';
-import { forEachTenant, automationEnabled, delivered, safeNotify, errorMessage } from './shared';
+import { forEachTenant, automationEnabled, delivered, safeNotify, errorMessage, getTenantStaff, claimForSend, releaseClaim } from './shared';
+import { LAB_ROLE } from '@/lib/lab-results';
 
 export interface LabNotificationOptions {
   labResultId: string | Types.ObjectId;
@@ -32,6 +33,7 @@ export async function sendLabResultNotification(options: LabNotificationOptions)
   sent: boolean;
   error?: string;
 }> {
+  let claimed: Record<string, unknown> | null = null;
   try {
     await connectDB();
 
@@ -61,10 +63,23 @@ export async function sendLabResultNotification(options: LabNotificationOptions)
       return { success: true, sent: false };
     }
 
+    // Completed by the lab: held until a clinician has reviewed it.
+    if (labResult.status === 'completed' && labResult.awaitingReview) {
+      return { success: true, sent: false };
+    }
+
     const patient = labResult.patient as any;
     if (!patient) {
       return { success: false, sent: false, error: 'Patient not found' };
     }
+
+    // The cron, the staff "tell the patient" button and the completion hook can all reach here at
+    // once; only the one holding the claim sends.
+    const own = { _id: labResult._id, tenantId };
+    if (!(await claimForSend(LabResult, { ...own, notificationSent: { $ne: true } }, 'notificationClaimedAt'))) {
+      return { success: true, sent: false };
+    }
+    claimed = own;
 
     const testType = labResult.request?.testType || 'lab test';
     let sent = false;
@@ -108,7 +123,8 @@ export async function sendLabResultNotification(options: LabNotificationOptions)
 
     // Patients have no User account; the ordering doctor (a User) is notified in-app once.
     const orderedBy = labResult.orderedBy as any;
-    if (orderedBy?._id && options.sendNotification !== false && !labResult.notificationAttempts) {
+    // A reviewed result was just seen by its reviewer, and a lab-completed one already asked for review.
+    if (orderedBy?._id && options.sendNotification !== false && !labResult.notificationAttempts && labResult.status !== 'reviewed') {
       await safeNotify({
         userId: orderedBy._id,
         tenantId,
@@ -130,12 +146,15 @@ export async function sendLabResultNotification(options: LabNotificationOptions)
             notificationSentAt: new Date(),
             notificationMethod: smsSent && emailSent ? 'both' : emailSent ? 'email' : 'sms',
           },
+          $unset: { notificationClaimedAt: '' },
         }
       );
     }
 
+    if (!sent) await releaseClaim(LabResult, own, 'notificationClaimedAt');
     return { success: true, sent };
   } catch (error: any) {
+    if (claimed) await releaseClaim(LabResult, claimed, 'notificationClaimedAt').catch(() => undefined);
     console.error('Error sending lab result notification:', error);
     return {
       success: false,
@@ -143,6 +162,52 @@ export async function sendLabResultNotification(options: LabNotificationOptions)
       error: 'Failed to send lab result notification',
     };
   }
+}
+
+/** Tell the clinic's lab staff, in-app, that a doctor has sent them a new request. */
+export async function notifyLabStaffOfRequest(
+  labResult: { _id: Types.ObjectId; requestCode?: string; request?: { testType?: string; urgency?: string } },
+  tenantId: string | Types.ObjectId
+): Promise<void> {
+  const staff = await getTenantStaff(tenantId, [LAB_ROLE], '_id');
+  if (!staff.length) return;
+  const urgency = labResult.request?.urgency;
+  const rush = urgency === 'stat' || urgency === 'urgent';
+  const testType = labResult.request?.testType || 'a lab test';
+  const tid = new Types.ObjectId(String(tenantId));
+  await Promise.all(
+    staff.map((u) =>
+      safeNotify({
+        userId: u._id,
+        tenantId: tid,
+        type: 'lab_result',
+        priority: urgency === 'stat' ? 'urgent' : rush ? 'high' : 'normal',
+        title: rush ? `${urgency!.toUpperCase()} lab request` : 'New lab request',
+        message: `${labResult.requestCode ? `${labResult.requestCode}: ` : ''}${testType} is waiting to be received.`,
+        relatedEntity: { type: 'lab_result', id: labResult._id },
+        actionUrl: `/lab-results/${labResult._id}`,
+      })
+    )
+  );
+}
+
+/** Ask the ordering doctor, in-app, to review a result the lab has completed; the patient hears after. */
+export async function notifyDoctorToReview(
+  labResult: { _id: Types.ObjectId; orderedBy?: unknown; request?: { testType?: string } },
+  tenantId: string | Types.ObjectId
+): Promise<void> {
+  const doctor = (labResult.orderedBy as { _id?: Types.ObjectId } | undefined)?._id ?? labResult.orderedBy;
+  if (!doctor || !Types.ObjectId.isValid(String(doctor))) return;
+  await safeNotify({
+    userId: new Types.ObjectId(String(doctor)),
+    tenantId: new Types.ObjectId(String(tenantId)),
+    type: 'lab_result',
+    priority: 'normal',
+    title: 'Lab result to review',
+    message: `Results for ${labResult.request?.testType || 'a lab test'} are in. The patient is told once you mark it reviewed.`,
+    relatedEntity: { type: 'lab_result', id: labResult._id },
+    actionUrl: `/lab-results/${labResult._id}`,
+  });
 }
 
 export interface LabNotificationBatchResult {
@@ -169,7 +234,8 @@ export async function processLabNotifications(tenantId?: string | Types.ObjectId
     if (!automationEnabled(await getSettings(tenant.tenantId), 'autoLabNotifications')) return out;
     const pending = await LabResult.find({
       tenantId: tenant.tenantObjectId,
-      status: { $in: ['completed', 'reviewed'] },
+      // Lab-completed results wait for review (awaitingReview) before the patient is told.
+      $or: [{ status: 'reviewed' }, { status: 'completed', awaitingReview: { $ne: true } }],
       notificationSent: { $ne: true },
       notificationFailedAt: { $exists: false },
     })

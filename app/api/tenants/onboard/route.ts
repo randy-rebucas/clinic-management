@@ -7,10 +7,11 @@ import Permission from '@/models/Permission';
 import Medicine from '@/models/Medicine';
 import Settings from '@/models/Settings';
 import Admin from '@/models/Admin';
-import bcrypt from 'bcryptjs';
 import { DEFAULT_ROLE_PERMISSIONS } from '@/lib/permissions';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
-import { validatePasswordPolicy } from '@/lib/user-invite';
+import { buildSetPasswordUrl, generateInviteToken, inviteUpdate, randomUnusablePasswordHash, sendSetPasswordEmail } from '@/lib/user-invite';
+import { turnstileRejection } from '@/lib/turnstile';
+import { sendEmail } from '@/lib/email';
 
 const RESERVED_WORDS = [
   'www',
@@ -76,6 +77,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const captcha = await turnstileRejection(request, body?.turnstileToken);
+    if (captcha) return captcha;
+
     const {
       name,
       displayName,
@@ -97,7 +101,6 @@ export async function POST(request: NextRequest) {
       (admin !== undefined && (typeof admin !== 'object' || admin === null)) ||
       (admin && ((admin.name !== undefined && !isStr(admin.name)) ||
         (admin.email !== undefined && !isStr(admin.email)) ||
-        (admin.password !== undefined && !isStr(admin.password)) ||
         (admin.phone !== undefined && admin.phone !== null && !isStr(admin.phone))))
     ) {
       return NextResponse.json(
@@ -114,7 +117,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate required fields
-    if (!name || !subdomain || !admin?.name || !admin?.email || !admin?.password) {
+    if (!name || !subdomain || !admin?.name || !admin?.email) {
       const missingFields = [];
       const fieldErrors: any = {};
 
@@ -134,20 +137,7 @@ export async function POST(request: NextRequest) {
         missingFields.push('admin.email');
         fieldErrors.adminEmail = ['Admin email is required'];
       }
-      if (!admin?.password || !admin.password.trim()) {
-        missingFields.push('admin.password');
-        fieldErrors.adminPassword = ['Admin password is required'];
-      }
 
-      console.error('Missing required fields:', missingFields);
-      console.error('Request body received:', {
-        name: name ? `${name.substring(0, 20)}...` : 'missing',
-        subdomain: subdomain ? `${subdomain.substring(0, 20)}...` : 'missing',
-        hasAdmin: !!admin,
-        adminName: admin?.name ? `${admin.name.substring(0, 20)}...` : 'missing',
-        adminEmail: admin?.email ? `${admin.email.substring(0, 20)}...` : 'missing',
-        hasAdminPassword: !!admin?.password,
-      });
 
       return NextResponse.json(
         {
@@ -195,35 +185,34 @@ export async function POST(request: NextRequest) {
     }
 
     const adminEmail = admin.email.toLowerCase().trim();
-    const emailInUse = () =>
-      NextResponse.json(
-        {
-          success: false,
-          message: 'Email already in use',
-          errors: {
-            adminEmail: ['This email is already registered. Please use a different email.'],
-          },
-        },
-        { status: 409 }
-      );
+    // What signup answers either way: whether the email already had an account is never said
+    // (that would list who uses the platform); its owner hears about the attempt instead.
+    const checkEmail = () =>
+      NextResponse.json({
+        success: true,
+        message: 'Check your email to finish setting up',
+        subdomain: subdomain.toLowerCase().trim(),
+        adminEmail,
+      });
+    const emailInUse = async () => {
+      await sendEmail({
+        to: adminEmail,
+        subject: 'You already have a MyClinicSoft account',
+        html: '<p>Someone tried to register a new clinic with this email address, which already has an account. If it was you, sign in instead, or use “Forgot password” on the sign-in page. If it wasn’t you, you can ignore this email.</p>',
+        text: 'Someone tried to register a new clinic with this email address, which already has an account. If it was you, sign in instead, or use "Forgot password" on the sign-in page. If it was not you, you can ignore this email.',
+      }).catch(() => undefined);
+      return checkEmail();
+    };
 
     // Fast path; the authoritative check is the atomic insert below
     if (await User.exists({ email: adminEmail })) {
-      return emailInUse();
+      return await emailInUse();
     }
 
     // Validate admin email format
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(admin.email)) {
       return NextResponse.json(
         { success: false, message: 'Invalid admin email address.', errors: { adminEmail: ['Invalid email address'] } },
-        { status: 400 }
-      );
-    }
-
-    const passwordErrors = validatePasswordPolicy(admin.password, { email: admin.email });
-    if (passwordErrors.length > 0) {
-      return NextResponse.json(
-        { success: false, message: passwordErrors[0], errors: { adminPassword: passwordErrors } },
         { status: 400 }
       );
     }
@@ -332,7 +321,14 @@ export async function POST(request: NextRequest) {
         description: 'Financial staff with access to billing and invoices',
         level: 30,
         defaultPermissions: DEFAULT_ROLE_PERMISSIONS.accountant,
-      }
+      },
+      {
+        name: 'medical-technologist',
+        displayName: 'Medical technologist',
+        description: 'Laboratory staff who receive lab requests and enter results',
+        level: 50,
+        defaultPermissions: DEFAULT_ROLE_PERMISSIONS['medical-technologist'],
+      },
     ];
 
     // Every tenant gets its own role documents. Shared/global roles are never re-assigned
@@ -410,14 +406,18 @@ export async function POST(request: NextRequest) {
     // Create the admin user only if no user with this email exists. $setOnInsert never
     // touches an existing document, so a concurrent signup or pre-existing account
     // can't have its password, role or tenant overwritten.
-    const hashedPassword = await bcrypt.hash(admin.password, 12);
+    // The account can't be used until its owner sets a password from the emailed link, which
+    // also proves they hold the address.
+    const invite = generateInviteToken();
     const upsert = await User.findOneAndUpdate(
       { email: adminEmail },
       {
         $setOnInsert: {
           name: admin.name.trim(),
           email: adminEmail,
-          password: hashedPassword,
+          password: await randomUnusablePasswordHash(),
+          mustSetPassword: true,
+          ...inviteUpdate(invite),
           role: adminRole._id,
           tenantId: tenant._id,
           status: 'active',
@@ -429,7 +429,7 @@ export async function POST(request: NextRequest) {
     const insertedUser = upsert.lastErrorObject?.updatedExisting === false ? upsert.value : null;
     if (!insertedUser) {
       await rollbackTenant();
-      return emailInUse();
+      return await emailInUse();
     }
     const adminUser = insertedUser;
 
@@ -499,64 +499,34 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({
-      success: true,
-      message: 'Tenant created successfully with seed data',
-      name: tenant.name,
-      subdomain: tenant.subdomain,
-      status: tenant.status,
-      adminEmail: adminUser.email,
-      seedData: {
-        roles: createdRoles.length,
-        permissions: createdRoles.reduce((sum, role) => sum + (role.permissions?.length || 0), 0),
-        settings: true,
-      },
-      subscription: {
-        plan: tenant.subscription?.plan || 'trial',
-        status: tenant.subscription?.status || 'active',
-        expiresAt: tenant.subscription?.expiresAt,
-      },
-    });
+    const delivery = await sendSetPasswordEmail({ email: adminEmail, name: admin.name.trim(), token: invite.token, tenantId: tenant._id, kind: 'invite' });
+    if (delivery !== 'sent' && process.env.NODE_ENV !== 'production') {
+      // Local setups often have no SMTP; the link is the only way into the new clinic.
+      console.info(`[onboard] Set-password link for the new clinic admin: ${buildSetPasswordUrl(invite.token, tenant.subdomain)}`);
+    }
+
+    return checkEmail();
   } catch (error: any) {
     // Type guard for MongoDB errors
     const isMongoError = error && typeof error === 'object' && 'code' in error;
     const mongoError = isMongoError ? error as { code?: number; keyPattern?: Record<string, unknown>; keyValue?: Record<string, unknown> } : null;
 
-    // Create detailed error information for logging
-    const errorDetails = {
-      error: error instanceof Error ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack,
-      } : String(error),
-      errorCode: mongoError?.code,
+    // No key values or messages: a duplicate-key error carries the email or subdomain entered.
+    console.error('Error creating tenant:', {
+      name: error?.name,
+      code: mongoError?.code,
       keyPattern: mongoError?.keyPattern,
-      keyValue: mongoError?.keyValue,
-      errorStringified: error instanceof Error
-        ? JSON.stringify({
-          name: error.name,
-          message: error.message,
-          code: mongoError?.code,
-          keyPattern: mongoError?.keyPattern,
-          keyValue: mongoError?.keyValue,
-          stack: error.stack,
-        }, null, 2)
-        : JSON.stringify(error, null, 2),
-      timestamp: new Date().toISOString(),
-    };
-
-    console.error('Error creating tenant:', errorDetails);
-    console.error('Error details (stringified):', errorDetails.errorStringified);
+      stack: mongoError?.code === 11000 ? undefined : error?.stack,
+    });
 
     // Handle duplicate key errors
     if (mongoError?.code === 11000 || error.message?.includes('duplicate key')) {
       const field = mongoError?.keyPattern ? Object.keys(mongoError.keyPattern)[0] : 'field';
-      const value = mongoError?.keyValue ? Object.values(mongoError.keyValue)[0] : 'value';
 
       return NextResponse.json(
         {
           success: false,
-          message: `${field} "${value}" already exists`,
+          message: `That ${field} is already taken`,
           errors: {
             [field]: [`This ${field} is already taken`],
           },

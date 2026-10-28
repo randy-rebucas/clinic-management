@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Document from '@/models/Document';
 import { requirePermission } from '@/app/lib/auth-helpers';
@@ -32,7 +32,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'File not available' }, { status: 404 });
     }
 
-    void createAuditLog({
+    after(() => createAuditLog({
       userId: ctx.session.userId,
       userEmail: ctx.session.email,
       userRole: ctx.session.role,
@@ -43,7 +43,7 @@ export async function GET(
       dataSubject: document.patient,
       isSensitive: Boolean(document.patient),
       description: `Downloaded document ${document.documentCode ?? id}`,
-    });
+    }));
 
     return new NextResponse(new Uint8Array(file.buffer), {
       headers: fileResponseHeaders(file.contentType, document.originalFilename || document.filename, {

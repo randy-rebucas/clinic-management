@@ -89,6 +89,7 @@ export const PROFILE_LINKS = {
   nurseProfile: { label: 'Staff profile', href: () => '/admin/staff' },
   receptionistProfile: { label: 'Staff profile', href: () => '/admin/staff' },
   accountantProfile: { label: 'Staff profile', href: () => '/admin/staff' },
+  medicalTechnologistProfile: { label: 'Staff profile', href: () => '/admin/staff' },
   adminProfile: { label: 'Admin profile', href: () => '/admin/staff' },
   medicalRepresentativeProfile: { label: 'Medical rep profile', href: () => '/medical-reps' },
 } as const;

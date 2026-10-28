@@ -4,6 +4,7 @@ import Visit from '@/models/Visit';
 import { requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
 import { validateUpload } from '@/lib/upload-validation';
+import { AttachmentStoreError, storeAttachment } from '@/lib/attachment-file';
 
 export async function POST(
   request: NextRequest,
@@ -47,11 +48,12 @@ export async function POST(
       );
     }
 
+    const url = await storeAttachment(check, { tenantId, kind: 'visit', parent: { model: Visit, filter: query } });
     const attachment = {
       filename: check.filename,
       contentType: check.contentType,
       size: check.buffer.length,
-      url: `data:${check.contentType};base64,${check.buffer.toString('base64')}`,
+      url,
       uploadDate: new Date(),
       notes: typeof notes === 'string' && notes ? notes.slice(0, 2000) : undefined,
       uploadedBy: session.userId,
@@ -60,7 +62,7 @@ export async function POST(
     const visit = await Visit.findOneAndUpdate(
       query,
       { $push: { attachments: attachment } },
-      { new: true }
+      { new: true, projection: { 'attachments.url': 0 } }
     )
       .populate({ path: 'patient', select: 'firstName lastName patientCode email phone', match: { tenantIds: tenantObjectId } })
       .populate({ path: 'provider', select: 'name email', match: { tenantId: tenantObjectId } });
@@ -69,6 +71,9 @@ export async function POST(
 
     return NextResponse.json({ success: true, data: visit });
   } catch (error: any) {
+    if (error instanceof AttachmentStoreError) {
+      return NextResponse.json({ success: false, error: error.message }, { status: error.status });
+    }
     console.error('Error uploading file to visit:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to upload file' },

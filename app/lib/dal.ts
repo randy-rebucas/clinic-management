@@ -53,7 +53,7 @@ export function deriveKey(label: string): Buffer {
  */
 export type TokenType = 'session' | 'socket' | 'patient' | 'pending-2fa';
 
-export type StaffRole = 'admin' | 'owner' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative';
+export type StaffRole = 'admin' | 'owner' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'medical-representative' | 'medical-technologist';
 
 export interface SessionPayload extends JWTPayload {
   userId: string;
@@ -98,6 +98,8 @@ export async function encrypt(payload: SessionPayload): Promise<string> {
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('7d')
+    // Lets one session be signed out (revokeSessionToken) without ending the user's others.
+    .setJti(crypto.randomUUID())
     .sign(encodedKey);
 }
 
@@ -156,6 +158,8 @@ interface UserSessionState {
   tenantId?: string;
   roleId?: string;
   roleName?: string;
+  /** jti of sessions signed out one by one. */
+  revoked: Set<string>;
 }
 
 const userStateCache = new Map<string, { state: UserSessionState | null; expires: number }>();
@@ -167,7 +171,7 @@ async function loadUserSessionState(userId: string): Promise<UserSessionState | 
   await connectDB();
   await import('@/models/Role');
   const user = await User.findById(userId)
-    .select('status isActive sessionVersion tenantId role')
+    .select('status isActive sessionVersion tenantId role revokedSessions')
     .populate('role', 'name')
     .lean<{
       status?: string;
@@ -175,6 +179,7 @@ async function loadUserSessionState(userId: string): Promise<UserSessionState | 
       sessionVersion?: number;
       tenantId?: { toString(): string };
       role?: { _id?: { toString(): string }; name?: string } | { toString(): string };
+      revokedSessions?: { jti: string; exp: Date }[];
     } | null>();
 
   let state: UserSessionState | null = null;
@@ -186,6 +191,7 @@ async function loadUserSessionState(userId: string): Promise<UserSessionState | 
       tenantId: user.tenantId ? user.tenantId.toString() : undefined,
       roleId: role && typeof role === 'object' && role._id ? role._id.toString() : undefined,
       roleName: role && typeof role === 'object' && typeof role.name === 'string' ? role.name : undefined,
+      revoked: new Set((user.revokedSessions ?? []).map((r) => r.jti)),
     };
   }
   userStateCache.set(userId, { state, expires: Date.now() + SESSION_CHECK_TTL_MS });
@@ -208,6 +214,7 @@ export async function verifySessionToken(token: string | undefined): Promise<Ses
     const state = await loadUserSessionState(session.userId);
     if (!state || !state.active) return null;
     if ((session.sv ?? 0) !== state.sessionVersion) return null;
+    if (session.jti && state.revoked.has(session.jti)) return null;
     // The user must still belong to the tenant the session was issued for
     if (session.tenantId && state.tenantId !== session.tenantId) return null;
 
@@ -231,6 +238,21 @@ export async function revokeUserSessions(userId: string): Promise<void> {
   await connectDB();
   await User.updateOne({ _id: userId }, { $inc: { sessionVersion: 1 } });
   userStateCache.delete(String(userId));
+}
+
+/**
+ * Sign out one session (logout): its token stops working, the user's other sessions don't.
+ * Other server instances may accept it for up to SESSION_CHECK_TTL_MS.
+ */
+export async function revokeSessionToken(token: string | undefined): Promise<void> {
+  const session = await decrypt(token);
+  if (!session?.jti) return;
+  const exp = typeof session.exp === 'number' ? new Date(session.exp * 1000) : new Date(Date.now() + SESSION_TTL_MS);
+  await connectDB();
+  // Entries past their token's expiry are dropped as new ones are added.
+  await User.updateOne({ _id: session.userId }, { $pull: { revokedSessions: { exp: { $lt: new Date() } } } });
+  await User.updateOne({ _id: session.userId }, { $push: { revokedSessions: { jti: session.jti, exp } } });
+  userStateCache.delete(String(session.userId));
 }
 
 export const SESSION_TTL_SECONDS = SESSION_TTL_MS / 1000;
@@ -339,6 +361,10 @@ export async function updateSession() {
 export async function deleteSession() {
   try {
     const cookieStore = await cookies();
+    // The token is ended server-side too, so a copy taken from this browser stops working.
+    await revokeSessionToken(cookieStore.get('session')?.value).catch((error) =>
+      console.error('Error revoking session:', error)
+    );
     // Delete with domain to ensure cross-subdomain cookie is removed
     cookieStore.set('session', '', cookieOptions(new Date(0)));
   } catch (error) {

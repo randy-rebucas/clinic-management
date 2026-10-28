@@ -147,7 +147,7 @@ export default function StaffPageClient({
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">Staff</h1>
-          <p className="text-sm sm:text-base text-gray-600 mt-1">Nurses, receptionists and accountants: their work details, and whether each one can sign in.</p>
+          <p className="text-sm sm:text-base text-gray-600 mt-1">Nurses, receptionists, accountants and medical technologists: their work details, and whether each one can sign in.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link href="/doctors" className={`inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}>
@@ -727,7 +727,7 @@ function Empty({ narrowed, onClear, onAdd }: { narrowed: boolean; onClear: () =>
       ) : (
         <>
           <p className="font-semibold text-gray-900">No staff yet</p>
-          <p className="mt-1 text-sm text-gray-500">Add your nurses, receptionists and accountants; each gets an invite to set their own password.</p>
+          <p className="mt-1 text-sm text-gray-500">Add your nurses, receptionists, accountants and medical technologists; each gets an invite to set their own password.</p>
           <button
             type="button"
             onClick={onAdd}

@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+// Route work handed to after() runs inline: there is no request scope in unit tests.
+vi.mock('next/server', async (orig) => ({ ...(await orig<typeof import('next/server')>()), after: (fn: () => unknown) => fn() }));
 
 vi.mock('server-only', () => ({}));
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn() }));

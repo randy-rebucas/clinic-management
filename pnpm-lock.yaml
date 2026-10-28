@@ -38,7 +38,7 @@ importers:
     dependencies:
       '@anthropic-ai/sdk':
         specifier: ^0.135.0
-        version: 0.135.0(zod@4.3.6)
+        version: 0.135.0(zod@4.6.7)
       '@date-fns/tz':
         specifier: 1.2.0
         version: 1.2.0
@@ -76,8 +76,8 @@ importers:
         specifier: ^16.4.1
         version: 16.4.1(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@types/node@22.20.5)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       nodemailer:
-        specifier: ^10.1.1
-        version: 10.1.1
+        specifier: ^10.2.1
+        version: 10.2.1
       otplib:
         specifier: ^13.4.0
         version: 13.4.0
@@ -106,8 +106,8 @@ importers:
         specifier: ^3.6.7
         version: 3.6.7
       zod:
-        specifier: ^4.1.12
-        version: 4.3.6
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@next/bundle-analyzer':
         specifier: ^16.4.1
@@ -3172,8 +3172,8 @@ packages:
     resolution: {integrity: sha512-5qr2okC4ItAI0hG5SaV0HoYMpnM/Y6+Oqr7AmPYy/2uEoGvS+GbSKLeRxSS1uAdu59yz0ouzcuXievSgg///WA==}
     engines: {node: '>=18'}
 
-  nodemailer@10.1.1:
-    resolution: {integrity: sha512-pbqZRoeYUO+1E8TJ/11WeY4D2EVujj1hsYjz3qff/vUFDtGnmi7p3iqzTFslYOfQ6PnjVcWxx/CIUSHCSrO/QA==}
+  nodemailer@10.2.1:
+    resolution: {integrity: sha512-ZrDNsPFoDMwefNs7sJwrYiEJ/CG4ClJWDZv05iNJsEBWa8GRDry1QJHTJxsuTAY9eDDKjX4k+q3SxslXJOao7w==}
     engines: {node: '>=20.0.0'}
 
   nwsapi@2.2.23:
@@ -4070,9 +4070,6 @@ packages:
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
 
-  zod@4.3.6:
-    resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
-
   zod@4.6.7:
     resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
@@ -4082,13 +4079,13 @@ snapshots:
 
   '@alloc/quick-lru@5.2.0': {}
 
-  '@anthropic-ai/sdk@0.135.0(zod@4.3.6)':
+  '@anthropic-ai/sdk@0.135.0(zod@4.6.7)':
     dependencies:
       '@opentelemetry/api': 1.9.1
       json-schema-to-ts: 3.1.1
       standardwebhooks: 1.1.1
     optionalDependencies:
-      zod: 4.3.6
+      zod: 4.6.7
 
   '@babel/code-frame@7.29.7':
     dependencies:
@@ -6008,8 +6005,8 @@ snapshots:
       '@babel/parser': 7.29.2
       eslint: 9.39.4(jiti@2.6.1)
       hermes-parser: 0.25.1
-      zod: 4.3.6
-      zod-validation-error: 4.0.2(zod@4.3.6)
+      zod: 4.6.7
+      zod-validation-error: 4.0.2(zod@4.6.7)
     transitivePeerDependencies:
       - supports-color
 
@@ -6904,7 +6901,7 @@ snapshots:
 
   node-releases@2.0.59: {}
 
-  nodemailer@10.1.1: {}
+  nodemailer@10.2.1: {}
 
   nwsapi@2.2.23:
     optional: true
@@ -8001,10 +7998,8 @@ snapshots:
 
   yocto-queue@0.1.0: {}
 
-  zod-validation-error@4.0.2(zod@4.3.6):
+  zod-validation-error@4.0.2(zod@4.6.7):
     dependencies:
-      zod: 4.3.6
-
-  zod@4.3.6: {}
+      zod: 4.6.7
 
   zod@4.6.7: {}

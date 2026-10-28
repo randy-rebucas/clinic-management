@@ -33,9 +33,18 @@ describe('GET /api/patients/[id] tenant isolation', () => {
   });
 
   it("scopes the lookup to the session tenant's tenantIds", async () => {
-    vi.mocked(Patient.findOne).mockResolvedValue({ _id: PATIENT_ID, firstName: 'Ana' } as any);
+    const attachments = [
+      { filename: 'ours.pdf', tenantId: TENANT_A },
+      { filename: 'theirs.pdf', tenantId: '507f1f77bcf86cd799439099' },
+    ];
+    vi.mocked(Patient.findOne).mockResolvedValue({
+      toObject: () => ({ _id: PATIENT_ID, firstName: 'Ana', attachments }),
+    } as any);
     const res = await call(PATIENT_ID);
     expect(res.status).toBe(200);
+    // Another clinic's files on the shared record are not sent.
+    const body = await res.json();
+    expect(body.data.attachments.map((a: any) => a.filename)).toEqual(['ours.pdf']);
     const filter = vi.mocked(Patient.findOne).mock.calls[0][0] as any;
     expect(String(filter._id)).toBe(PATIENT_ID);
     expect(String(filter.tenantIds)).toBe(TENANT_A);

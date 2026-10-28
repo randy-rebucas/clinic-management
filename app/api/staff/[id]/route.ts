@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
-import { Nurse, Receptionist, Accountant, User } from '@/models';
+import { Nurse, Receptionist, Accountant, MedicalTechnologist, User } from '@/models';
 import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { revokeUserSessions } from '@/app/lib/dal';
 import { createAuditLog } from '@/lib/audit';
@@ -11,7 +11,12 @@ import { parseBody, isValidationError, zEmail, zPhone, zShortText } from '@/lib/
 import { STAFF_STATUS, STAFF_STATUSES, STAFF_TYPE, STAFF_TYPES, TYPE_FIELDS, isStaffType, type StaffType } from '@/lib/staff';
 import { USER_STATUSES } from '@/lib/users';
 
-const MODELS = { nurse: Nurse, receptionist: Receptionist, accountant: Accountant } as const;
+const MODELS = {
+  nurse: Nurse,
+  receptionist: Receptionist,
+  accountant: Accountant,
+  'medical-technologist': MedicalTechnologist,
+} as const;
 
 /** Optional text: '' clears the field, absent leaves it alone. */
 const clearable = (max: number) => z.preprocess((v) => (v === null ? '' : v), z.string().trim().max(max).optional());

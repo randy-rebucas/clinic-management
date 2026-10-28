@@ -47,10 +47,17 @@ export interface ILabResult extends Document {
   abnormalFlags?: Record<string, 'high' | 'low' | 'normal'>; // Flag abnormal values
   status: 'ordered' | 'in-progress' | 'completed' | 'reviewed' | 'cancelled';
   attachments: IAttachment[];
+  receivedBy?: Types.ObjectId;
+  receivedAt?: Date;
+  performedBy?: Types.ObjectId;
   reviewedBy?: Types.ObjectId;
   reviewedAt?: Date;
+  /** Completed by lab staff: the patient is told once a clinician has reviewed it. */
+  awaitingReview?: boolean;
   // Patient notification
   notificationSent?: boolean;
+  /** Set while a notification is being sent (lib/automations/shared.ts claimForSend). */
+  notificationClaimedAt?: Date;
   notificationSentAt?: Date;
   notificationMethod?: 'email' | 'sms' | 'both';
   notificationAttempts?: number;
@@ -132,9 +139,15 @@ const LabResultSchema: Schema = new Schema(
       default: 'ordered',
     },
     attachments: [AttachmentSchema],
+    // Set by the server: who took the request in at the lab, and who entered its results.
+    receivedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    receivedAt: Date,
+    performedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     reviewedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     reviewedAt: Date,
+    awaitingReview: { type: Boolean },
     notificationSent: { type: Boolean, default: false },
+    notificationClaimedAt: { type: Date },
     notificationSentAt: Date,
     notificationMethod: {
       type: String,

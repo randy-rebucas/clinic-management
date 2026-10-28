@@ -5,10 +5,24 @@ import { startInvoiceCheckout } from '@/lib/payments/invoice-pay';
 
 const Body = z.object({ accountId: z.string().min(1).max(40) });
 
+/**
+ * Where the checkout returns to: the page's own origin when it is this site (a clinic subdomain
+ * included), else the app URL. Never an origin the caller names, or a pay link could be turned
+ * into a genuine checkout that lands on someone else's site.
+ */
 function appOrigin(request: NextRequest): string {
+  const fallback = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/$/, '');
   const o = request.headers.get('origin');
-  if (o && o !== 'null') return o;
-  return (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+  if (!o || o === 'null') return fallback;
+  try {
+    const host = new URL(o).hostname.toLowerCase();
+    const root = process.env.ROOT_DOMAIN?.split(':')[0].trim().toLowerCase().replace(/^\./, '');
+    const ownHost = request.nextUrl.hostname.toLowerCase();
+    if (host === ownHost || (root && (host === root || host.endsWith(`.${root}`)))) return new URL(o).origin;
+  } catch {
+    // not a URL
+  }
+  return fallback;
 }
 
 /**

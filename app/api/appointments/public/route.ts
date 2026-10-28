@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
@@ -310,13 +310,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Send only to the number submitted with this request, never to a stored number.
-    sendBookingConfirmation({
-      appointmentCode: appointment.appointmentCode,
-      appointmentDate: body.appointmentDate,
-      appointmentTime,
-      doctor,
-      phone,
-    }).catch(console.error);
+    after(() =>
+      sendBookingConfirmation({
+        appointmentCode: appointment.appointmentCode,
+        appointmentDate: body.appointmentDate,
+        appointmentTime,
+        doctor,
+        phone,
+      }).catch(console.error)
+    );
 
     return NextResponse.json(
       {

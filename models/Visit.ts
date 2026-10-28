@@ -120,6 +120,8 @@ export interface IVisit extends Document {
   notes?: string;
   followUpDate?: Date;
   followUpReminderSent?: boolean;
+  /** Set while a reminder run is sending this one (lib/automations/shared.ts claimForSend). */
+  followUpReminderClaimedAt?: Date;
   followUpAppointmentId?: Types.ObjectId;
   feedbackRequested?: boolean;
   feedbackToken?: string;
@@ -248,6 +250,7 @@ const VisitSchema: Schema = new Schema(
     notes: { type: String },
     followUpDate: { type: Date },
     followUpReminderSent: { type: Boolean, default: false },
+    followUpReminderClaimedAt: { type: Date },
     followUpAppointmentId: { type: Schema.Types.ObjectId, ref: 'Appointment' },
     feedbackRequested: { type: Boolean, default: false },
     feedbackToken: { type: String, index: true, sparse: true },

@@ -7,6 +7,14 @@ import { parseBody, isValidationError } from '@/lib/api/validate';
 import { updatePatientSchema } from '@/lib/patient-schema';
 import { normalizePhone } from '@/lib/phone';
 import { revokeAllPatientAccess } from '@/app/api/patients/auth/shared';
+import { ownAttachments } from '@/lib/patient-attachments';
+
+/** The record as sent to a clinic: file details only, and only the files that clinic uploaded. */
+function forClinic(patient: InstanceType<typeof Patient>, tenantId: string) {
+  const data = patient.toObject();
+  data.attachments = ownAttachments(data.attachments, tenantId);
+  return data;
+}
 
 const NESTED_FIELDS = new Set(['address', 'emergencyContact', 'identifiers', 'socialHistory']);
 
@@ -30,7 +38,7 @@ export async function GET(
     // (files open through ./files/[fileId]), so only their names and sizes are sent.
     const patient = await Patient.findOne(patientTenantFilter(ctx.tenantId, { _id: id }), { 'attachments.url': 0, readNotificationIds: 0 });
     if (!patient) return notFound('Patient');
-    return NextResponse.json({ success: true, data: patient });
+    return NextResponse.json({ success: true, data: forClinic(patient, ctx.tenantId) });
   } catch (error) {
     console.error('Error fetching patient:', error);
     return NextResponse.json(
@@ -109,7 +117,7 @@ export async function PUT(
         : await Patient.findOne(filter, { 'attachments.url': 0, readNotificationIds: 0 });
     if (!patient) return notFound('Patient');
     if (phoneChanged) await revokeAllPatientAccess(id);
-    return NextResponse.json({ success: true, data: patient });
+    return NextResponse.json({ success: true, data: forClinic(patient, ctx.tenantId) });
   } catch (error: any) {
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors || {}).map((err: any) => err.message).join(', ');

@@ -57,3 +57,6 @@ coverage/
 
 # Local backup files
 backups/
+
+# machine-local Claude Code settings
+.claude/settings.local.json

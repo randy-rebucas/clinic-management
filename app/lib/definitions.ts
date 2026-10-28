@@ -1,6 +1,6 @@
 import * as z from 'zod';
 
-export const VALID_STAFF_ROLES = ['admin', 'owner', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative'] as const;
+export const VALID_STAFF_ROLES = ['admin', 'owner', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative', 'medical-technologist'] as const;
 export type StaffRole = typeof VALID_STAFF_ROLES[number];
 
 export const SignupFormSchema = z.object({

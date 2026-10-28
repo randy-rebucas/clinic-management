@@ -11,6 +11,7 @@ import LabResult from '@/models/LabResult';
 import { Types } from 'mongoose';
 import { deleteFromCloudinary } from '@/lib/cloudinary';
 import { cloudinaryRefForDocument } from '@/lib/document-file';
+import { ownAttachments } from '@/lib/patient-attachments';
 
 export interface StorageCleanupResult {
   success: boolean;
@@ -241,7 +242,7 @@ export async function getStorageAnalytics(
 
     // Get attachments from other models
     const patients = await Patient.find({ tenantIds: tenantIdObj })
-      .select('attachments').lean();
+      .select('attachments.size attachments.tenantId').lean();
     const visits = await Visit.find({ tenantId: tenantIdObj })
       .select('attachments').lean();
     const labResults = await LabResult.find({ tenantId: tenantIdObj })
@@ -261,7 +262,7 @@ export async function getStorageAnalytics(
     let patientAttachmentsCount = 0;
     for (const patient of patients) {
       if (patient.attachments && Array.isArray(patient.attachments)) {
-        for (const attachment of patient.attachments) {
+        for (const attachment of ownAttachments(patient.attachments, tenantIdObj)) {
           patientAttachmentsBytes += attachment.size || 0;
           patientAttachmentsCount++;
         }

@@ -533,13 +533,49 @@ export async function issueSeal(params: {
   tenantId?: string | null;
   userId?: string;
   copyType?: SealCopyType;
+  /**
+   * Hand back the newest valid seal of this copy type for the same content instead of numbering
+   * a new copy: for repeat downloads of one patient copy, which would otherwise inflate the
+   * print count the public verify page reports.
+   */
+  reuse?: boolean;
 }): Promise<IssuedSeal> {
-  const { request, documentType, document, tenantId, userId, copyType = 'original' } = params;
+  const { request, documentType, document, tenantId, userId, copyType = 'original', reuse = false } = params;
   const def = SEAL_DEFINITIONS[documentType];
   await connectDB();
 
   const contentHash = hashCanonical(def, document, CURRENT_CANONICAL_VERSION);
   const tenantObjectId = tenantId ? new Types.ObjectId(tenantId) : undefined;
+
+  if (reuse) {
+    const prior = await DocumentSeal.findOne({
+      tenantId: tenantObjectId ?? null,
+      documentType,
+      documentId: document._id,
+      copyType,
+      contentHash,
+      revokedAt: { $exists: false },
+    })
+      .sort({ printNumber: -1 })
+      .select('serial signature printNumber issuedAt issuedByName')
+      .lean<{ serial: string; signature: string; printNumber: number; issuedAt: Date; issuedByName?: string } | null>();
+    if (prior) {
+      const verifyBaseUrl = getVerifyBaseUrl(request);
+      const verifyUrl = `${verifyBaseUrl}/verify/${prior.serial}`;
+      return {
+        serial: prior.serial,
+        displaySerial: formatSerial(prior.serial),
+        fingerprint: fingerprintOf(prior.signature),
+        printNumber: prior.printNumber,
+        copyType,
+        issuedAt: prior.issuedAt,
+        issuedByName: prior.issuedByName || 'Clinic staff',
+        verifyBaseUrl,
+        verifyUrl,
+        qrDataUrl: await QRCode.toDataURL(verifyUrl, { errorCorrectionLevel: 'M', margin: 1, width: 240 }),
+      };
+    }
+  }
 
   const [printNumber, issuer] = await Promise.all([
     // Atomic per-document counter, seeded from seals issued before the counter existed.

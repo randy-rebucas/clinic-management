@@ -43,7 +43,9 @@ export async function GET(
     }
 
     const sameTenant = { tenantId: tenantObjectId };
+    // File contents stay out of the JSON; they open through ./files/[fileId].
     const visit = await Visit.findOne(tenantFilter(tenantId, { _id: id }))
+      .select('-attachments.url')
       .populate({ path: 'patient', select: 'firstName lastName patientCode email phone', match: { tenantIds: tenantObjectId } })
       .populate('provider', 'name email')
       .populate({ path: 'prescriptions', match: sameTenant })
@@ -121,6 +123,7 @@ export async function PUT(
     const visit = await Visit.findOneAndUpdate(query, { $set: update }, {
       new: true,
       runValidators: true,
+      projection: { 'attachments.url': 0 },
     });
 
     if (!visit) return notFound('Visit');

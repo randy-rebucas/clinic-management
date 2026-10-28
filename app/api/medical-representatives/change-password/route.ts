@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
 
-    const user = await User.findOne({ _id: rep.userObjectId });
+    const user = await User.findOne({ _id: rep.userObjectId }).select('+password');
     if (!user) {
       return NextResponse.json(
         { success: false, error: 'User not found' },

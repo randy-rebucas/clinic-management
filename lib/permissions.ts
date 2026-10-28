@@ -70,6 +70,11 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, PermissionData[]> = {
     { resource: 'medicines', actions: ['read'] },
     { resource: 'notifications', actions: ['read', 'update'] },
   ],
+  'medical-technologist': [
+    { resource: 'patients', actions: ['read'] },
+    { resource: 'lab-results', actions: ['read', 'update'] },
+    { resource: 'notifications', actions: ['read', 'update'] },
+  ],
   'medical-representative': [
     { resource: 'doctors', actions: ['read'] },
     { resource: 'patients', actions: ['read'] },
@@ -88,7 +93,7 @@ async function getRoleName(roleIdOrName: string | Types.ObjectId | undefined | n
   if (!roleIdOrName) return null;
   
   // If it's already a role name string, return it
-  if (typeof roleIdOrName === 'string' && ['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative'].includes(roleIdOrName)) {
+  if (typeof roleIdOrName === 'string' && ['admin', 'doctor', 'nurse', 'receptionist', 'accountant', 'medical-representative', 'medical-technologist'].includes(roleIdOrName)) {
     return roleIdOrName as RoleName;
   }
   

@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Visit from '@/models/Visit';
 import Survey from '@/models/Survey';
+import { applyRateLimit, getClientIp, rateLimiters } from '@/lib/middleware/rate-limit';
+
+/** A survey link works for this long after the visit. */
+const LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const expired = (visitDate: Date | string | undefined) =>
+  !visitDate || Date.now() - new Date(visitDate).getTime() > LINK_TTL_MS;
 
 /**
  * GET /api/feedback/[token]
@@ -9,9 +15,11 @@ import Survey from '@/models/Survey';
  * Public — no auth required. Token is a secret 48-char hex generated per visit.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
+  const limited = await applyRateLimit(request, rateLimiters.public);
+  if (limited) return limited;
   const { token } = await params;
   if (!token || !/^[a-f0-9]{40,128}$/i.test(token)) {
     return NextResponse.json({ success: false, error: 'Invalid token' }, { status: 400 });
@@ -25,7 +33,7 @@ export async function GET(
       .populate('provider', 'name firstName lastName')
       .lean() as any;
 
-    if (!visit) {
+    if (!visit || expired(visit.date)) {
       return NextResponse.json({ success: false, error: 'Survey link not found or expired' }, { status: 404 });
     }
 
@@ -57,6 +65,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
+  const limited = await applyRateLimit(request, rateLimiters.public);
+  if (limited) return limited;
   const { token } = await params;
   if (!token || !/^[a-f0-9]{40,128}$/i.test(token)) {
     return NextResponse.json({ success: false, error: 'Invalid token' }, { status: 400 });
@@ -66,10 +76,10 @@ export async function POST(
     await connectDB();
 
     const visit = await Visit.findOne({ feedbackToken: token })
-      .select('_id tenantId patient')
+      .select('_id tenantId patient date')
       .lean() as any;
 
-    if (!visit) {
+    if (!visit || expired(visit.date)) {
       return NextResponse.json({ success: false, error: 'Survey link not found or expired' }, { status: 404 });
     }
 
@@ -94,9 +104,7 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Overall rating (1–5) is required' }, { status: 400 });
     }
 
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-      ?? request.headers.get('x-real-ip')
-      ?? undefined;
+    const ip = getClientIp(request.headers);
 
     await Survey.create({
       tenantId: visit.tenantId,

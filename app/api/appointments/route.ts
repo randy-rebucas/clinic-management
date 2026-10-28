@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import { registerAllModels } from '@/models';
@@ -285,7 +285,7 @@ export async function POST(request: NextRequest) {
 
     if (appointment.patient && settings?.automationSettings?.autoInsuranceVerification) {
       const { autoVerifyInsuranceForAppointment } = await import('@/lib/automations/insurance-verification');
-      autoVerifyInsuranceForAppointment(appointment._id, tenantId).catch(console.error);
+      after(() => autoVerifyInsuranceForAppointment(appointment._id, tenantId).catch(console.error));
     }
 
     if (!appointment.doctor && !appointment.provider && settings?.automationSettings?.autoSmartAssignment) {

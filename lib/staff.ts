@@ -1,18 +1,19 @@
 /**
- * Staff profiles (nurses, receptionists, accountants) as /admin/staff shows them, with the
+ * Staff profiles (nurses, receptionists, accountants, medical technologists) as /admin/staff shows them, with the
  * state of each one's login account. Doctors have their own pages.
  * Client-safe: no model imports.
  */
 
 import { userState, type UserState, type UserStatus } from './users';
 
-export const STAFF_TYPES = ['nurse', 'receptionist', 'accountant'] as const;
+export const STAFF_TYPES = ['nurse', 'receptionist', 'accountant', 'medical-technologist'] as const;
 export type StaffType = (typeof STAFF_TYPES)[number];
 
 export const STAFF_TYPE: Record<StaffType, { label: string; plural: string; profileField: string }> = {
   nurse: { label: 'Nurse', plural: 'Nurses', profileField: 'nurseProfile' },
   receptionist: { label: 'Receptionist', plural: 'Receptionists', profileField: 'receptionistProfile' },
   accountant: { label: 'Accountant', plural: 'Accountants', profileField: 'accountantProfile' },
+  'medical-technologist': { label: 'Medical technologist', plural: 'Medical technologists', profileField: 'medicalTechnologistProfile' },
 };
 
 export const isStaffType = (v: unknown): v is StaffType => typeof v === 'string' && (STAFF_TYPES as readonly string[]).includes(v);
@@ -66,6 +67,7 @@ export const TYPE_FIELDS: Record<StaffType, readonly (typeof STAFF_TEXT_FIELDS)[
   nurse: ['title', 'specialization', 'licenseNumber'],
   receptionist: [],
   accountant: ['certification', 'licenseNumber'],
+  'medical-technologist': ['title', 'specialization', 'licenseNumber'],
 };
 
 export type AccountState = UserState | 'none';
@@ -109,7 +111,11 @@ export const staffName = (r: Pick<StaffRow, 'firstName' | 'lastName'>) => `${r.f
 /** "RN · Pediatrics", "CPA", the department when nothing more specific is on file. */
 export function workLine(r: StaffRow): string {
   const parts =
-    r.staffType === 'nurse' ? [r.title, r.specialization] : r.staffType === 'accountant' ? [r.certification] : [];
+    r.staffType === 'nurse' || r.staffType === 'medical-technologist'
+      ? [r.title, r.specialization]
+      : r.staffType === 'accountant'
+        ? [r.certification]
+        : [];
   const specific = parts.filter(Boolean) as string[];
   if (r.department) specific.push(r.department);
   return specific.join(' · ');

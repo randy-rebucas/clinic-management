@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Document from '@/models/Document';
 import Patient from '@/models/Patient';
@@ -126,7 +126,7 @@ export async function PUT(
 
     if (!document) return notFound('Document');
 
-    void createAuditLog({
+    after(() => createAuditLog({
       userId: session.userId,
       userEmail: session.email,
       userRole: session.role,
@@ -137,7 +137,7 @@ export async function PUT(
       dataSubject: (document as any).patient?._id,
       changes: Object.keys(body).map((field) => ({ field, newValue: field === 'notes' || field === 'description' ? '(changed)' : (body as Record<string, unknown>)[field] })),
       description: `Updated document ${(document as any).documentCode}`,
-    });
+    }));
 
     return NextResponse.json({ success: true, data: withStreamUrls(document as any) });
   } catch (error: any) {
@@ -192,7 +192,7 @@ export async function DELETE(
       { new: true }
     ).select('_id documentCode status').lean();
 
-    void createAuditLog({
+    after(() => createAuditLog({
       userId: session.userId,
       userEmail: session.email,
       userRole: session.role,
@@ -203,7 +203,7 @@ export async function DELETE(
       dataSubject: document.patient,
       isSensitive: Boolean(document.patient),
       description: `Deleted document ${document.documentCode} and its file`,
-    });
+    }));
 
     return NextResponse.json({ success: true, data: deletedDocument });
   } catch (error: any) {

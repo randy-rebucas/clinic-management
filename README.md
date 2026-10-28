@@ -149,8 +149,6 @@ This script will:
    ```
 
    This starts the Next.js development server.
-   
-   > **Note**: For the old polling-based system (legacy), use `pnpm run dev:polling`
 
 6. Open [http://localhost:3000](http://localhost:3000) in your browser and log in with your admin credentials
 
@@ -475,25 +473,15 @@ The application uses MongoDB with Mongoose for data modeling. Key models include
 - **Room** - Clinic room management
 - **Service** - Clinic services and pricing
 
-All models include proper relationships, indexes, and validation. See `models/RELATIONSHIPS.md` for detailed relationship documentation.
+All models include proper relationships, indexes, and validation.
 
 ## Documentation
 
-Additional documentation is available in the `docs/` directory:
-
-- `BILLING_PAYMENTS.md` - Billing and payment system documentation
-- `CLOUDINARY_SETUP.md` - Cloudinary integration guide
-- `CRON_SETUP.md` - Scheduled tasks and cron jobs
-- `DASHBOARD_REPORTING.md` - Reporting features
-- `DOCUMENT_MANAGEMENT.md` - Document management system
-- `EPRESCRIPTION.md` - E-prescription features
-- `LABORATORY_DIAGNOSTIC.md` - Lab results and diagnostics
-- `MEMBERSHIP_LOYALTY.md` - Membership and loyalty programs
-- `NOTIFICATIONS_COMMUNICATION.md` - Notifications and communications
-- `ROOM_MANAGEMENT.md` - Room management system
-- `SECURITY_COMPLIANCE.md` - Security and compliance features
-- `SMS_SETUP.md` - SMS integration setup
-- `STAFF_DOCTOR_MANAGEMENT.md` - Staff and doctor management
+- [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md) - Backups, the restore drill and the incident procedure
+- [docs/PUBLIC_SITE_FOLLOWUPS.md](docs/PUBLIC_SITE_FOLLOWUPS.md) - Open items for the public site
+- [PUBLIC_API.md](PUBLIC_API.md) - Public REST API (`/api/v1`) and API keys
+- [MOBILE_API.md](MOBILE_API.md) - Endpoints used by the mobile apps
+- [DESIGN.md](DESIGN.md) and [PRODUCT.md](PRODUCT.md) - Design system and product notes
 
 ## Development
 
@@ -631,7 +619,7 @@ This application is designed for production use, following modern best practices
 - End-to-end tests for critical user flows.
 
 ### Documentation & Operations
-- All features and integrations are documented in `docs/`.
+- Operational docs are listed under [Documentation](#documentation).
 - Backups use MongoDB Atlas Cloud Backup; see [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md) for setup, the restore drill and the incident procedure.
 - Health checks and resource monitoring should be set up in production.
 
@@ -640,7 +628,13 @@ This application is designed for production use, following modern best practices
 - Clear error messages and user feedback throughout the app.
 
 ### Deployment
-- Use process managers (e.g., PM2) or containers for reliability.
-- Set up health checks and readiness probes for production deployments.
+The app is deployed on Vercel; `vercel.json` is the live configuration.
+
+- **Plan:** Vercel Pro (or higher) is required. Several crons run every 5 to 30 minutes, which the Hobby plan (once a day per cron) rejects.
+- **Crons:** schedules in `vercel.json` are in UTC, chosen for clinic hours in Asia/Manila. Vercel sends `Authorization: Bearer $CRON_SECRET`; `proxy.ts` refuses cron calls without it.
+- **Environment:** set every variable in `.env.example`. In production the app refuses to start without `MONGODB_URI`, `SESSION_SECRET`, `CRON_SECRET` and `ENCRYPTION_KEY` (`lib/env-validation.ts`). Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` so rate limits are shared across instances.
+- **Migrations:** scripts under `scripts/migrate-*.ts` dry-run by default; run them with `--apply` against production before deploying code that depends on them. Each one prints the database it connects to.
+- **Health:** `/api/health` checks the database and returns 503 when it is not ready.
+- **Backups:** MongoDB Atlas Cloud Backup; see [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md).
 
 For more details, see the [copilot-instructions](.github/copilot-instructions.md) and feature-specific guides in `docs/`.

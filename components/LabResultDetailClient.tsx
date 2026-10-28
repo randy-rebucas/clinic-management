@@ -22,6 +22,9 @@ interface LabResult {
   patient: { _id: string; firstName: string; lastName: string; patientCode?: string; email?: string; phone?: string; dateOfBirth?: string } | null;
   visit?: { _id: string; visitCode: string; date: string } | null;
   orderedBy?: { _id: string; name: string } | null;
+  receivedBy?: { _id: string; name: string } | null;
+  receivedAt?: string;
+  performedBy?: { _id: string; name: string } | null;
   reviewedBy?: { _id: string; name: string } | null;
   orderDate: string;
   request: {
@@ -42,6 +45,7 @@ interface LabResult {
   status: LabStatus;
   attachments?: { _id: string; filename: string; contentType?: string; size?: number; uploadDate?: string; notes?: string }[];
   reviewedAt?: string;
+  awaitingReview?: boolean;
   notificationSent?: boolean;
   notificationSentAt?: string;
   notificationMethod?: 'email' | 'sms' | 'both';
@@ -115,12 +119,13 @@ export default function LabResultDetailClient({ labResultId, permissions }: { la
     }
   };
 
-  const upload = async (file: File, notes: string): Promise<boolean> => {
+  const upload = async (file: File, notes: string, isResult = false): Promise<boolean> => {
     setActionError(null);
     try {
       const body = new FormData();
       body.append('file', file);
       if (notes) body.append('notes', notes);
+      if (isResult) body.append('complete', '1');
       const res = await fetch(`/api/lab-results/${labResultId}/upload`, { method: 'POST', body });
       if (res.status === 401) {
         router.push('/login');
@@ -133,7 +138,7 @@ export default function LabResultDetailClient({ labResultId, permissions }: { la
       }
       const wasWaiting = l?.status === 'ordered' || l?.status === 'in-progress';
       lab.reload();
-      setNotice(wasWaiting ? `${file.name} is attached and the result is marked as in.` : `${file.name} is attached.`);
+      setNotice(isResult && wasWaiting ? `${file.name} is attached and the result is marked as in.` : `${file.name} is attached.`);
       return true;
     } catch {
       setActionError(`${file.name} could not be attached. Check your connection and try again.`);
@@ -203,7 +208,8 @@ export default function LabResultDetailClient({ labResultId, permissions }: { la
   const urgency = l.request?.urgency ? URGENCY_BADGE[l.request.urgency] : undefined;
   const values = l.results && typeof l.results === 'object' ? (l.results as ValueMap) : null;
   const hasValues = Boolean(values && Object.keys(values).length);
-  const canAct = permissions.canUpdate && !cancelled;
+  // Once reviewed, a result is the clinicians' to change (the API refuses lab staff too).
+  const canAct = permissions.canUpdate && !cancelled && !(permissions.isLab && l.status === 'reviewed');
 
   return (
     <Shell>
@@ -247,15 +253,23 @@ export default function LabResultDetailClient({ labResultId, permissions }: { la
             </a>
           )}
           {canAct && l.status === 'ordered' && !editing && (
-            <SecondaryButton onClick={() => setStatus('in-progress', 'Marked as at the lab.', 'The status could not be changed')} disabled={busy} icon={ICONS.flask}>
-              Sample sent to lab
+            <SecondaryButton
+              onClick={() =>
+                setStatus('in-progress', permissions.isLab ? 'Request received by the lab.' : 'Marked as at the lab.', 'The status could not be changed')
+              }
+              disabled={busy}
+              icon={ICONS.flask}
+            >
+              {permissions.isLab ? 'Receive request' : 'Sample sent to lab'}
             </SecondaryButton>
           )}
           {canAct && resultIn && !editing && (
             <>
-              <SecondaryButton onClick={() => setTelling(true)} disabled={busy} icon={ICONS.send}>
-                Tell the patient
-              </SecondaryButton>
+              {!permissions.isLab && (
+                <SecondaryButton onClick={() => setTelling(true)} disabled={busy} icon={ICONS.send}>
+                  Tell the patient
+                </SecondaryButton>
+              )}
               <SecondaryButton onClick={() => setEditing(true)} disabled={busy} icon={ICONS.pen}>
                 Edit results
               </SecondaryButton>
@@ -266,12 +280,12 @@ export default function LabResultDetailClient({ labResultId, permissions }: { la
               Enter results
             </PrimaryButton>
           )}
-          {canAct && l.status === 'completed' && !editing && (
+          {canAct && permissions.canReview && l.status === 'completed' && !editing && (
             <PrimaryButton onClick={() => setStatus('reviewed', 'Marked as reviewed by you.', 'The result could not be marked as reviewed')} disabled={busy} icon={ICONS.check}>
               Mark reviewed
             </PrimaryButton>
           )}
-          {canAct && waiting && !editing && (
+          {canAct && waiting && !editing && !permissions.isLab && (
             <button
               type="button"
               onClick={() => setConfirm('cancel')}
@@ -317,7 +331,13 @@ export default function LabResultDetailClient({ labResultId, permissions }: { la
             onSaved={() => {
               setEditing(false);
               lab.reload();
-              setNotice(waiting ? 'Results saved. The result is marked as in.' : 'Results saved.');
+              setNotice(
+                waiting
+                  ? permissions.isLab
+                    ? 'Results saved. The doctor reviews them before the patient is told.'
+                    : 'Results saved. The result is marked as in.'
+                  : 'Results saved.'
+              );
             }}
             onCancel={() => setEditing(false)}
             hasValues={hasValues}
@@ -379,8 +399,15 @@ export default function LabResultDetailClient({ labResultId, permissions }: { la
           {!cancelled && (
             <Panel id="lab-followup" title="Review and messages">
               <dl className="divide-y divide-gray-100">
+                {l.receivedBy && (
+                  <Field label="Received by">
+                    {l.receivedBy.name}
+                    {l.receivedAt && <span className="block font-mono text-xs text-gray-500">{shortDate(l.receivedAt)}, {clock(l.receivedAt)}</span>}
+                  </Field>
+                )}
                 <Field label="Result in">
                   {l.resultDate ? <span className="font-mono">{shortDate(l.resultDate)}</span> : <span className="text-gray-500">Not yet</span>}
+                  {l.performedBy && <span className="block text-gray-500">by {l.performedBy.name}</span>}
                 </Field>
                 <Field label="Reviewed">
                   {l.status === 'reviewed' ? (
@@ -400,6 +427,8 @@ export default function LabResultDetailClient({ labResultId, permissions }: { la
                         {shortDate(l.notificationSentAt)}, {clock(l.notificationSentAt)}
                       </span>
                     </>
+                  ) : l.status === 'completed' && l.awaitingReview ? (
+                    <span className="text-gray-500">After the doctor reviews it</span>
                   ) : (
                     <span className="text-gray-500">Not yet</span>
                   )}
@@ -597,8 +626,11 @@ function ResultsPanel({
   );
 }
 
-function AttachmentsPanel({ lab: l, canUpload, onUpload }: { lab: LabResult; canUpload: boolean; onUpload: (file: File, notes: string) => Promise<boolean> }) {
+function AttachmentsPanel({ lab: l, canUpload, onUpload }: { lab: LabResult; canUpload: boolean; onUpload: (file: File, notes: string, isResult?: boolean) => Promise<boolean> }) {
   const files = l.attachments ?? [];
+  const waiting = l.status === 'ordered' || l.status === 'in-progress';
+  // Attaching a file only completes the test when someone says it is the result, not a request form or sample photo.
+  const [isResult, setIsResult] = useState(false);
   if (!files.length && !canUpload) return null;
   return (
     <Panel id="lab-files" title="Lab report and files">
@@ -635,7 +667,29 @@ function AttachmentsPanel({ lab: l, canUpload, onUpload }: { lab: LabResult; can
           ))}
         </ul>
       )}
-      {canUpload && <AttachForm onUpload={onUpload} placeholder="e.g. CBC report from the lab" noun="lab result" />}
+      {canUpload && (
+        <AttachForm
+          onUpload={async (file, notes) => {
+            const ok = await onUpload(file, notes, waiting && isResult);
+            if (ok) setIsResult(false);
+            return ok;
+          }}
+          placeholder="e.g. CBC report from the lab"
+          noun="lab result"
+        >
+          {waiting && (
+            <label className="flex items-start gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={isResult}
+                onChange={(e) => setIsResult(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-teal-dark focus:ring-brand-teal"
+              />
+              This file is the finished result (marks the test as in)
+            </label>
+          )}
+        </AttachForm>
+      )}
     </Panel>
   );
 }

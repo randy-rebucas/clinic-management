@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { detectCountry } from '@/lib/country-detection';
 import BrandLogo from '@/components/BrandLogo';
+import TurnstileWidget, { TURNSTILE_SITE_KEY } from '@/components/TurnstileWidget';
 
 interface FormErrors {
   tenantName?: string[];
@@ -12,7 +13,6 @@ interface FormErrors {
   email?: string[];
   adminName?: string[];
   adminEmail?: string[];
-  adminPassword?: string[];
   general?: string;
 }
 
@@ -25,16 +25,14 @@ export default function TenantOnboardClient() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [success, setSuccess] = useState(false);
   const [tenantData, setTenantData] = useState<any>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  // Turnstile tokens are single-use: bumping this remounts the widget after each attempt.
+  const [captchaKey, setCaptchaKey] = useState(0);
   const [detectingCountry, setDetectingCountry] = useState(true);
   const rootDomain = useSyncExternalStore(
     subscribeNoop,
     () => window.location.hostname.split('.').slice(-2).join('.'),
     () => 'localhost'
-  );
-  const protocol = useSyncExternalStore(
-    subscribeNoop,
-    () => window.location.protocol.slice(0, -1),
-    () => 'http'
   );
   const [lastGeneratedSubdomain, setLastGeneratedSubdomain] = useState('');
 
@@ -58,8 +56,6 @@ export default function TenantOnboardClient() {
     // Admin User
     adminName: '',
     adminEmail: '',
-    adminPassword: '',
-    confirmPassword: '',
   });
 
   const generateSubdomain = (name: string): string => {
@@ -200,13 +196,6 @@ export default function TenantOnboardClient() {
       } else if (!/^\S+@\S+\.\S+$/.test(formData.adminEmail)) {
         newErrors.adminEmail = ['Please enter a valid email address'];
       }
-      if (!formData.adminPassword) {
-        newErrors.adminPassword = ['Password is required'];
-      } else if (formData.adminPassword.length < 12) {
-        newErrors.adminPassword = ['Password must be at least 12 characters long'];
-      } else if (formData.adminPassword !== formData.confirmPassword) {
-        newErrors.adminPassword = ['Passwords do not match'];
-      }
     }
 
     setErrors(newErrors);
@@ -274,18 +263,17 @@ export default function TenantOnboardClient() {
         admin: {
           name: ensureValue(formData.adminName),
           email: ensureValue(formData.adminEmail),
-          password: formData.adminPassword, // Don't trim password
         },
+        turnstileToken: captchaToken ?? undefined,
       };
 
       // Final validation before sending
-      if (!requestBody.name || !requestBody.subdomain || !requestBody.admin?.name || !requestBody.admin?.email || !requestBody.admin?.password) {
+      if (!requestBody.name || !requestBody.subdomain || !requestBody.admin?.name || !requestBody.admin?.email) {
         const missingFields = [];
         if (!requestBody.name) missingFields.push('Tenant name');
         if (!requestBody.subdomain) missingFields.push('Subdomain');
         if (!requestBody.admin?.name) missingFields.push('Admin name');
         if (!requestBody.admin?.email) missingFields.push('Admin email');
-        if (!requestBody.admin?.password) missingFields.push('Admin password');
         
         setErrors({ 
           general: `Please fill in all required fields: ${missingFields.join(', ')}` 
@@ -294,6 +282,8 @@ export default function TenantOnboardClient() {
         return;
       }
 
+      setCaptchaKey((k) => k + 1);
+      setCaptchaToken(null);
       const response = await fetch('/api/tenants/onboard', {
         method: 'POST',
         headers: {
@@ -342,7 +332,6 @@ export default function TenantOnboardClient() {
             hasAdmin: !!requestBody.admin,
             adminName: requestBody.admin?.name || 'missing',
             adminEmail: requestBody.admin?.email || 'missing',
-            hasAdminPassword: !!requestBody.admin?.password,
           },
           timestamp: new Date().toISOString(),
         };
@@ -406,9 +395,6 @@ export default function TenantOnboardClient() {
   };
 
   if (success && tenantData) {
-    const port = process.env.NODE_ENV === 'production' ? '' : ':3000';
-    const accessUrl = `${protocol}://${tenantData.subdomain}.${rootDomain}${port}`;
-
     return (
       <div className="min-h-screen relative overflow-hidden flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
         {/* Background */}
@@ -425,113 +411,25 @@ export default function TenantOnboardClient() {
           />
         </div>
 
-        <div className="max-w-2xl w-full relative z-10">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 sm:p-10 lg:p-12">
-            <div className="text-center mb-8 sm:mb-10">
-              <div className="inline-flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 bg-brand-teal rounded-lg mb-6 shadow-sm">
-                <svg className="w-10 h-10 sm:w-12 sm:h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-gray-900 mb-3 tracking-tight">Tenant Created Successfully!</h1>
-              <p className="text-base sm:text-lg text-gray-600">Your clinic has been onboarded and is ready to use.</p>
+        <div className="max-w-xl w-full relative z-10">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 sm:p-10 text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-brand-teal rounded-lg mb-6 shadow-sm">
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
             </div>
-
-            <div className="bg-gray-50 rounded-lg p-6 sm:p-8 mb-6 border border-gray-200/50">
-              <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 sm:mb-6 flex items-center gap-2">
-                <div className="w-8 h-8 bg-brand-teal-light rounded-lg flex items-center justify-center">
-                  <svg className="w-4 h-4 text-brand-teal-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                </div>
-                Tenant Details
-              </h2>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Name:</span>
-                  <span className="font-medium text-gray-900">{tenantData.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Subdomain:</span>
-                  <span className="font-medium text-gray-900">{tenantData.subdomain}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Status:</span>
-                  <span className="font-medium text-green-600 capitalize">{tenantData.status}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-brand-teal-light/30 rounded-lg p-6 sm:p-8 mb-6 border border-brand-teal-light">
-              <h2 className="text-lg sm:text-xl font-bold text-gray-900 mb-4 sm:mb-6 flex items-center gap-2">
-                <div className="w-8 h-8 bg-brand-teal-light rounded-lg flex items-center justify-center">
-                  <svg className="w-4 h-4 text-brand-teal-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                  </svg>
-                </div>
-                Access Information
-              </h2>
-              <div className="space-y-3">
-                <div>
-                  <label htmlFor="tenant-access-url" className="block text-sm font-medium text-gray-700 mb-1">Access URL</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      id="tenant-access-url"
-                      type="text"
-                      readOnly
-                      value={accessUrl}
-                      className="flex-1 px-4 py-3 bg-white border border-gray-300 rounded-md text-sm font-mono focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(accessUrl);
-                        alert('URL copied to clipboard!');
-                      }}
-                      className="px-4 sm:px-6 py-3 bg-brand-teal text-white rounded-md hover:bg-brand-teal-dark transition-colors text-sm font-semibold"
-                    >
-                      Copy
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <p className="block text-sm font-medium text-gray-700 mb-1">Admin Email</p>
-                  <p className="text-sm text-gray-900 font-mono bg-white px-4 py-3 rounded-md border border-gray-300">
-                    {tenantData.adminEmail}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-5 sm:p-6 mb-6">
-              <div className="flex items-start">
-                <svg className="w-5 h-5 text-yellow-600 mt-0.5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div className="text-sm text-yellow-800">
-                  <p className="font-semibold mb-1">Next Steps:</p>
-                  <ul className="list-disc list-inside space-y-1 ml-2">
-                    <li>Configure DNS to point {tenantData.subdomain}.{rootDomain} to your server (production)</li>
-                    <li>Access your tenant using the URL above</li>
-                    <li>Log in with your admin credentials</li>
-                    <li>Configure tenant settings and add staff members</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-4">
-              <a
-                href={accessUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 px-6 sm:px-8 py-3 sm:py-4 bg-brand-teal text-white rounded-md font-semibold text-center hover:bg-brand-teal-dark transition-colors"
-              >
-                Go to Your Clinic
-              </a>
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-3 tracking-tight">Check your email</h1>
+            <p className="text-base text-gray-600">
+              We sent a link to <span className="font-semibold text-gray-900">{tenantData.adminEmail}</span>. Open it to set your
+              password and sign in to <span className="font-semibold text-gray-900">{tenantData.subdomain}.{rootDomain}</span>.
+            </p>
+            <p className="mt-4 text-sm text-gray-500">
+              The link works for 72 hours. Nothing arrived? Check your spam folder, or contact support.
+            </p>
+            <div className="mt-8">
               <Link
                 href="/"
-                className="px-6 sm:px-8 py-3 sm:py-4 bg-white border border-gray-300 text-gray-700 rounded-md font-semibold hover:bg-gray-50 hover:border-gray-400 transition-colors text-center"
+                className="inline-block px-6 sm:px-8 py-3 bg-white border border-gray-300 text-gray-700 rounded-md font-semibold hover:bg-gray-50 hover:border-gray-400 transition-colors"
               >
                 Back to Home
               </Link>
@@ -1007,7 +905,7 @@ export default function TenantOnboardClient() {
                 Create Admin Account
               </h2>
               <p className="text-gray-600 mb-6">
-                Create the administrator account for your clinic. You&apos;ll use these credentials to log in and manage your clinic.
+                Who runs the clinic&apos;s account? They&apos;ll sign in with this email and manage staff and settings.
               </p>
               
               <div>
@@ -1048,40 +946,11 @@ export default function TenantOnboardClient() {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="tenant-admin-password" className="block text-sm font-medium text-gray-700 mb-2">
-                    Password <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="tenant-admin-password"
-                    type="password"
-                    value={formData.adminPassword}
-                    onChange={(e) => handleInputChange('adminPassword', e.target.value)}
-                    className={`w-full px-4 py-3 border rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base ${
-                      errors.adminPassword ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                    placeholder="Min 12 characters"
-                  />
-                  {errors.adminPassword && (
-                    <p className="mt-1 text-sm text-red-600">{errors.adminPassword[0]}</p>
-                  )}
-                </div>
+              <p className="text-sm text-gray-600">
+                We&apos;ll email this address a link to set your password. Your clinic is ready once you&apos;ve set it.
+              </p>
 
-                <div>
-                  <label htmlFor="tenant-admin-confirm-password" className="block text-sm font-medium text-gray-700 mb-2">
-                    Confirm Password <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="tenant-admin-confirm-password"
-                    type="password"
-                    value={formData.confirmPassword}
-                    onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base"
-                    placeholder="Confirm password"
-                  />
-                </div>
-              </div>
+              {TURNSTILE_SITE_KEY && <TurnstileWidget key={captchaKey} onToken={setCaptchaToken} />}
 
               <div className="flex gap-4 pt-4">
                 <button
@@ -1093,7 +962,7 @@ export default function TenantOnboardClient() {
                 </button>
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || (Boolean(TURNSTILE_SITE_KEY) && !captchaToken)}
                   className="flex-1 px-6 sm:px-8 py-3 sm:py-4 bg-brand-teal hover:bg-brand-teal-dark text-white rounded-md font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-base sm:text-lg"
                 >
                   {loading ? (

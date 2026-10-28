@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import { requirePermission } from '@/app/lib/auth-helpers';
@@ -48,7 +48,7 @@ export async function POST(
     const { qrData, expiresAt } = await issuePatientLoginQr(id, { tenantId: ctx.tenantId });
 
     const { createAuditLog } = await import('@/lib/audit');
-    void createAuditLog({
+    after(() => createAuditLog({
       userId: session.userId,
       userEmail: session.email,
       userRole: session.role,
@@ -59,7 +59,7 @@ export async function POST(
       dataSubject: id,
       isSensitive: true,
       description: `Staff issued a single-use app sign-in QR code (valid ${LOGIN_QR_TTL_MINUTES} minutes)`,
-    });
+    }));
 
     return NextResponse.json(
       { success: true, data: { qrData, expiresAt } },
@@ -103,7 +103,7 @@ export async function DELETE(
     await revokeAllPatientAccess(id);
 
     const { createAuditLog } = await import('@/lib/audit');
-    void createAuditLog({
+    after(() => createAuditLog({
       userId: session.userId,
       userEmail: session.email,
       userRole: session.role,
@@ -114,7 +114,7 @@ export async function DELETE(
       dataSubject: id,
       isSensitive: true,
       description: 'Staff revoked the app sign-in QR code and signed the patient out of the app',
-    });
+    }));
 
     return NextResponse.json({ success: true });
   } catch (error) {

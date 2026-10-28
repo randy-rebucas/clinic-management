@@ -1,6 +1,7 @@
 // Third-Party Lab Integration Utilities
 // Supports integration with external laboratory systems
 import 'server-only';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { lookup as dnsLookup } from 'dns/promises';
 import type { LookupAddress } from 'dns';
 import https from 'https';
@@ -225,7 +226,7 @@ export async function checkOutboundUrl(raw: string | undefined | null): Promise<
 
 /**
  * Server-side lab configuration. LAB_INTEGRATIONS is a JSON array of
- * { labCode, labName, apiEndpoint, apiKey, apiSecret?, tenantIds? }; an entry with
+ * { labCode, labName, apiEndpoint, apiKey, apiSecret?, webhookSecret?, tenantIds? }; an entry with
  * tenantIds is only usable by those clinics.
  */
 export function getConfiguredLab(labCode: string | undefined, tenantId: string): LabIntegrationConfig | null {
@@ -247,6 +248,58 @@ export function getConfiguredLab(labCode: string | undefined, tenantId: string):
     };
   } catch {
     console.error('LAB_INTEGRATIONS is not valid JSON');
+    return null;
+  }
+}
+
+/** How far a delivery's timestamp may be from now. */
+const WEBHOOK_TOLERANCE_SECONDS = 5 * 60;
+
+/**
+ * Verify the delivery's HMAC-SHA256 signature.
+ *
+ * The lab sends `X-Webhook-Timestamp: <unix seconds>` and `X-Webhook-Signature: sha256=<hex>`,
+ * where the HMAC covers `<timestamp>.<raw body>`, so a captured delivery can't be replayed later.
+ * The secret is the lab's own (`X-Lab-Code` → LAB_INTEGRATIONS[].webhookSecret), else the shared
+ * LAB_WEBHOOK_SECRET. LAB_WEBHOOK_LEGACY_SIGNATURES=true also accepts the old body-only signature
+ * without a timestamp, for labs still moving over.
+ */
+export function verifyWebhookSignature(
+  rawBody: string,
+  headers: { signature: string | null; timestamp: string | null },
+  secret: string,
+  now = Date.now()
+): boolean {
+  const [algorithm, receivedHex] = (headers.signature ?? '').split('=');
+  if (algorithm !== 'sha256' || !receivedHex) return false;
+
+  let signed: string;
+  if (headers.timestamp) {
+    const ts = Number(headers.timestamp);
+    if (!Number.isInteger(ts) || Math.abs(now / 1000 - ts) > WEBHOOK_TOLERANCE_SECONDS) return false;
+    signed = `${headers.timestamp}.${rawBody}`;
+  } else if (process.env.LAB_WEBHOOK_LEGACY_SIGNATURES === 'true') {
+    signed = rawBody;
+  } else {
+    return false;
+  }
+
+  const expected = createHmac('sha256', secret).update(signed, 'utf8').digest('hex');
+  try {
+    return timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(receivedHex, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
+/** The secret a lab signs its result webhooks with (LAB_INTEGRATIONS[].webhookSecret). */
+export function labWebhookSecret(labCode: string): string | null {
+  if (!process.env.LAB_INTEGRATIONS) return null;
+  try {
+    const entries = JSON.parse(process.env.LAB_INTEGRATIONS);
+    const entry = Array.isArray(entries) ? entries.find((e: any) => e && e.labCode === labCode) : null;
+    return entry?.webhookSecret ? String(entry.webhookSecret) : null;
+  } catch {
     return null;
   }
 }

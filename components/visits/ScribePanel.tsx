@@ -78,6 +78,7 @@ export default function ScribePanel({
   const [result, setResult] = useState<ScribeResult | null>(null);
   const [include, setInclude] = useState<ScribeSelection['include'] | null>(null);
   const [replace, setReplace] = useState(false);
+  const [consent, setConsent] = useState(false);
   const recognizer = useRef<SpeechRecognitionLike | null>(null);
   const wantListening = useRef(false);
   const canDictate = Boolean(speechRecognition());
@@ -148,7 +149,7 @@ export default function ScribePanel({
       const res = await fetch('/api/ai-scribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transcript, patientId: patientId || undefined, visitType }),
+        body: JSON.stringify({ transcript, patientId: patientId || undefined, visitType, consent }),
       });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.success) {
@@ -253,6 +254,17 @@ export default function ScribePanel({
                   Only age, sex, allergies and current medicines are sent with the transcript, not the patient’s name. The transcript isn’t stored.
                 </p>
               </div>
+              <label className="flex items-start gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={consent}
+                  onChange={(e) => setConsent(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-teal-dark focus:ring-brand-teal"
+                />
+                <span>
+                  The patient agreed to this consult being processed by the AI scribe, an outside service (Anthropic) that may process it outside the Philippines.
+                </span>
+              </label>
               {error && <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800 ring-1 ring-red-200">{error}</p>}
             </div>
           ) : (
@@ -285,7 +297,7 @@ export default function ScribePanel({
                 <button type="button" onClick={close} className={SECONDARY}>
                   Cancel
                 </button>
-                <button type="button" onClick={draft} disabled={busy || transcript.trim().length < 20} className={PRIMARY} aria-busy={busy}>
+                <button type="button" onClick={draft} disabled={busy || !consent || transcript.trim().length < 20} className={PRIMARY} aria-busy={busy}>
                   {busy ? 'Drafting… (up to a minute)' : 'Draft the note'}
                 </button>
               </>

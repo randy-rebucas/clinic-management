@@ -31,6 +31,8 @@
     "db:backup:zip": "tsx scripts/db-backup-zip.ts",
     "db:restore": "tsx scripts/db-restore.ts",
     "db:migrate:audit": "tsx scripts/migrate-2026-10-audit.ts",
+    "db:migrate:attachment-tenants": "tsx scripts/migrate-patient-attachment-tenants.ts",
+    "storage:migrate-attachments": "tsx scripts/migrate-attachments-to-cloudinary.ts",
     "users:rotate-default-passwords": "tsx scripts/rotate-default-passwords.ts",
     "storage:migrate-private": "tsx scripts/migrate-cloudinary-private.ts"
   },
@@ -48,7 +50,7 @@
     "lucide-react": "^0.563.0",
     "mongoose": "^8.24.5",
     "next": "^16.4.1",
-    "nodemailer": "^10.1.1",
+    "nodemailer": "^10.2.1",
     "otplib": "^13.4.0",
     "puppeteer-core": "^25.14.0",
     "qrcode": "^1.5.4",
@@ -58,7 +60,7 @@
     "server-only": "^0.0.1",
     "twilio": "^5.10.6",
     "web-push": "^3.6.7",
-    "zod": "^4.1.12"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@next/bundle-analyzer": "^16.4.1",
@@ -83,5 +85,8 @@
     "vite": "^8.3.4",
     "vitest": "^5.0.5"
   },
-  "packageManager": "pnpm@10.33.0"
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=20.9"
+  }
 }

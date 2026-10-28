@@ -17,6 +17,7 @@ import {
   Receptionist,
   Accountant,
   MedicalRepresentative,
+  MedicalTechnologist,
   Patient,
   Service,
   Medicine,
@@ -50,7 +51,7 @@ import {
  * 
  * This script creates a complete set of seed data for a tenant, including:
  * - Tenant record (or uses existing default tenant)
- * - All roles with proper permissions (admin, doctor, nurse, receptionist, accountant, medical-representative)
+ * - All roles with proper permissions (admin, doctor, nurse, receptionist, accountant, medical-technologist, medical-representative)
  * - Staff profiles (admins, doctors, nurses, receptionists, accountants, medical representatives)
  * - Patients with complete medical records
  * - Clinical data (appointments, visits, prescriptions, lab results, imaging, procedures)
@@ -83,6 +84,7 @@ const seedData: {
   nurses: any[];
   receptionists: any[];
   accountants: any[];
+  medicalTechnologists: any[];
   medicalRepresentatives: any[];
   patients: any[];
   services: any[];
@@ -112,6 +114,7 @@ const seedData: {
   nurses: [],
   receptionists: [],
   accountants: [],
+  medicalTechnologists: [],
   medicalRepresentatives: [],
   patients: [],
   services: [],
@@ -216,6 +219,7 @@ async function seedDataScript() {
       // Profile models (these have post-save hooks that create Users)
       MedicalRepresentative.deleteMany({ tenantId }),
       Accountant.deleteMany({ tenantId }),
+      MedicalTechnologist.deleteMany({ tenantId }),
       Receptionist.deleteMany({ tenantId }),
       Nurse.deleteMany({ tenantId }),
       Doctor.deleteMany({ tenantId }),
@@ -438,6 +442,41 @@ async function seedDataScript() {
     }
     seedData.roles.push(accountantRole);
 
+    // Medical technologist role
+    const medTechRole = await Role.findOneAndUpdate(
+      { name: 'medical-technologist', tenantId },
+      {
+        name: 'medical-technologist',
+        tenantId,
+        displayName: 'Medical technologist',
+        description: 'Laboratory staff who receive lab requests and enter results',
+        level: 50,
+        isActive: true,
+        defaultPermissions: DEFAULT_ROLE_PERMISSIONS['medical-technologist'],
+      },
+      { upsert: true, new: true }
+    );
+    await Permission.deleteMany({ role: medTechRole._id, tenantId });
+    const medTechPermissions = [];
+    try {
+      for (const perm of medTechRole.defaultPermissions || []) {
+        const permission = await Permission.create({
+          role: medTechRole._id,
+          tenantId,
+          resource: perm.resource,
+          actions: perm.actions,
+        });
+        medTechPermissions.push(permission._id);
+      }
+      medTechRole.permissions = medTechPermissions;
+      await medTechRole.save();
+      console.log(`   ✓ Created role: ${medTechRole.displayName} with ${medTechPermissions.length} permission(s)`);
+    } catch (error: any) {
+      console.error('   ⚠️  Error creating permissions for medical technologist role:', error.message);
+      console.log(`   ✓ Created role: ${medTechRole.displayName} (permissions creation failed, using defaultPermissions)`);
+    }
+    seedData.roles.push(medTechRole);
+
     // Medical Representative role
     const medicalRepRole = await Role.findOneAndUpdate(
       { name: 'medical-representative', tenantId },
@@ -653,6 +692,32 @@ async function seedDataScript() {
       }
     }
     console.log('✅ Accountant profiles created\n');
+
+    // 6b. Create Medical Technologist Profiles (auto-creates User via post-save hook)
+    console.log('🧪 Creating medical technologist profiles...');
+    const medTech = await MedicalTechnologist.create({
+      firstName: 'Grace',
+      lastName: 'Santos',
+      email: 'lab@clinic.com',
+      phone: '+1-555-6500',
+      tenantId,
+      employeeId: 'LAB-0001',
+      department: 'Laboratory',
+      title: 'RMT',
+      specialization: 'Clinical chemistry',
+      licenseNumber: 'RMT-0004000',
+      hireDate: new Date(2023, 0, 1),
+      status: 'active',
+    });
+    seedData.medicalTechnologists.push(medTech);
+    const medTechUser = await User.findOne({ medicalTechnologistProfile: medTech._id });
+    if (medTechUser) {
+      seedData.users.push(medTechUser);
+      console.log(`   ✓ Created medical technologist: ${medTech.firstName} ${medTech.lastName} (user auto-created: ${medTechUser.email})`);
+    } else {
+      console.log(`   ✓ Created medical technologist: ${medTech.firstName} ${medTech.lastName} (user creation pending)`);
+    }
+    console.log('✅ Medical technologist profiles created\n');
 
     // 7. Create Medical Representative Profiles (auto-creates User via post-save hook)
     console.log('🧬 Creating medical representative profiles...');
@@ -1681,6 +1746,7 @@ async function seedDataScript() {
     console.log('   Nurses: nurse1@clinic.com, nurse2@clinic.com');
     console.log('   Receptionist: receptionist@clinic.com');
     console.log('   Accountant: accountant@clinic.com');
+    console.log('   Medical technologist: lab@clinic.com');
     console.log('   Med Reps: medrep1@pharma.com, medrep2@biotech.com\n');
 
     await mongoose.connection.close();

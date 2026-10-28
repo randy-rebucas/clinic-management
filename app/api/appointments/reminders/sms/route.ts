@@ -9,8 +9,6 @@ import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { formatInTz } from '@/lib/tz';
 import { Types } from 'mongoose';
 
-const MAX_BATCH = 200;
-
 function populateFor(tenantObjectId: Types.ObjectId) {
   return [
     { path: 'patient', select: 'firstName lastName phone', match: { tenantIds: tenantObjectId } },
@@ -68,57 +66,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Send SMS reminders for this clinic's upcoming appointments
-export async function GET(request: NextRequest) {
-  const ctx = await requireTenantSession();
-  if (isTenantSessionError(ctx)) return ctx;
-
-  const permissionCheck = await requirePermission(ctx.session, 'appointments', 'update');
-  if (permissionCheck) return permissionCheck;
-
-  try {
-    await connectDB();
-    const searchParams = request.nextUrl.searchParams;
-    const hoursAhead = Math.min(Math.max(parseInt(searchParams.get('hoursAhead') || '24') || 24, 1), 72);
-
-    const now = new Date();
-    const futureTime = new Date(now.getTime() + hoursAhead * 60 * 60 * 1000);
-
-    const appointmentsNeedingReminders = await Appointment.find(tenantFilter(ctx.tenantId, {
-      appointmentDate: { $gte: now, $lte: futureTime },
-      status: { $in: ['scheduled', 'confirmed'] },
-    }))
-      .limit(MAX_BATCH)
-      .populate(populateFor(ctx.tenantObjectId));
-
-    const tz = await getTenantTimezone(ctx.tenantId);
-    const results = [];
-    for (const appointment of appointmentsNeedingReminders) {
-      const patient = appointment.patient as any;
-      if (patient?.phone) {
-        try {
-          const result = await sendSMSReminder(appointment, tz);
-          results.push({ appointmentId: appointment._id, success: result.success, result });
-        } catch (error) {
-          console.error('Error sending SMS reminder:', error);
-          results.push({ appointmentId: appointment._id, success: false, error: 'Failed to send' });
-        }
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: `Processed ${results.length} appointments`,
-      data: results,
-    });
-  } catch (error: any) {
-    console.error('Error processing SMS reminders:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to process SMS reminders' },
-      { status: 500 }
-    );
-  }
-}
+// Bulk reminders are sent by the reminders cron (lib/automations/appointment-reminders.ts). There is
+// deliberately no GET here: a GET that sends SMS can be triggered cross-site by a link or redirect,
+// and is not blocked for read-only view-as sessions.
 
 async function sendSMSReminder(appointment: any, tz: string) {
   const patient = appointment.patient as any;

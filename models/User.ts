@@ -17,6 +17,7 @@ export interface IUser extends Document {
   receptionistProfile?: Types.ObjectId;
   accountantProfile?: Types.ObjectId;
   medicalRepresentativeProfile?: Types.ObjectId;
+  medicalTechnologistProfile?: Types.ObjectId;
   status: 'active' | 'inactive' | 'suspended';
   lastLogin?: Date;
   // 2FA / TOTP
@@ -25,6 +26,8 @@ export interface IUser extends Document {
   totpPendingSecret?: string; // Encrypted secret awaiting confirmation during (re-)enrollment
   totpLastUsedStep?: number; // Last accepted TOTP time-step, for replay protection
   sessionVersion?: number; // Bumped to revoke all existing sessions for this user
+  /** Single sessions ended by signing out (token jti), kept until the token would have expired. */
+  revokedSessions?: { jti: string; exp: Date }[];
   // Invite / admin-triggered password setup (see lib/user-invite.ts)
   mustSetPassword?: boolean; // Login is refused until the user sets a password via the invite link
   inviteTokenHash?: string; // sha256 of the single-use set-password token
@@ -55,6 +58,8 @@ const UserSchema = new Schema<IUser>(
     },
     password: {
       type: String,
+      // Never returned unless asked for with select('+password').
+      select: false,
       required: [true, 'Password is required'],
       minlength: [8, 'Password must be at least 8 characters long'],
     },
@@ -79,6 +84,7 @@ const UserSchema = new Schema<IUser>(
     receptionistProfile: { type: Schema.Types.ObjectId, ref: 'Receptionist' },
     accountantProfile: { type: Schema.Types.ObjectId, ref: 'Accountant' },
     medicalRepresentativeProfile: { type: Schema.Types.ObjectId, ref: 'MedicalRepresentative' },
+    medicalTechnologistProfile: { type: Schema.Types.ObjectId, ref: 'MedicalTechnologist' },
     status: {
       type: String,
       enum: ['active', 'inactive', 'suspended'],
@@ -90,6 +96,7 @@ const UserSchema = new Schema<IUser>(
     totpPendingSecret: { type: String, select: false },
     totpLastUsedStep: { type: Number, select: false },
     sessionVersion: { type: Number, default: 0 },
+    revokedSessions: { type: [{ _id: false, jti: String, exp: Date }], default: undefined },
     mustSetPassword: { type: Boolean, default: false },
     inviteTokenHash: { type: String, select: false },
     inviteExpiresAt: { type: Date, select: false },
@@ -106,6 +113,7 @@ UserSchema.index({ nurseProfile: 1 });
 UserSchema.index({ receptionistProfile: 1 });
 UserSchema.index({ accountantProfile: 1 });
 UserSchema.index({ medicalRepresentativeProfile: 1 });
+UserSchema.index({ medicalTechnologistProfile: 1 });
 UserSchema.index({ role: 1, status: 1 }); // For role-based status queries
 UserSchema.index({ status: 1 }); // For status-based queries
 UserSchema.index({ email: 1, tenantId: 1 }); // Compound index for tenant-scoped email lookups
@@ -119,7 +127,7 @@ UserSchema.index({ inviteTokenHash: 1 }, { sparse: true }); // Set-password toke
 // Validation: Ensure role consistency with all profile types
 UserSchema.pre('save', async function (next) {
   // Skip validation if none of the relevant fields are modified
-  const profileFields = ['role', 'staffInfo', 'adminProfile', 'doctorProfile', 'nurseProfile', 'receptionistProfile', 'accountantProfile', 'medicalRepresentativeProfile'];
+  const profileFields = ['role', 'staffInfo', 'adminProfile', 'doctorProfile', 'nurseProfile', 'receptionistProfile', 'accountantProfile', 'medicalRepresentativeProfile', 'medicalTechnologistProfile'];
   if (!profileFields.some(field => this.isModified(field))) {
     return next();
   }
@@ -133,7 +141,8 @@ UserSchema.pre('save', async function (next) {
       this.nurseProfile,
       this.receptionistProfile,
       this.accountantProfile,
-      this.medicalRepresentativeProfile
+      this.medicalRepresentativeProfile,
+      this.medicalTechnologistProfile,
     ];
     
     // Validation: Cannot have multiple profile types set simultaneously
@@ -169,6 +178,7 @@ UserSchema.pre('save', async function (next) {
       const isReceptionistRole = roleName === 'receptionist';
       const isAccountantRole = roleName === 'accountant';
       const isMedicalRepRole = roleName === 'medical-representative';
+      const isMedTechRole = roleName === 'medical-technologist';
 
       // Validation: Role-specific profile warnings (warning only, as profile might be set later)
       if (isAdminRole && !this.adminProfile) {
@@ -189,6 +199,9 @@ UserSchema.pre('save', async function (next) {
       if (isMedicalRepRole && !this.medicalRepresentativeProfile) {
         console.warn(`⚠️  User with medical-representative role (${this.email}) does not have medicalRepresentativeProfile set`);
       }
+      if (isMedTechRole && !this.medicalTechnologistProfile) {
+        console.warn(`⚠️  User with medical-technologist role (${this.email}) does not have medicalTechnologistProfile set`);
+      }
 
       // Validation: If a profile is set, role must match
       if (this.adminProfile && !isAdminRole) {
@@ -208,6 +221,9 @@ UserSchema.pre('save', async function (next) {
       }
       if (this.medicalRepresentativeProfile && !isMedicalRepRole) {
         return next(new Error('User with medicalRepresentativeProfile must have medical-representative role'));
+      }
+      if (this.medicalTechnologistProfile && !isMedTechRole) {
+        return next(new Error('User with medicalTechnologistProfile must have medical-technologist role'));
       }
       
       // Legacy staffInfo validation (for backward compatibility)

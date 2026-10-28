@@ -19,7 +19,7 @@
  * AUTHENTICATION & AUTHORIZATION:
  * ├── User → Role (many-to-one)
  * ├── User → Permission[] (one-to-many)
- * ├── User → [Admin|Doctor|Nurse|Receptionist|Accountant|MedicalRep] (one-to-one)
+ * ├── User → [Admin|Doctor|Nurse|Receptionist|Accountant|MedicalRep|MedicalTech] (one-to-one)
  * └── Role → Permission[] (many-to-many)
  * 
  * STAFF PROFILES (auto-create User on save):
@@ -127,6 +127,9 @@ export type { IAccountant } from './Accountant';
 
 export { default as MedicalRepresentative } from './MedicalRepresentative';
 export type { IMedicalRepresentative } from './MedicalRepresentative';
+
+export { default as MedicalTechnologist } from './MedicalTechnologist';
+export type { IMedicalTechnologist } from './MedicalTechnologist';
 
 export { default as Staff } from './Staff';
 export type { IStaff } from './Staff';
@@ -260,6 +263,8 @@ export function registerAllModels(): void {
    
   require('./MedicalRepresentative');
    
+  require('./MedicalTechnologist');
+   
   require('./Staff');
   
   // User model
@@ -341,6 +346,7 @@ const models = {
   Receptionist: require('./Receptionist').default,
   Accountant: require('./Accountant').default,
   MedicalRepresentative: require('./MedicalRepresentative').default,
+  MedicalTechnologist: require('./MedicalTechnologist').default,
   Staff: require('./Staff').default,
   
   // User
