@@ -231,14 +231,13 @@ dropped and Session Replay is not enabled. Browser events are posted to the same
    MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/myclinicsoft?retryWrites=true&w=majority
    ```
 
-### Option 2: Local MongoDB
+### Option 2: Local MongoDB (Docker, recommended for development)
 
-1. Install MongoDB locally
-2. Start MongoDB service
-3. Update `MONGODB_URI` in `.env.local`:
-   ```
-   MONGODB_URI=mongodb://localhost:27017/myclinicsoft
-   ```
+`pnpm db:local:up` starts MongoDB 8.0 in Docker, and `pnpm db:local:refresh` loads an anonymized copy of a production backup. Point `.env.local` at it:
+```
+MONGODB_URI=mongodb://127.0.0.1:27017/clinic-management
+```
+Keep production settings in `.env.prod.local` and run scripts against production with `pnpm prod <script>`. See [docs/LOCAL_DEV_DATABASE.md](docs/LOCAL_DEV_DATABASE.md).
 
 ## Project Structure
 
