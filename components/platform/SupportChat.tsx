@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { FIELD, FOCUS_RING } from '../appointments/shared';
 import { callPlatform, Notice, OUTLINE, PRIMARY, LABEL } from './platform-api';
 import { startVisiblePoll } from '@/lib/visible-poll';
-import { MESSAGE_MAX_LENGTH } from '@/lib/messaging';
+import { MESSAGE_MAX_LENGTH, canEditMessage } from '@/lib/messaging';
 import type { SupportChatMessage, SupportChatPerson } from '@/lib/support-chat';
 
 /** The platform console's support chat: find a staff member, the thread, and broadcasts. */
@@ -84,15 +84,53 @@ export function SupportChatThread({
   person,
   initial,
   hasOlder,
+  meEmail,
 }: {
   person: SupportChatPerson;
   initial: SupportChatMessage[];
   hasOlder: boolean;
+  /** The signed-in agent: their own messages can be edited (briefly) and deleted. */
+  meEmail: string;
 }) {
   const [messages, setMessages] = useState(initial);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
+  const [changing, setChanging] = useState<string | null>(null);
+
+  const replace = (m: SupportChatMessage) => setMessages((prev) => prev.map((x) => (x.id === m.id ? m : x)));
+  const messageUrl = (id: string) => `/api/platform/chat/${person.userId}/messages/${id}`;
+
+  async function saveEdit() {
+    if (!editing) return;
+    const body = editing.text.trim();
+    if (!body) return;
+    setChanging(editing.id);
+    setNotice(null);
+    const result = await callPlatform<SupportChatMessage>(messageUrl(editing.id), 'PATCH', { body });
+    setChanging(null);
+    if (!result.ok) {
+      setNotice({ tone: 'error', text: result.error });
+      return;
+    }
+    replace(result.data);
+    setEditing(null);
+  }
+
+  async function remove(m: SupportChatMessage) {
+    if (!window.confirm(`Delete this message for everyone? ${person.name.split(' ')[0]} will see “Message deleted”.`)) return;
+    setChanging(m.id);
+    setNotice(null);
+    const result = await callPlatform<SupportChatMessage>(messageUrl(m.id), 'DELETE');
+    setChanging(null);
+    if (!result.ok) {
+      setNotice({ tone: 'error', text: result.error });
+      return;
+    }
+    replace(result.data);
+    if (editing?.id === m.id) setEditing(null);
+  }
   const endRef = useRef<HTMLDivElement>(null);
   const count = messages.length;
 
@@ -130,23 +168,67 @@ export function SupportChatThread({
     <div className="space-y-4">
       <ol className="space-y-3" aria-label={`Conversation with ${person.name}`}>
         {hasOlder && <li className="text-center text-xs text-gray-500">Older messages aren’t shown.</li>}
-        {messages.map((m) => (
-          <li key={m.id} className={`flex ${m.fromSupport ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] rounded-lg px-4 py-3 ${m.fromSupport ? 'bg-brand-teal-light' : 'border border-gray-200 bg-white'}`}>
-              <p className="text-xs text-gray-500">
-                <span className="font-medium text-gray-700">{m.fromSupport ? `MyClinicSoft · ${m.agentEmail ?? 'support'}` : person.name}</span>
-                {' · '}
-                {when(m.createdAt)}
-                {m.edited && ' · edited'}
-              </p>
-              {m.deleted ? (
-                <p className="mt-1.5 text-sm italic text-gray-500">Deleted by {person.name}</p>
-              ) : (
-                <p className="mt-1.5 whitespace-pre-wrap break-words text-sm text-gray-900">{m.body}</p>
-              )}
-            </div>
-          </li>
-        ))}
+        {messages.map((m) => {
+          const mine = m.fromSupport && m.agentEmail === meEmail && !m.deleted;
+          const isEditing = editing?.id === m.id;
+          return (
+            <li key={m.id} className={`flex ${m.fromSupport ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[85%] rounded-lg px-4 py-3 ${m.fromSupport ? 'bg-brand-teal-light' : 'border border-gray-200 bg-white'}`}>
+                <p className="text-xs text-gray-500">
+                  <span className="font-medium text-gray-700">{m.fromSupport ? `MyClinicSoft · ${m.agentEmail ?? 'support'}` : person.name}</span>
+                  {' · '}
+                  {when(m.createdAt)}
+                  {m.edited && ' · edited'}
+                </p>
+                {m.deleted ? (
+                  <p className="mt-1.5 text-sm italic text-gray-500">{m.fromSupport ? 'Deleted for everyone' : `Deleted by ${person.name}`}</p>
+                ) : isEditing ? (
+                  <div className="mt-1.5">
+                    <label htmlFor={`edit-${m.id}`} className="sr-only">Edit message</label>
+                    <textarea
+                      id={`edit-${m.id}`}
+                      rows={3}
+                      value={editing.text}
+                      maxLength={MESSAGE_MAX_LENGTH}
+                      onChange={(e) => setEditing({ id: m.id, text: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') setEditing(null);
+                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveEdit();
+                      }}
+                      autoFocus
+                      className={FIELD}
+                    />
+                    <div className="mt-2 flex gap-2">
+                      <button type="button" onClick={saveEdit} disabled={changing === m.id || !editing.text.trim()} className={PRIMARY}>
+                        {changing === m.id ? 'Saving…' : 'Save'}
+                      </button>
+                      <button type="button" onClick={() => setEditing(null)} className={OUTLINE}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-1.5 whitespace-pre-wrap break-words text-sm text-gray-900">{m.body}</p>
+                )}
+                {mine && !isEditing && (
+                  <p className="mt-2 flex gap-3 text-xs">
+                    {canEditMessage(m) && (
+                      <button type="button" onClick={() => setEditing({ id: m.id, text: m.body })} className={`rounded font-semibold text-brand-teal-deep hover:underline ${FOCUS_RING}`}>
+                        Edit
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => remove(m)}
+                      disabled={changing === m.id}
+                      className={`rounded font-semibold text-rose-700 hover:underline disabled:opacity-60 ${FOCUS_RING}`}
+                    >
+                      {changing === m.id ? 'Deleting…' : 'Delete'}
+                    </button>
+                  </p>
+                )}
+              </div>
+            </li>
+          );
+        })}
         {messages.length === 0 && (
           <li className="rounded-lg border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500">
             No messages yet. What you send appears in {person.name.split(' ')[0]}’s Messages as from MyClinicSoft Support.

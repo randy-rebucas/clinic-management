@@ -5,6 +5,7 @@ import Conversation, { supportMemberKey } from '@/models/Conversation';
 import Message from '@/models/Message';
 import User from '@/models/User';
 import Tenant from '@/models/Tenant';
+import SupportBroadcast from '@/models/SupportBroadcast';
 import '@/models/Role';
 import { createAuditLog } from '@/lib/audit';
 import { escapeRegex } from '@/lib/api/validate';
@@ -12,6 +13,7 @@ import { escapeHtml, sendEmail } from '@/lib/email';
 import { resolveStaffAudience } from '@/lib/notify';
 import { platformAdminEmails } from '@/lib/platform-auth';
 import { sendPushToUser } from '@/lib/push-notifications';
+import { DELETED_MESSAGE_PREVIEW, canEditMessage } from '@/lib/messaging';
 
 /**
  * Support chat: each clinic staff member has one thread with the MyClinicSoft platform team,
@@ -254,7 +256,7 @@ export async function searchStaff(q: string): Promise<SupportChatPerson[]> {
 
 // ── Platform console: writing ──────────────────────────────────────────────────
 
-function auditSupport(tenantId: Types.ObjectId, agentEmail: string, entry: { action: 'create'; resourceId?: unknown; description: string; metadata?: Record<string, unknown> }) {
+function auditSupport(tenantId: Types.ObjectId, agentEmail: string, entry: { action: 'create' | 'update' | 'delete'; resourceId?: unknown; description: string; metadata?: Record<string, unknown> }) {
   return createAuditLog({
     userEmail: agentEmail,
     userRole: SUPPORT_AUDIT_ROLE,
@@ -334,7 +336,7 @@ export async function broadcastSupportMessage(opts: {
   body: string;
   audience: 'admins' | 'all-staff';
   tenantIds: string[];
-}): Promise<{ ok: true; clinics: number; recipients: number } | { ok: false; error: string }> {
+}): Promise<{ ok: true; id: string; clinics: number; recipients: number } | { ok: false; error: string }> {
   await connectDB();
   const filter: Record<string, unknown> = { status: 'active' };
   if (opts.tenantIds.length) filter._id = { $in: opts.tenantIds.map((id) => new Types.ObjectId(id)) };
@@ -356,7 +358,16 @@ export async function broadcastSupportMessage(opts: {
     return { ok: false, error: `That would reach ${total} people; one broadcast can reach ${BROADCAST_MAX_RECIPIENTS}. Choose fewer clinics or only admins.` };
   }
 
+  // The console's record of what went out; its counts are filled in as each clinic is done.
+  const broadcast = await SupportBroadcast.create({
+    body: opts.body,
+    audience: opts.audience,
+    tenantIds: opts.tenantIds.map((id) => new Types.ObjectId(id)),
+    sentByEmail: opts.agentEmail,
+  });
   const preview = opts.body.length > 80 ? `${opts.body.slice(0, 77)}...` : opts.body;
+  let clinics = 0;
+  let recipients = 0;
   for (const { tenantId, userIds } of plan) {
     // A few round trips per clinic, not per person.
     const keys = userIds.map(supportMemberKey);
@@ -375,17 +386,122 @@ export async function broadcastSupportMessage(opts: {
     const threads = await Conversation.find({ tenantId, memberKey: { $in: keys } }).select('_id').lean<{ _id: Types.ObjectId }[]>();
     const at = new Date();
     await Message.insertMany(
-      threads.map((c) => ({ tenantId, conversation: c._id, fromSupport: true, supportAgentEmail: opts.agentEmail, body: opts.body, createdAt: at, updatedAt: at })),
+      threads.map((c) => ({ tenantId, conversation: c._id, fromSupport: true, supportAgentEmail: opts.agentEmail, broadcastId: broadcast._id, body: opts.body, createdAt: at, updatedAt: at })),
       { ordered: false }
     );
     await Conversation.updateMany({ _id: { $in: threads.map((c) => c._id) } }, deliveredUpdate(opts.body, at));
     await auditSupport(tenantId, opts.agentEmail, {
       action: 'create',
       description: `MyClinicSoft Support sent a broadcast to ${threads.length} ${opts.audience === 'admins' ? 'admin' : 'staff member'}${threads.length === 1 ? '' : 's'}: “${preview}”`,
-      metadata: { broadcast: true, recipients: threads.length },
+      metadata: { broadcast: true, broadcastId: String(broadcast._id), recipients: threads.length },
     });
+    clinics++;
+    recipients += threads.length;
+    await SupportBroadcast.updateOne({ _id: broadcast._id }, { $set: { clinics, recipients } });
   }
 
-  return { ok: true, clinics: plan.length, recipients: total };
+  return { ok: true, id: String(broadcast._id), clinics, recipients };
+}
+
+/** Broadcasts sent, newest first, with the clinics they were sent to by name. */
+export async function listSupportBroadcasts(limit = 30) {
+  await connectDB();
+  const rows = await SupportBroadcast.find({}).sort({ createdAt: -1 }).limit(limit).lean<any[]>();
+  const names = await clinicNames(rows.flatMap((r) => r.tenantIds));
+  return rows.map((r) => ({
+    id: String(r._id),
+    body: r.body as string,
+    audience: r.audience as 'admins' | 'all-staff',
+    clinicNames: (r.tenantIds as unknown[]).map((id) => names.get(String(id)) ?? 'a removed clinic'),
+    sentByEmail: r.sentByEmail as string,
+    clinics: r.clinics as number,
+    recipients: r.recipients as number,
+    createdAt: new Date(r.createdAt).toISOString(),
+  }));
+}
+
+// ── Platform console: changing what was sent ───────────────────────────────────
+
+type ChangeResult = { ok: true; message: SupportChatMessage } | { ok: false; status: number; error: string };
+
+/** A support message in this staff member's thread, with its thread and whether this agent wrote it. */
+async function findSupportMessage(agentEmail: string, userId: string, messageId: string) {
+  if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(messageId)) return null;
+  await connectDB();
+  const conversation = await Conversation.findOne({ kind: 'support', memberKey: supportMemberKey(userId) }).lean<any>();
+  if (!conversation) return null;
+  const message = await Message.findOne({ _id: messageId, conversation: conversation._id, tenantId: conversation.tenantId, fromSupport: true });
+  if (!message) return null;
+  return { conversation, message, mine: message.supportAgentEmail === agentEmail };
+}
+
+function shaped(m: any): SupportChatMessage {
+  return {
+    id: String(m._id),
+    fromSupport: true,
+    agentEmail: m.supportAgentEmail ?? null,
+    body: m.deletedAt ? '' : m.body,
+    deleted: Boolean(m.deletedAt),
+    edited: Boolean(m.editedAt) && !m.deletedAt,
+    createdAt: new Date(m.createdAt).toISOString(),
+  };
+}
+
+/** Keep the staff member's list preview in step when the message it shows changes. */
+function syncPreview(conversationId: unknown, message: any, body: string) {
+  return Conversation.updateOne(
+    { _id: conversationId, 'lastMessage.createdAt': message.createdAt, 'lastMessage.sender': { $exists: false } },
+    { $set: { 'lastMessage.body': body.slice(0, PREVIEW) } }
+  );
+}
+
+/** An agent corrects their own message, within the same window staff have. */
+export async function editSupportMessage(opts: { agentEmail: string; userId: string; messageId: string; body: string }): Promise<ChangeResult> {
+  const found = await findSupportMessage(opts.agentEmail, opts.userId, opts.messageId);
+  if (!found) return { ok: false, status: 404, error: 'Message not found' };
+  const { conversation, message, mine } = found;
+  if (!mine) return { ok: false, status: 403, error: 'You can only edit your own messages' };
+  if (!canEditMessage({ createdAt: message.createdAt.toISOString(), deleted: Boolean(message.deletedAt) })) {
+    return { ok: false, status: 409, error: 'This message can no longer be edited' };
+  }
+  if (opts.body !== message.body) {
+    message.body = opts.body;
+    message.editedAt = new Date();
+    await message.save();
+    await syncPreview(conversation._id, message, message.body);
+    // That it changed, not what it said.
+    await auditSupport(conversation.tenantId, opts.agentEmail, {
+      action: 'update',
+      resourceId: message._id,
+      description: `MyClinicSoft Support edited a message${message.broadcastId ? ' from a broadcast' : ''}`,
+      metadata: { conversationId: String(conversation._id), sentAt: message.createdAt.toISOString() },
+    });
+  }
+  return { ok: true, message: shaped(message) };
+}
+
+/** An agent deletes their own message for everyone; the staff member sees "Message deleted". */
+export async function deleteSupportMessage(opts: { agentEmail: string; userId: string; messageId: string }): Promise<ChangeResult> {
+  const found = await findSupportMessage(opts.agentEmail, opts.userId, opts.messageId);
+  if (!found) return { ok: false, status: 404, error: 'Message not found' };
+  const { conversation, message, mine } = found;
+  if (!mine) return { ok: false, status: 403, error: 'You can only delete your own messages' };
+  if (!message.deletedAt) {
+    message.deletedAt = new Date();
+    await message.save();
+    await syncPreview(conversation._id, message, DELETED_MESSAGE_PREVIEW);
+    // Not left as an unread badge for a message they can no longer see.
+    await Conversation.updateOne(
+      { _id: conversation._id, 'members.0.unread': { $gt: 0 }, 'members.0.lastReadAt': { $not: { $gte: message.createdAt } } },
+      { $inc: { 'members.0.unread': -1 } }
+    );
+    await auditSupport(conversation.tenantId, opts.agentEmail, {
+      action: 'delete',
+      resourceId: message._id,
+      description: `MyClinicSoft Support deleted a message${message.broadcastId ? ' from a broadcast' : ''} for everyone`,
+      metadata: { conversationId: String(conversation._id), sentAt: message.createdAt.toISOString() },
+    });
+  }
+  return { ok: true, message: shaped(message) };
 }
 

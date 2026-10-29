@@ -8,7 +8,7 @@ import { LINK } from '@/components/platform/shared';
 export const dynamic = 'force-dynamic';
 
 export default async function PlatformChatThreadPage({ params }: { params: Promise<{ userId: string }> }) {
-  await requirePlatformPage();
+  const session = await requirePlatformPage();
   const { userId } = await params;
   const thread = await loadSupportThread(userId);
   if (!thread) notFound();
@@ -26,7 +26,7 @@ export default async function PlatformChatThreadPage({ params }: { params: Promi
           {!person.active && ' · inactive account'}
         </p>
       </div>
-      <SupportChatThread person={person} initial={thread.messages} hasOlder={thread.hasOlder} />
+      <SupportChatThread person={person} initial={thread.messages} hasOlder={thread.hasOlder} meEmail={session.email} />
     </div>
   );
 }
