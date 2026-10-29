@@ -13,7 +13,7 @@ export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export const AUDIT_RESOURCES = [
   'patient', 'visit', 'appointment', 'prescription', 'lab_result', 'invoice', 'document', 'user', 'doctor',
   'room', 'service', 'notification', 'referral', 'membership', 'staff', 'medicine', 'settings', 'system',
-  'hmo', 'hmo_claim', 'philhealth', 'clinical_template', 'message',
+  'hmo', 'hmo_claim', 'philhealth', 'clinical_template', 'message', 'report',
 ] as const;
 export type AuditResource = (typeof AUDIT_RESOURCES)[number];
 
@@ -84,6 +84,7 @@ const NOUN: Record<AuditResource, string> = {
   philhealth: 'a PhilHealth claim or case rate',
   clinical_template: 'a colleague’s shared template',
   message: 'a chat message',
+  report: 'a report',
 };
 
 /** "Patient records", for menus and CSV. */
@@ -111,6 +112,7 @@ export const RESOURCE_LABEL: Record<AuditResource, string> = {
   philhealth: 'PhilHealth',
   clinical_template: 'Shared templates',
   message: 'Chat messages',
+  report: 'Reports',
 };
 
 const noun = (resource: string) => NOUN[resource as AuditResource] ?? `a ${resource.replace(/_/g, ' ')}`;
@@ -187,6 +189,7 @@ export function recordHref(resource: string, id: string | null, action: string):
     settings: '/admin/settings',
     clinical_template: '/templates',
     message: '/messages',
+    report: '/reports',
   };
   return lists[resource] ?? null;
 }

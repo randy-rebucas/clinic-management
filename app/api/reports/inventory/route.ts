@@ -11,7 +11,7 @@ import { openReport } from '../_lib/report-range';
  * in, and what was lost (damaged, expired). Aggregations only.
  */
 export async function GET(request: NextRequest) {
-  const open = await openReport(request.nextUrl.searchParams, 'inventory');
+  const open = await openReport(request, 'inventory');
   if (open instanceof NextResponse) return open;
   const { tenantObjectId, start, end } = open;
 

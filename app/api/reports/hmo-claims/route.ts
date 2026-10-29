@@ -12,7 +12,7 @@ const CLAIM_STATUSES = ['pending', 'approved', 'rejected', 'paid'] as const;
  * amount, or the invoice total when none was entered. Aggregations only.
  */
 export async function GET(request: NextRequest) {
-  const open = await openReport(request.nextUrl.searchParams, 'hmo-claims');
+  const open = await openReport(request, 'hmo-claims');
   if (open instanceof NextResponse) return open;
   const { tenantObjectId } = open;
 

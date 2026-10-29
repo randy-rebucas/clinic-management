@@ -1,11 +1,12 @@
 import { startOfWeek, endOfWeek } from 'date-fns';
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { Types } from 'mongoose';
 import { combineDateAndTimeInTz, dayRangeInTz, dayRangeOffsetInTz, formatInTz, inTz, monthRangeInTz, previousMonthRangeInTz } from '@/lib/tz';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
-import { getPermissionChecker } from '@/app/lib/auth-helpers';
+import { getPermissionChecker, refuseAccess } from '@/app/lib/auth-helpers';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { canOpenReport, type ReportKey } from '@/lib/reports';
+import { logReportOpened } from './report-audit';
 
 /** Upper bound on custom report windows, so a single request can't scan years of data. */
 export const MAX_REPORT_RANGE_DAYS = 366;
@@ -60,20 +61,24 @@ export function dayKeys(start: Date, end: Date, tz: string): string[] {
   return keys;
 }
 
-/** Session, permission and range checks shared by the report routes. */
+/**
+ * Session, permission and range checks shared by the report routes. A refusal and the report
+ * opened both reach the audit log.
+ */
 export async function openReport(
-  searchParams: URLSearchParams,
+  request: NextRequest,
   key: ReportKey
 ): Promise<NextResponse | { tenantId: string; tenantObjectId: Types.ObjectId; tz: string; start: Date; end: Date }> {
   const ctx = await requireTenantSession();
   if (isTenantSessionError(ctx)) return ctx;
   const can = await getPermissionChecker(ctx.session);
   if (!canOpenReport(can, key)) {
-    return NextResponse.json({ success: false, error: 'You don’t have access to this report' }, { status: 403 });
+    return refuseAccess({ ...ctx.session, tenantId: ctx.tenantId }, 'You don’t have access to this report', 'reports', 'read');
   }
   const tz = await getTenantTimezone(ctx.tenantId);
-  const range = resolveReportRange(searchParams, tz);
+  const range = resolveReportRange(request.nextUrl.searchParams, tz);
   if (isRangeError(range)) return NextResponse.json({ success: false, error: range.error }, { status: 400 });
+  await logReportOpened(ctx, request, key, range, tz);
   return { tenantId: ctx.tenantId, tenantObjectId: ctx.tenantObjectId, tz, ...range };
 }
 
