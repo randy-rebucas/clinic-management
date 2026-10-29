@@ -8,7 +8,8 @@ import { parseBody, isValidationError, zShortText, escapeRegex } from '@/lib/api
 import { sanitizeSearch } from '@/lib/utils';
 
 const specializationCreateSchema = z.object({
-  name: zShortText.min(1),
+  // A record id is never a specialty's name (see doctors/_lib/doctor-input.ts).
+  name: zShortText.min(1).refine((v) => !/^[a-f0-9]{24}$/i.test(v.trim()), 'Type the specialty’s name'),
   description: z.string().trim().max(2000).optional(),
   category: zShortText.optional(),
   active: z.boolean().optional(),

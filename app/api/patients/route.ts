@@ -8,6 +8,7 @@ import { sanitizeSearch } from '@/lib/utils';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { createPatientSchema, cleanPatientInput, nextPatientCode } from '@/lib/patient-schema';
+import { logPatientChange, patientChanges } from './_lib/patient-audit';
 import { SEGMENT_FLAG_KEYS } from '@/lib/patient-age-bands';
 
 export async function GET(request: NextRequest) {
@@ -212,6 +213,13 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    await logPatientChange(ctx, request, {
+      action: 'create',
+      patientId: patient._id,
+      description: `Registered as ${patient.patientCode}`,
+      changes: patientChanges({}, patient.toObject(), Object.keys(data)),
+    });
 
     // The welcome text goes to the phone (always present) and the email only when there is one;
     // sendWelcomeMessage checks each channel and the clinic's autoWelcomeMessages setting.

@@ -5,6 +5,7 @@ import { requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, patientTenantFilter } from '@/lib/api/tenant-session';
 import { validateUpload } from '@/lib/upload-validation';
 import { AttachmentStoreError, storeAttachment } from '@/lib/attachment-file';
+import { logPatientChange } from '../../_lib/patient-audit';
 
 export async function POST(
   request: NextRequest,
@@ -74,6 +75,12 @@ export async function POST(
     if (!patient) return notFound('Patient');
 
     const { url: _stored, ...added } = patient.attachments?.[0] ?? {};
+    await logPatientChange(ctx, request, {
+      action: 'update',
+      patientId: id,
+      description: `Attached a file: ${check.filename}`,
+      metadata: { fileId: added._id ? String(added._id) : undefined, contentType: check.contentType, size: check.buffer.length },
+    });
     return NextResponse.json({ success: true, data: patient.attachments?.length ? added : null });
   } catch (error: any) {
     if (error instanceof AttachmentStoreError) {

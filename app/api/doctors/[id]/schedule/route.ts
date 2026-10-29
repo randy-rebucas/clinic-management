@@ -14,6 +14,7 @@ import {
 } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { scheduleEntrySchema, availabilityOverrideSchema, validationMessage } from '../../_lib/doctor-input';
+import { doctorChanges, doctorLabel, logDoctorChange } from '../../_lib/doctor-audit';
 
 const scheduleUpdateSchema = z.object({
   schedule: z.array(scheduleEntrySchema).max(50).optional(),
@@ -123,6 +124,13 @@ export async function PUT(
     if (parsed.data.schedule !== undefined) update.schedule = parsed.data.schedule;
     if (parsed.data.availabilityOverrides !== undefined) update.availabilityOverrides = parsed.data.availabilityOverrides;
 
+    const before = await Doctor.findOne(tenantFilter(tenantId, { _id: id }))
+      .select('title firstName lastName schedule availabilityOverrides')
+      .lean<Record<string, any> | null>();
+    if (!before) {
+      return notFound('Doctor');
+    }
+
     const doctor = await Doctor.findOneAndUpdate(
       tenantFilter(tenantId, { _id: id }),
       { $set: update },
@@ -131,6 +139,18 @@ export async function PUT(
 
     if (!doctor) {
       return notFound('Doctor');
+    }
+
+    const after = doctor.toObject() as Record<string, any>;
+    const changes = await doctorChanges(before, Object.fromEntries(Object.keys(update).map((k) => [k, after[k]])));
+    if (changes.length) {
+      const what = changes.map((c) => (c.field === 'weeklyHours' ? 'weekly hours' : 'time off')).join(' and ');
+      await logDoctorChange(ctx, request, {
+        action: 'update',
+        doctorId: doctor._id,
+        description: `Changed the ${what} of ${doctorLabel(before)}`,
+        changes,
+      });
     }
 
     return NextResponse.json({ success: true, data: doctor });
