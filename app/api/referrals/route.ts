@@ -4,7 +4,6 @@ import Referral from '@/models/Referral';
 import Patient from '@/models/Patient';
 import Doctor from '@/models/Doctor';
 import { requirePermission } from '@/app/lib/auth-helpers';
-import { createAuditLog } from '@/lib/audit';
 import { Types } from 'mongoose';
 import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, escapeRegex } from '@/lib/api/validate';
@@ -12,6 +11,7 @@ import { createReferralSchema, normalizeReferral, referralPopulate, validateRefe
 import { directionFilter, OPEN_STATUSES, REFERRAL_STATUSES, URGENCIES, waitRange } from '@/lib/referrals';
 import { myDoctorProfileId } from '@/lib/doctor-access';
 import { nextSequence, formatCode } from '@/lib/counters';
+import { logReferral, partiesWords } from './_lib/referral-audit';
 
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 500;
@@ -190,16 +190,13 @@ export async function POST(request: NextRequest) {
       tenantId: tenantObjectId,
     });
 
-    await createAuditLog({
-      userId: session.userId,
-      userEmail: session.email,
-      userRole: session.role,
-      tenantId: tenantId,
+    const urgency = referral.urgency && referral.urgency !== 'routine' ? `, ${referral.urgency === 'stat' ? 'STAT' : referral.urgency}` : '';
+    await logReferral(ctx, request, {
       action: 'create',
-      resource: 'referral',
-      resourceId: referral._id,
-      dataSubject: body.patient,
-      description: `Created referral ${referral.referralCode} (${body.direction})`,
+      referralId: referral._id,
+      patientId: body.patient,
+      description: `${await partiesWords(tenantObjectId, referral.toObject())} (${referral.referralCode}${urgency})`,
+      metadata: { direction: body.direction, urgency: referral.urgency },
     });
 
     return NextResponse.json({ success: true, data: { _id: String(referral._id), referralCode: referral.referralCode } }, { status: 201 });
