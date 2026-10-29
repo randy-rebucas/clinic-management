@@ -8,7 +8,7 @@ import Visit from '@/models/Visit';
 import Invoice from '@/models/Invoice';
 import Doctor from '@/models/Doctor';
 import User from '@/models/User';
-import { hasPermission } from '@/app/lib/auth-helpers';
+import { getPermissionChecker } from '@/app/lib/auth-helpers';
 import {
   requireTenantSession,
   isTenantSessionError,
@@ -38,25 +38,21 @@ export async function GET(request: NextRequest) {
         : periodRange('daily', tz, now);
     const { start: todayStart, end: todayEnd } = dayRangeInTz(now, tz);
 
-    const [
-      canViewPatients,
-      canViewAppointments,
-      canViewVisits,
-      canViewInvoices,
-      canViewDoctors,
-      canViewPrescriptions,
-      canViewLabResults,
-      canViewReports,
-    ] = await Promise.all([
-      hasPermission(session, 'patients', 'read'),
-      hasPermission(session, 'appointments', 'read'),
-      hasPermission(session, 'visits', 'read'),
-      hasPermission(session, 'invoices', 'read'),
-      hasPermission(session, 'doctors', 'read'),
-      hasPermission(session, 'prescriptions', 'read'),
-      hasPermission(session, 'lab-results', 'read'),
-      hasPermission(session, 'reports', 'read'),
-    ]);
+    // One checker for all eight: the React cache() that dedupes the permission query is only
+    // documented to work within a render, which a route handler isn't, so separate
+    // hasPermission calls may each query.
+    const can = await getPermissionChecker(session).catch((error) => {
+      console.error('Error checking permission:', error);
+      return () => false;
+    });
+    const canViewPatients = can('patients', 'read');
+    const canViewAppointments = can('appointments', 'read');
+    const canViewVisits = can('visits', 'read');
+    const canViewInvoices = can('invoices', 'read');
+    const canViewDoctors = can('doctors', 'read');
+    const canViewPrescriptions = can('prescriptions', 'read');
+    const canViewLabResults = can('lab-results', 'read');
+    const canViewReports = can('reports', 'read');
 
     const overview: any = {};
     const data: any = {
@@ -166,16 +162,6 @@ export async function GET(request: NextRequest) {
         match: buildTenantFilter(tenantId),
       };
 
-      const recentAppointments = await Appointment.find({
-        ...tenantFilter,
-        appointmentDate: { $gte: todayStart, $lte: todayEnd },
-      })
-        .populate(patientPopulateOptions)
-        .populate(doctorPopulateOptions)
-        .sort({ appointmentTime: 1 })
-        .limit(10)
-        .lean();
-
       const nextWeek = dayRangeOffsetInTz(7, now, tz).end;
       const upcomingAppointments = await Appointment.find({
         ...tenantFilter,
@@ -188,16 +174,6 @@ export async function GET(request: NextRequest) {
         .limit(10)
         .lean();
 
-      data.recentAppointments = recentAppointments.map((apt: any) => ({
-        _id: apt._id,
-        appointmentCode: apt.appointmentCode,
-        patient: apt.patient ? `${apt.patient.firstName} ${apt.patient.lastName}` : 'Unknown',
-        doctor: apt.doctor ? `Dr. ${apt.doctor.firstName} ${apt.doctor.lastName}` : 'TBD',
-        date: apt.appointmentDate,
-        time: apt.appointmentTime,
-        status: apt.status,
-      }));
-
       data.upcomingAppointments = upcomingAppointments.map((apt: any) => ({
         _id: apt._id,
         appointmentCode: apt.appointmentCode,
@@ -208,7 +184,6 @@ export async function GET(request: NextRequest) {
         status: apt.status,
       }));
     } else {
-      data.recentAppointments = [];
       data.upcomingAppointments = [];
     }
 
@@ -224,16 +199,6 @@ export async function GET(request: NextRequest) {
 
     if (session.role === 'doctor') {
       if (doctorProfileId) {
-        const myAppointments = await Appointment.find({
-          ...tenantFilter,
-          $or: [{ doctor: doctorProfileId }, { provider: session.userId }],
-          appointmentDate: { $gte: todayStart, $lte: todayEnd },
-        })
-          .populate(patientPopulateOptions)
-          .sort({ appointmentTime: 1 })
-          .limit(5)
-          .lean();
-
         const myVisits = await Visit.find({
           ...tenantFilter,
           provider: session.userId,
@@ -244,15 +209,6 @@ export async function GET(request: NextRequest) {
           .limit(5)
           .lean();
 
-        data.myAppointments = myAppointments.map((apt: any) => ({
-          _id: apt._id,
-          appointmentCode: apt.appointmentCode,
-          patient: apt.patient ? `${apt.patient.firstName} ${apt.patient.lastName}` : 'Unknown',
-          date: apt.appointmentDate,
-          time: apt.appointmentTime,
-          status: apt.status,
-        }));
-
         data.myVisits = myVisits.map((visit: any) => ({
           _id: visit._id,
           patient: visit.patient ? `${visit.patient.firstName} ${visit.patient.lastName}` : 'Unknown',
@@ -260,8 +216,7 @@ export async function GET(request: NextRequest) {
           diagnosis: visit.diagnosis || 'N/A',
         }));
       } else {
-        console.warn(`Doctor user ${session.userId} is missing doctorProfile reference. Dashboard will not show personal appointments/visits.`);
-        data.myAppointments = [];
+        console.warn(`Doctor user ${session.userId} is missing doctorProfile reference. Dashboard will not show personal visits.`);
         data.myVisits = [];
       }
     }
