@@ -54,6 +54,9 @@ Never restore straight over production as a first step. Restore to a separate cl
 
 ## 4. Local and manual backups
 
+Local development uses an anonymized copy in Docker: see [LOCAL_DEV_DATABASE.md](LOCAL_DEV_DATABASE.md).
+Commands below that should hit production run through `pnpm prod <script>` (e.g. `pnpm prod db:backup:zip`).
+
 - `scripts/backup/backup.sh` / `restore.sh` wrap `mongodump` / `mongorestore` for ad-hoc copies
   (e.g. before a risky migration). `restore.sh` writes into whatever `MONGODB_URI` points at, so double-check it.
 - `pnpm db:backup:zip [label]` runs `mongodump` on `MONGODB_URI` and writes `backups/backup-<time>.zip`
