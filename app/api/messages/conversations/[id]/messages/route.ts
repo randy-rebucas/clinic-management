@@ -10,6 +10,8 @@ import { parseBody, isValidationError } from '@/lib/api/validate';
 import { sendPushToUser } from '@/lib/push-notifications';
 import { MESSAGE_MAX_LENGTH } from '@/lib/messaging';
 import { findMemberConversation, toChatMessage, visibleMessagesFilter } from '../../../_lib/conversations';
+import { noteStaffMessageToSupport } from '@/lib/support-chat';
+import Tenant from '@/models/Tenant';
 
 const PAGE_LIMIT = 30;
 
@@ -113,6 +115,15 @@ export async function POST(
       },
       { arrayFilters: [{ 'self.user': me }, { 'other.user': { $ne: me } }] }
     );
+
+    // A support thread has no other member: the platform team is counted and alerted instead.
+    if (conversation.kind === 'support') {
+      const [sender, clinic] = await Promise.all([
+        User.findById(session.userId).select('name email').lean<{ name?: string; email?: string } | null>(),
+        Tenant.findById(tenantObjectId).select('name displayName').lean<{ name?: string; displayName?: string } | null>(),
+      ]);
+      await noteStaffMessageToSupport(conversation._id, sender ?? {}, clinic?.displayName || clinic?.name || 'a clinic', session.userId);
+    }
 
     // Best-effort push to the recipient; never fail the send over it.
     const recipient = conversation.members.find((m: any) => String(m.user) !== session.userId);

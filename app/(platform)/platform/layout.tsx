@@ -5,6 +5,7 @@ import { verifyPlatformSession } from '@/lib/platform-auth';
 import { platformLogout } from '@/app/actions/platform-auth';
 import connectDB from '@/lib/mongodb';
 import SupportRequest from '@/models/SupportRequest';
+import { supportWaitingCount } from '@/lib/support-chat';
 
 export const metadata: Metadata = {
   title: 'Platform console',
@@ -21,7 +22,10 @@ export default async function PlatformLayout({ children }: { children: React.Rea
   if (!session) return <div className="min-h-screen bg-gray-50">{children}</div>;
 
   await connectDB();
-  const waiting = await SupportRequest.countDocuments({ status: { $in: ['open', 'in-progress'] }, lastReplyBy: { $ne: 'platform' } });
+  const [waiting, chatWaiting] = await Promise.all([
+    SupportRequest.countDocuments({ status: { $in: ['open', 'in-progress'] }, lastReplyBy: { $ne: 'platform' } }),
+    supportWaitingCount(),
+  ]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -33,7 +37,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
             <span className="rounded bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-300">Platform</span>
           </div>
           <nav aria-label="Platform console" className="order-last w-full sm:order-none sm:w-auto">
-            <PlatformNav waiting={waiting} />
+            <PlatformNav waiting={waiting} chatWaiting={chatWaiting} />
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <span className="hidden text-slate-300 md:inline">{session.email}</span>

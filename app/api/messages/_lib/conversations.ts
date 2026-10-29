@@ -3,13 +3,13 @@ import { Types } from 'mongoose';
 import User from '@/models/User';
 import '@/models/Role';
 import Conversation, { type IConversation } from '@/models/Conversation';
-import type { ChatMessage, ChatUser, ConversationSummary } from '@/lib/messaging';
+import { SUPPORT_CONTACT, SUPPORT_ID, type ChatMessage, type ChatUser, type ConversationSummary } from '@/lib/messaging';
 
 export function toChatMessage(m: any): ChatMessage {
   const deleted = Boolean(m.deletedAt);
   return {
     id: String(m._id),
-    senderId: String(m.sender),
+    senderId: m.fromSupport ? SUPPORT_ID : String(m.sender),
     body: deleted ? '' : m.body,
     createdAt: new Date(m.createdAt).toISOString(),
     updatedAt: new Date(m.updatedAt ?? m.createdAt).toISOString(),
@@ -63,10 +63,11 @@ async function loadChatUsers(tenantObjectId: Types.ObjectId, ids: string[]) {
 export async function serializeConversations(
   tenantObjectId: Types.ObjectId,
   meId: string,
-  conversations: Array<Pick<IConversation, 'members' | 'lastMessage' | 'lastMessageAt'> & { _id: unknown }>
+  conversations: Array<Pick<IConversation, 'members' | 'lastMessage' | 'lastMessageAt' | 'kind'> & { _id: unknown }>
 ): Promise<ConversationSummary[]> {
   const otherIds = new Set<string>();
   for (const c of conversations) {
+    if (c.kind === 'support') continue;
     const other = c.members.find((m) => String(m.user) !== meId);
     if (other) otherIds.add(String(other.user));
   }
@@ -79,11 +80,11 @@ export async function serializeConversations(
     const cleared = Boolean(me?.clearedAt && c.lastMessageAt && c.lastMessageAt <= me.clearedAt);
     return {
       id: String(c._id),
-      other: users.get(otherId) ?? { id: otherId, name: 'Former staff member', role: '' },
+      other: c.kind === 'support' ? SUPPORT_CONTACT : users.get(otherId) ?? { id: otherId, name: 'Former staff member', role: '' },
       lastMessage: c.lastMessage?.body && !cleared
         ? {
             body: c.lastMessage.body,
-            senderId: String(c.lastMessage.sender),
+            senderId: c.lastMessage.sender ? String(c.lastMessage.sender) : SUPPORT_ID,
             createdAt: new Date(c.lastMessage.createdAt).toISOString(),
           }
         : null,
