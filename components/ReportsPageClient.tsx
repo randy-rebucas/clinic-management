@@ -166,6 +166,13 @@ export default function ReportsPageClient({ allowed, initial }: { allowed: Repor
     a.download = `${meta.key}-${suffix}.csv`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    // For the audit log; the file is already saved, so a failure here changes nothing for the user.
+    fetch('/api/reports/downloads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report: meta.key, range: body.range }),
+      keepalive: true,
+    }).catch(() => {});
   };
 
   if (allowed.length === 0 || !report) {
