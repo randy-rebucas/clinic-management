@@ -109,21 +109,19 @@ const AuditLogSchema: Schema = new Schema(
     
     // Absent only for a sign-in attempt with an email that has no account (userEmail holds what was typed).
     userId: { type: Schema.Types.ObjectId, ref: 'User' },
-    userEmail: { type: String, index: true },
-    userRole: { type: String, index: true },
+    userEmail: { type: String },
+    userRole: { type: String },
     action: {
       type: String,
       enum: ['create', 'read', 'update', 'delete', 'login', 'logout', 'export', 'print', 'download', 'view', 'access_denied', 'password_change', 'permission_change', 'backup', 'restore', 'data_export', 'data_deletion'],
       required: true,
-      index: true,
     },
     resource: {
       type: String,
       enum: ['patient', 'visit', 'appointment', 'prescription', 'lab_result', 'invoice', 'document', 'user', 'doctor', 'room', 'service', 'notification', 'referral', 'membership', 'staff', 'medicine', 'settings', 'system', 'hmo', 'hmo_claim', 'philhealth', 'clinical_template'],
       required: true,
-      index: true,
     },
-    resourceId: { type: Schema.Types.ObjectId, index: true },
+    resourceId: { type: Schema.Types.ObjectId },
     ipAddress: { type: String },
     userAgent: { type: String },
     requestMethod: { type: String },
@@ -131,23 +129,23 @@ const AuditLogSchema: Schema = new Schema(
     changes: [ChangeSchema],
     description: { type: String },
     metadata: { type: Schema.Types.Mixed },
-    success: { type: Boolean, required: true, default: true, index: true },
+    success: { type: Boolean, required: true, default: true },
     errorMessage: { type: String },
-    isSensitive: { type: Boolean, default: false, index: true },
-    dataSubject: { type: Schema.Types.ObjectId, ref: 'Patient', index: true }, // For PH DPA compliance
-    timestamp: { type: Date, default: Date.now, required: true, index: true },
+    isSensitive: { type: Boolean, default: false },
+    dataSubject: { type: Schema.Types.ObjectId, ref: 'Patient' }, // For PH DPA compliance
+    timestamp: { type: Date, default: Date.now, required: true },
     archived: { type: Boolean },
     archivedAt: { type: Date },
   },
   { timestamps: true }
 );
 
-// Indexes for efficient queries (tenant-scoped)
-AuditLogSchema.index({ tenantId: 1, userId: 1, timestamp: -1 });
+// Every audit entry writes each of these, so keep only what a query uses. Reads are tenant-scoped
+// (the log page, insights, retention) except a user's own sign-in history, which goes by userId.
+AuditLogSchema.index({ userId: 1, timestamp: -1 }); // Own activity (lib/account.ts); also the log's "by user" filter
 AuditLogSchema.index({ tenantId: 1, resource: 1, resourceId: 1, timestamp: -1 });
 AuditLogSchema.index({ tenantId: 1, action: 1, timestamp: -1 });
 AuditLogSchema.index({ tenantId: 1, dataSubject: 1, timestamp: -1 }); // For PH DPA queries
-AuditLogSchema.index({ tenantId: 1, isSensitive: 1, timestamp: -1 });
 AuditLogSchema.index({ tenantId: 1, timestamp: -1 }); // For time-based queries
 AuditLogSchema.index({ tenantId: 1, archived: 1, archivedAt: 1 });
 
