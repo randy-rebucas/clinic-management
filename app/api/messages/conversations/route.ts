@@ -7,6 +7,7 @@ import Conversation, { conversationMemberKey } from '@/models/Conversation';
 import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
 import { serializeConversations } from '../_lib/conversations';
+import { logChatChange, memberName } from '../_lib/message-audit';
 
 const LIST_LIMIT = 50;
 
@@ -83,16 +84,27 @@ export async function POST(request: NextRequest) {
             ],
           },
         },
-        { upsert: true, new: true, lean: true }
+        { upsert: true, new: true, lean: true, includeResultMetadata: true }
       );
 
-    let conversation;
+    let result;
     try {
-      conversation = await upsert();
+      result = await upsert();
     } catch (error: any) {
       // Two concurrent starts can race on the unique memberKey; retrying reads the winner.
       if (error?.code !== 11000) throw error;
-      conversation = await upsert();
+      result = await upsert();
+    }
+    const conversation = result.value;
+    if (!conversation) throw new Error('Conversation upsert returned nothing');
+
+    // Only the first time this pair talks; reopening an existing conversation isn't news.
+    if (!result.lastErrorObject?.updatedExisting) {
+      await logChatChange(ctx, request, {
+        action: 'create',
+        resourceId: conversation._id,
+        description: `Started a conversation with ${await memberName(tenantObjectId, userId)}`,
+      });
     }
 
     const [summary] = await serializeConversations(tenantObjectId, session.userId, [conversation as any]);

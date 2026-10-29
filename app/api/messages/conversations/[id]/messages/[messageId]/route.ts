@@ -8,6 +8,7 @@ import { requireTenantSession, isTenantSessionError, isValidId, notFound } from 
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { DELETED_MESSAGE_PREVIEW, MESSAGE_MAX_LENGTH, canEditMessage } from '@/lib/messaging';
 import { findMemberConversation, toChatMessage, visibleMessagesFilter } from '../../../../_lib/conversations';
+import { logChatChange, memberName } from '../../../../_lib/message-audit';
 
 type Params = { params: Promise<{ id: string; messageId: string }> };
 
@@ -30,7 +31,13 @@ async function loadMessage(params: Params['params']) {
 
   const message = await Message.findOne({ ...visibleMessagesFilter(conversation, session.userId), _id: messageId });
   if (!message) return notFound('Message');
-  return { session, tenantObjectId, conversation, message };
+  return { ctx, session, tenantObjectId, conversation, message };
+}
+
+/** "to Maria Santos": the conversation's other member. */
+async function toWhom(conversation: { members: { user: unknown }[] }, tenantObjectId: Types.ObjectId, meId: string) {
+  const other = conversation.members.find((m) => String(m.user) !== meId);
+  return other ? `to ${await memberName(tenantObjectId, other.user)}` : 'in a conversation';
 }
 
 /** Keep the conversation-list preview in step when its last message changes. */
@@ -51,7 +58,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   try {
     const loaded = await loadMessage(params);
     if (loaded instanceof NextResponse) return loaded;
-    const { session, tenantObjectId, conversation, message } = loaded;
+    const { ctx, session, tenantObjectId, conversation, message } = loaded;
 
     if (String(message.sender) !== session.userId) {
       return NextResponse.json({ success: false, error: 'You can only edit your own messages' }, { status: 403 });
@@ -68,6 +75,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       message.editedAt = new Date();
       await message.save();
       await syncLastMessage(conversation._id, tenantObjectId, message, message.body);
+      // That it changed, not what it said: the text stays on the message.
+      await logChatChange(ctx, request, {
+        action: 'update',
+        resourceId: message._id,
+        description: `Edited a message sent ${await toWhom(conversation, tenantObjectId, session.userId)}`,
+        metadata: { conversationId: String(conversation._id), sentAt: message.createdAt.toISOString() },
+      });
     }
 
     return NextResponse.json({ success: true, data: toChatMessage(message) });
@@ -86,7 +100,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   try {
     const loaded = await loadMessage(params);
     if (loaded instanceof NextResponse) return loaded;
-    const { session, tenantObjectId, conversation, message } = loaded;
+    const { ctx, session, tenantObjectId, conversation, message } = loaded;
     const me = new Types.ObjectId(session.userId);
 
     if (request.nextUrl.searchParams.get('for') !== 'everyone') {
@@ -102,6 +116,12 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       message.deletedAt = new Date();
       await message.save();
       await syncLastMessage(conversation._id, tenantObjectId, message, DELETED_MESSAGE_PREVIEW);
+      await logChatChange(ctx, request, {
+        action: 'delete',
+        resourceId: message._id,
+        description: `Deleted a message for everyone, sent ${await toWhom(conversation, tenantObjectId, session.userId)}`,
+        metadata: { conversationId: String(conversation._id), sentAt: message.createdAt.toISOString() },
+      });
       // Don't leave the recipient with an unread badge for a message they can no longer see
       await Conversation.updateOne(
         { _id: conversation._id, tenantId: tenantObjectId },
