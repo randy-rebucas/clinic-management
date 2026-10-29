@@ -6,7 +6,7 @@ import { requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { getSettings } from '@/lib/settings';
-import { createAuditLog } from '@/lib/audit';
+import { logPrinted } from '@/lib/audit';
 import { issueSeal, tenantScopedQuery, IssuedSeal } from '@/lib/document-seal';
 import { directionOf } from '@/lib/referrals';
 import { loadSigner } from '@/lib/doctor-signature';
@@ -62,16 +62,15 @@ export async function GET(
       loadSigner({ tenantId, doctorId: referral.referringDoctor?._id }),
     ]);
 
-    await createAuditLog({
-      userId: session.userId,
-      userEmail: session.email,
-      userRole: session.role,
+    await logPrinted({
+      session,
       tenantId,
-      action: 'print',
       resource: 'referral',
       resourceId: referral._id,
-      dataSubject: (referral.patient as any)?._id,
-      description: `Printed referral letter ${referral.referralCode} (copy #${seal.printNumber})`,
+      patientId: (referral.patient as any)?._id,
+      what: `referral letter ${referral.referralCode}`,
+      seal,
+      request,
     });
 
     const html = letterHtml(referral, settings, seal, tz, signer?.signatureSrc ?? null);
