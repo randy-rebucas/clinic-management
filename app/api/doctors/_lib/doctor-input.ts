@@ -43,6 +43,24 @@ const doctorFields = {
 export const createDoctorSchema = z.object(doctorFields);
 export const updateDoctorSchema = z.object(doctorFields).partial();
 
+const OBJECT_ID = /^[a-f0-9]{24}$/i;
+
+/**
+ * The specialty a name stands for. An older doctor form sent the specialty's id in the name
+ * field, and each save stored that id as the name of a new specialty, so a name may be an id
+ * (or a chain of them, see scripts/fix-specialization-names.ts): those are followed back to the
+ * real one. Null when an id leads nowhere.
+ */
+async function specialtyByName(name: string) {
+  let spec = await Specialization.findOne({ name });
+  if (!spec && !OBJECT_ID.test(name)) return null;
+  if (!spec) spec = await Specialization.findById(name);
+  for (let hops = 0; spec && OBJECT_ID.test(spec.name) && hops < 10; hops++) {
+    spec = await Specialization.findById(spec.name);
+  }
+  return spec && !OBJECT_ID.test(spec.name) ? spec : null;
+}
+
 /**
  * Resolve `specialization` (a name) to a Specialization id, creating it if needed.
  * Specializations are a global catalogue shared by all clinics.
@@ -54,8 +72,9 @@ export async function resolveSpecialization<T extends { specialization?: string;
   if (specialization !== undefined && !rest.specializationId) {
     const name = specialization.trim();
     if (!name) return { error: 'Specialization is required' };
-    let spec = await Specialization.findOne({ name });
+    let spec = await specialtyByName(name);
     if (!spec) {
+      if (OBJECT_ID.test(name)) return { error: 'Choose the specialty from the list, or type its name' };
       spec = await Specialization.create({ name, active: true, category: 'Specialty' });
     }
     return { ...rest, specializationId: String(spec._id) };
