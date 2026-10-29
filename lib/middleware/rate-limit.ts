@@ -1,9 +1,9 @@
 /**
  * API Rate Limiting
  *
- * Counters live in Upstash Redis (REST API, plain fetch) when UPSTASH_REDIS_REST_URL and
- * UPSTASH_REDIS_REST_TOKEN are set, so limits hold across serverless instances. Otherwise,
- * or when Redis is unreachable, an in-memory fixed window is used (per instance only).
+ * Counters live in Upstash Redis (lib/redis.ts) when it is configured, so limits hold across
+ * serverless instances. Otherwise, or when Redis is unreachable, an in-memory fixed window is
+ * used (per instance only).
  *
  * Clients are keyed by a trusted IP (never the client-supplied leftmost X-Forwarded-For).
  * Callers can pass an extra identifier (email, phone, user id) to apply per-account limits.
