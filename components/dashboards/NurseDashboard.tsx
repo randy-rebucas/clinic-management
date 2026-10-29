@@ -9,7 +9,6 @@ import {
   formatCount,
   periodTitle,
   useDashboardData,
-  type DashboardAppointment,
   type Period,
 } from './shared';
 import { ClinicDay, SERIES, StatusMix, TrendChart, scheduleSubtitle, trendWindowLabel, type TodaySchedule, type TrendDay } from './charts';
@@ -21,7 +20,6 @@ interface DashboardData {
     todayAppointments: number;
     periodVisits: number;
   };
-  recentAppointments: DashboardAppointment[];
   permissions: {
     canViewPatients: boolean;
     canViewAppointments: boolean;

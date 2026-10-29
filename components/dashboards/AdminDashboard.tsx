@@ -45,7 +45,6 @@ interface DashboardData {
     totalOutstanding: number;
     outstandingInvoiceCount: number;
   };
-  recentAppointments: DashboardAppointment[];
   upcomingAppointments: DashboardAppointment[];
   paymentMethodBreakdown: Record<string, number>;
   trend?: { today: string; days: TrendDay[] };
