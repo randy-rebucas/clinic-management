@@ -52,7 +52,26 @@ Never restore straight over production as a first step. Restore to a separate cl
    this is a personal data breach under the Data Privacy Act. If it is, the NPC must be notified within
    72 hours of discovery, and the affected patients may also need to be told.
 
-## 4. Local and manual backups
+## 4. Audit log archive
+
+The weekly `data-retention` cron moves each clinic's audit log entries out of the database once their
+calendar month is more than ~90 days old (`lib/audit-archive.ts`). They go to a **private Vercel Blob store**
+as one file per clinic per month: gzipped JSON lines in canonical Extended JSON (the backup format).
+An entry is deleted from the database only after its file was read back and matched by checksum and entry
+count. Files are deleted after **5 years**. The flag-based "archived" field is no longer used.
+
+**Setup (one-time):** Vercel → Storage → create a Blob store with **Private** access (the access mode
+can't be changed later), pick a region near the database, then *Connect to Project* for Production.
+Vercel adds `BLOB_STORE_ID`; the SDK authenticates with OIDC. Until a store is connected, nothing moves.
+After deploying, run `pnpm prod db:indexes --apply` (new `auditlogarchives` collection) and
+`pnpm prod db:indexes --drop --apply` (drops the old `archived` index).
+
+**Reading an archive:** admins download a month from *Admin → Audit log → Archived months* (each download
+is itself audit-logged). To search one in a database again:
+`gunzip audit-log-2026-05.jsonl.gz && mongoimport --uri=<target> --collection=auditlogs --file=audit-log-2026-05.jsonl`
+(use a scratch database, not production, unless you mean to bring the entries back).
+
+## 5. Local and manual backups
 
 Local development uses an anonymized copy in Docker: see [LOCAL_DEV_DATABASE.md](LOCAL_DEV_DATABASE.md).
 Commands below that should hit production run through `pnpm prod <script>` (e.g. `pnpm prod db:backup:zip`).
