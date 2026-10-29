@@ -72,7 +72,6 @@ const QueueSchema: Schema = new Schema(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
-      index: true,
     },
     
     queueNumber: { type: String }, // Auto-generated in pre-validate hook, indexed via compound index below

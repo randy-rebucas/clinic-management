@@ -6,8 +6,11 @@ import { MESSAGE_MAX_LENGTH, canEditMessage, type ChatMessage, type Conversation
 import { AlertDialog } from '@/components/ui/Modal';
 import { useMessaging } from './MessagingProvider';
 import { ACTION_ICONS, ActionMenu, CHAT_FOCUS_RING, formatDayLabel, type ChatAction } from './ChatParts';
+import { startVisiblePoll } from '@/lib/visible-poll';
 
-const POLL_MS = 4000;
+// An open thread checks for new messages every 5 s while the tab is in use, every 30 s once idle.
+const POLL_MS = 5000;
+const IDLE_POLL_MS = 30_000;
 
 type ThreadMessage = ChatMessage & { pending?: boolean };
 
@@ -148,10 +151,10 @@ export default function ChatThread({
         // transient; next tick retries
       }
     };
-    const interval = setInterval(poll, POLL_MS);
+    const stopPolling = startVisiblePoll(() => void poll(), { activeMs: POLL_MS, idleMs: IDLE_POLL_MS });
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      stopPolling();
     };
   }, [base, loading]);
 

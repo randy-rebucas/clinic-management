@@ -271,7 +271,7 @@ export async function processLabNotifications(tenantId?: string | Types.ObjectId
       );
     }
     return out;
-  });
+  }, { setting: 'autoLabNotifications' });
 
   for (const run of runs) {
     if (!run.result) {

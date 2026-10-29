@@ -105,7 +105,6 @@ const AuditLogSchema: Schema = new Schema(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
-      index: true,
     },
     
     // Absent only for a sign-in attempt with an email that has no account (userEmail holds what was typed).

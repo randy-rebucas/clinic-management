@@ -363,7 +363,8 @@ async function processPeriodic(period: 'weekly' | 'monthly', tenantId?: string |
   try {
     await connectDB();
     const runs = await forEachTenant(tenantId, (t) =>
-      generatePeriodicReport({ period, tenantId: t.tenantObjectId, sendEmail: true })
+      generatePeriodicReport({ period, tenantId: t.tenantObjectId, sendEmail: true }),
+      { setting: 'autoPeriodicReports' }
     );
     return {
       success: runs.every((r) => r.success && r.result?.success),

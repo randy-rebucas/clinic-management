@@ -33,7 +33,6 @@ const InventoryItemSchema: Schema = new Schema(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
-      index: true,
     },
     
     medicineId: { type: Schema.Types.ObjectId, ref: 'Medicine' },
@@ -73,9 +72,7 @@ const InventoryItemSchema: Schema = new Schema(
 // Indexes for efficient queries (tenant-scoped)
 InventoryItemSchema.index({ tenantId: 1, category: 1, status: 1 });
 InventoryItemSchema.index({ tenantId: 1, name: 'text' });
-InventoryItemSchema.index({ tenantId: 1, status: 1 });
 InventoryItemSchema.index({ tenantId: 1, expiryDate: 1 });
-InventoryItemSchema.index({ tenantId: 1, medicineId: 1 });
 InventoryItemSchema.index({ tenantId: 1, medicineId: 1, status: 1 }); // For medicine-specific status queries
 InventoryItemSchema.index({ tenantId: 1, lastRestockedBy: 1 });
 InventoryItemSchema.index({ tenantId: 1, status: 1, expiryDate: 1 }); // For low-stock/expired queries

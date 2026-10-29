@@ -15,7 +15,7 @@ export interface IPushSubscription extends Document {
 
 const PushSubscriptionSchema = new Schema<IPushSubscription>(
   {
-    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', index: true },
+    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant' },
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     endpoint: { type: String, required: true },
     keys: {

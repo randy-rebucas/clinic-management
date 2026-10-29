@@ -178,7 +178,7 @@ async function processTenant(tenant: AutomationTenant): Promise<FeedbackResult> 
 export async function processFeedbackCollection(tenantId?: string | Types.ObjectId): Promise<FeedbackResult> {
   try {
     await connectDB();
-    const runs = await forEachTenant(tenantId, processTenant);
+    const runs = await forEachTenant(tenantId, processTenant, { setting: 'autoFeedbackCollection' });
     const total: FeedbackResult = { success: runs.every((r) => r.success), processed: 0, requestsSent: 0, errors: 0, results: [] };
     for (const run of runs) {
       if (!run.result) {

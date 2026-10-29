@@ -24,7 +24,7 @@ export interface IBackupRecord extends Document {
 
 const BackupRecordSchema = new Schema<IBackupRecord>(
   {
-    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', index: true },
+    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant' },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     createdByEmail: { type: String },
     label: { type: String, trim: true, maxlength: 200 },

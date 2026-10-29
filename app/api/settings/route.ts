@@ -16,6 +16,7 @@ import { parseBody, isValidationError } from '@/lib/api/validate';
 import { BRANCH_CODE, SERIAL_PREFIX, birSettingsOf, birSetupProblems } from '@/lib/bir';
 import { philhealthSettingsOf } from '@/lib/philhealth';
 import { AUTOMATIONS } from '@/lib/clinic-automations';
+import { clearTenantCache } from '@/lib/tenant';
 
 const AUTOMATION_KEYS = new Set(AUTOMATIONS.map((a) => a.key));
 
@@ -303,7 +304,10 @@ export async function PUT(request: NextRequest) {
 
     // The clinic's zone is written first: if it fails, nothing is saved and the page's version stays good.
     const zoneChanged = Boolean(timezone && timezone !== oldZone);
-    if (zoneChanged) await Tenant.updateOne({ _id: ctx.tenantObjectId }, { $set: { 'settings.timezone': timezone } });
+    if (zoneChanged) {
+      await Tenant.updateOne({ _id: ctx.tenantObjectId }, { $set: { 'settings.timezone': timezone } });
+      clearTenantCache();
+    }
 
     // The version check is part of the write, so two saves at the same moment can't both pass it.
     const unchangedSince = version && before.updatedAt ? { updatedAt: before.updatedAt } : {};
@@ -313,6 +317,7 @@ export async function PUT(request: NextRequest) {
 
     if (!settings && zoneChanged) {
       await Tenant.updateOne({ _id: ctx.tenantObjectId }, { $set: { 'settings.timezone': oldZone } });
+      clearTenantCache();
     }
     if (!settings && version) {
       return NextResponse.json(

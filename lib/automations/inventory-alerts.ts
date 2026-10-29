@@ -174,7 +174,7 @@ async function processTenant(tenant: AutomationTenant): Promise<AlertsResult> {
 export async function processInventoryAlerts(tenantId?: string | Types.ObjectId): Promise<AlertsResult> {
   try {
     await connectDB();
-    const runs = await forEachTenant(tenantId, processTenant);
+    const runs = await forEachTenant(tenantId, processTenant, { setting: 'autoLowStockAlerts' });
     const total: AlertsResult = { success: runs.every((r) => r.success), processed: 0, alertsSent: 0, errors: 0, results: [] };
     for (const run of runs) {
       if (!run.result) {

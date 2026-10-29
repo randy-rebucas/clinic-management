@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCron } from '@/lib/cron-auth';
-import { optimizeQueue, optimizeQueueScheduling } from '@/lib/automations/queue-optimization';
+import { optimizeQueue } from '@/lib/automations/queue-optimization';
 import { forEachTenant } from '@/lib/automations/shared';
 
 export const maxDuration = 300;
@@ -13,10 +13,13 @@ export async function GET(request: NextRequest) {
   if (denied) return denied;
 
   try {
-    const runs = await forEachTenant(null, async (tenant) => ({
-      optimization: await optimizeQueue(tenant.tenantId),
-      scheduling: await optimizeQueueScheduling(tenant.tenantId),
-    }));
+    // Scheduling recommendations aren't computed here: nothing stores them, and
+    // /api/queue/optimize works them out when someone asks.
+    const runs = await forEachTenant(
+      null,
+      async (tenant) => ({ optimization: await optimizeQueue(tenant.tenantId) }),
+      { setting: 'autoQueueOptimization' }
+    );
 
     return NextResponse.json({
       success: runs.every((r) => r.success),

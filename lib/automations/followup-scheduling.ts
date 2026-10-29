@@ -239,7 +239,7 @@ async function processTenant(tenant: AutomationTenant): Promise<FollowupResult> 
 export async function processFollowupScheduling(tenantId?: string | Types.ObjectId): Promise<FollowupResult> {
   try {
     await connectDB();
-    const runs = await forEachTenant(tenantId, processTenant);
+    const runs = await forEachTenant(tenantId, processTenant, { setting: 'autoFollowupScheduling' });
     const total: FollowupResult = { success: runs.every((r) => r.success), processed: 0, scheduled: 0, errors: 0, results: [] };
     for (const run of runs) {
       if (!run.result) {
