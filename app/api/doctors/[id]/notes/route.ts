@@ -11,6 +11,7 @@ import {
   notFound,
 } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
+import { doctorLabel, logDoctorChange } from '../../_lib/doctor-audit';
 
 const noteSchema = z.object({
   note: z.string().trim().min(1).max(5000),
@@ -48,15 +49,22 @@ export async function POST(
       { $push: { internalNotes: note } },
       { new: true }
     )
-      .select('internalNotes')
+      .select('title firstName lastName internalNotes')
       .populate('internalNotes.createdBy', 'name')
-      .lean();
+      .lean<{ _id: unknown; title?: string; firstName: string; lastName: string; internalNotes?: unknown[] } | null>();
 
     if (!doctor) {
       return notFound('Doctor');
     }
 
-    return NextResponse.json({ success: true, data: doctor });
+    // The note itself stays out of the log: it is staff-only and the profile keeps it.
+    await logDoctorChange(ctx, request, {
+      action: 'update',
+      doctorId: doctor._id,
+      description: `Added ${note.isImportant ? 'an important' : 'an'} internal note to ${doctorLabel(doctor)}`,
+    });
+
+    return NextResponse.json({ success: true, data: { _id: doctor._id, internalNotes: doctor.internalNotes } });
   } catch (error: any) {
     console.error('Error adding note:', error);
     return NextResponse.json(
@@ -107,6 +115,12 @@ export async function DELETE(
     if (at === -1) return notFound('Note');
     notes.splice(at, 1);
     await doctor.save();
+
+    await logDoctorChange(ctx, request, {
+      action: 'update',
+      doctorId: doctor._id,
+      description: `Removed an internal note from ${doctorLabel(doctor)}`,
+    });
 
     const fresh = await Doctor.findOne(tenantFilter(tenantId, { _id: id }))
       .select('internalNotes')

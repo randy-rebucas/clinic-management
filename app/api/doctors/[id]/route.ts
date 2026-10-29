@@ -18,6 +18,7 @@ import {
 } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { updateDoctorSchema, duplicateResponse, resolveSpecialization, validationMessage } from '../_lib/doctor-input';
+import { changedSentence, doctorChanges, doctorLabel, logDoctorChange } from '../_lib/doctor-audit';
 
 export async function GET(
   request: NextRequest,
@@ -84,6 +85,11 @@ export async function PUT(
       return NextResponse.json({ success: false, error: resolved.error }, { status: 400 });
     }
 
+    const before = await Doctor.findOne(tenantFilter(tenantId, { _id: id })).lean<Record<string, any> | null>();
+    if (!before) {
+      return notFound('Doctor');
+    }
+
     const doctor = await Doctor.findOneAndUpdate(
       tenantFilter(tenantId, { _id: id }),
       { $set: resolved },
@@ -91,6 +97,19 @@ export async function PUT(
     ).populate('specializationId', 'name description category');
     if (!doctor) {
       return notFound('Doctor');
+    }
+
+    // Compared only on the fields sent; the form sends the whole profile, so most are unchanged.
+    const after = doctor.toObject() as Record<string, any>;
+    const sent = Object.fromEntries(Object.keys(resolved).map((k) => [k, after[k]]));
+    const changes = await doctorChanges(before, sent);
+    if (changes.length) {
+      await logDoctorChange(ctx, request, {
+        action: 'update',
+        doctorId: doctor._id,
+        description: changedSentence(doctorLabel(after), changes),
+        changes,
+      });
     }
 
     // Keep the linked login in step with the doctor's status; a deactivated doctor is signed out.
@@ -140,7 +159,9 @@ export async function DELETE(
     const { id } = await params;
     if (!isValidId(id)) return notFound('Doctor');
 
-    const doctor = await Doctor.findOne(tenantFilter(tenantId, { _id: id })).select('_id').lean<{ _id: Types.ObjectId } | null>();
+    const doctor = await Doctor.findOne(tenantFilter(tenantId, { _id: id }))
+      .select('_id title firstName lastName')
+      .lean<{ _id: Types.ObjectId; title?: string; firstName: string; lastName: string } | null>();
     if (!doctor) {
       return notFound('Doctor');
     }
@@ -159,6 +180,14 @@ export async function DELETE(
       Prescription.countDocuments(tenantFilter(tenantId, { prescribedBy: { $in: actors } })),
     ]);
     if (appointments + visits + prescriptions > 0) {
+      await logDoctorChange(ctx, request, {
+        action: 'delete',
+        doctorId: doctor._id,
+        description: `Tried to remove ${doctorLabel(doctor)}`,
+        success: false,
+        errorMessage: 'The doctor has appointments, visit notes or prescriptions on record',
+        metadata: { appointments, visits, prescriptions },
+      });
       return NextResponse.json(
         {
           success: false,
@@ -173,15 +202,24 @@ export async function DELETE(
 
     // The login goes with the profile only when it is a doctor-only account. Someone who added
     // themselves as a doctor (an admin, an owner) keeps their own login; it is just unlinked.
+    let login: 'none' | 'removed' | 'unlinked' = 'none';
     if (user) {
       const ownLogin = String(user._id) === session.userId;
       if (!ownLogin && user.role?.name === 'doctor') {
         await User.deleteOne(tenantFilter(tenantId, { _id: user._id }));
         await revokeUserSessions(String(user._id));
+        login = 'removed';
       } else {
         await User.updateOne(tenantFilter(tenantId, { _id: user._id }), { $unset: { doctorProfile: 1 } });
+        login = 'unlinked';
       }
     }
+
+    await logDoctorChange(ctx, request, {
+      action: 'delete',
+      doctorId: doctor._id,
+      description: `Removed ${doctorLabel(doctor)}${login === 'removed' ? ' and their sign-in account' : login === 'unlinked' ? '; their sign-in account was kept' : ''}`,
+    });
 
     return NextResponse.json({ success: true, data: {} });
   } catch (error: any) {

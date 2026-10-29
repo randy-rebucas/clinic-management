@@ -5,6 +5,7 @@ import { requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { createDoctorSchema, duplicateResponse, resolveSpecialization, validationMessage } from './_lib/doctor-input';
+import { doctorChanges, doctorLabel, logDoctorChange } from './_lib/doctor-audit';
 
 export async function GET() {
   const ctx = await requireTenantSession();
@@ -80,6 +81,12 @@ export async function POST(request: NextRequest) {
     }
 
     const doctor = await Doctor.create({ ...resolved, tenantId: tenantObjectId });
+    await logDoctorChange(ctx, request, {
+      action: 'create',
+      doctorId: doctor._id,
+      description: `Added ${doctorLabel(doctor)}`,
+      changes: await doctorChanges({}, doctor.toObject()),
+    });
     await doctor.populate('specializationId', 'name description category');
     return NextResponse.json({ success: true, data: doctor }, { status: 201 });
   } catch (error: any) {
