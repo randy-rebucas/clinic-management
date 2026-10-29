@@ -9,6 +9,7 @@ import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId, no
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { inventoryUpdateSchema, medicinePopulate } from '../schema';
 import { recordMovement, type MovementInput } from '@/lib/inventory-movements';
+import { changedSentence, inventoryChanges, logInventoryChange, stockWords } from '../_lib/inventory-audit';
 
 function ensureModels() {
   if (!mongoose.models.Medicine) void Medicine;
@@ -82,9 +83,10 @@ export async function PUT(
       }
     }
 
+    // The details too, so an edit can be logged with what it changed.
     const current = await InventoryItem.findOne(tenantFilter(ctx.tenantId, { _id: id }))
-      .select('quantity expiryDate')
-      .lean<{ quantity: number; expiryDate?: Date }>();
+      .select('name category sku unit reorderLevel reorderQuantity unitCost supplier location expiryDate notes medicineId quantity')
+      .lean<{ quantity: number; expiryDate?: Date } & Record<string, any>>();
     if (!current) return notFound('Inventory item');
 
     const now = new Date();
@@ -180,6 +182,21 @@ export async function PUT(
       });
     }
 
+    // An edit of the item's details. A restock's cost and supplier are the delivery's, and stock
+    // in and out is the ledger's; neither is logged here.
+    if (!restocking) {
+      const sent = [...Object.keys(fields), ...(expiryDate !== undefined ? ['expiryDate'] : [])].filter((k) => k !== 'quantity');
+      const changes = sent.length ? await inventoryChanges(ctx.tenantId, current, item.toObject(), sent) : [];
+      if (changes.length) {
+        await logInventoryChange(ctx, request, {
+          action: 'update',
+          itemId: item._id,
+          description: changedSentence(item.name, changes),
+          changes,
+        });
+      }
+    }
+
     await item.populate(medicinePopulate(tenantFilter(ctx.tenantId)));
     await item.populate('lastRestockedBy', 'name');
 
@@ -223,6 +240,14 @@ export async function DELETE(
 
     const item = await InventoryItem.findOneAndDelete(tenantFilter(ctx.tenantId, { _id: id }));
     if (!item) return notFound('Inventory item');
+
+    // The item's ledger can't be opened once it is gone, so the stock it held is kept here.
+    await logInventoryChange(ctx, request, {
+      action: 'delete',
+      itemId: item._id,
+      description: `Removed ${item.name} from inventory${item.quantity > 0 ? `; ${stockWords(item.quantity, item.unit)} were on hand` : ''}`,
+      metadata: { category: item.category, quantity: item.quantity, unit: item.unit, unitCost: item.unitCost, sku: item.sku },
+    });
 
     return NextResponse.json({ success: true, data: {} });
   } catch (error) {
