@@ -137,6 +137,8 @@ export async function shapeAuditRows(logs: LeanLog[], tenantId: Types.ObjectId):
     const patientName = p ? `${p.firstName ?? ''} ${p.lastName ?? ''}`.trim() || 'Unnamed patient' : null;
     // The patient portal has no staff account: the patient is the one acting.
     const byPatient = !uid && l.userRole === 'patient';
+    // Nor does the MyClinicSoft team writing in support chat (SUPPORT_AUDIT_ROLE in lib/support-chat.ts).
+    const bySupport = !uid && l.userRole === 'platform-support';
     return {
       _id: l._id.toString(),
       at: new Date(l.timestamp).toISOString(),
@@ -150,9 +152,9 @@ export async function shapeAuditRows(logs: LeanLog[], tenantId: Types.ObjectId):
       // No user id: a sign-in attempt with an email that has no account.
       user: {
         _id: uid,
-        name: u?.name?.trim() || (byPatient ? patientName : null),
+        name: u?.name?.trim() || (byPatient ? patientName : bySupport ? 'MyClinicSoft Support' : null),
         email: u?.email || l.userEmail || null,
-        role: uid ? roleWords(l.userRole) : byPatient ? 'Patient, in the portal' : 'No account',
+        role: uid ? roleWords(l.userRole) : byPatient ? 'Patient, in the portal' : bySupport ? 'MyClinicSoft team' : 'No account',
       },
       patient: p && patientName ? { _id: p._id.toString(), name: patientName, code: p.patientCode ?? null } : null,
       patientMissing: !!pid && !p,

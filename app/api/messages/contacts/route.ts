@@ -5,9 +5,9 @@ import User from '@/models/User';
 import '@/models/Role';
 import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
 import { escapeRegex } from '@/lib/api/validate';
-import type { ChatUser } from '@/lib/messaging';
+import { SUPPORT_CONTACT, type ChatUser } from '@/lib/messaging';
 
-/** Active staff in the caller's clinic they can start a conversation with. */
+/** Active staff in the caller's clinic they can start a conversation with, and MyClinicSoft Support. */
 export async function GET(request: NextRequest) {
   const ctx = await requireTenantSession();
   if (isTenantSessionError(ctx)) return ctx;
@@ -34,7 +34,10 @@ export async function GET(request: NextRequest) {
       name: u.name,
       role: u.role?.displayName || u.role?.name || '',
     }));
-    return NextResponse.json({ success: true, data: contacts });
+    // Support is always reachable: first when browsing, and when the search names it.
+    const needle = q.toLowerCase();
+    const support = !needle || SUPPORT_CONTACT.name.toLowerCase().includes(needle) || 'help'.startsWith(needle);
+    return NextResponse.json({ success: true, data: support ? [SUPPORT_CONTACT, ...contacts] : contacts });
   } catch (error: any) {
     console.error('Error fetching contacts:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch contacts' }, { status: 500 });

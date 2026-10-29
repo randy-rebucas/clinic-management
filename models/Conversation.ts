@@ -13,13 +13,22 @@ export interface IConversationMember {
 
 export interface IConversation extends Document {
   tenantId: Types.ObjectId;
-  // Direct (1:1) conversation between two staff members of the same clinic
+  /**
+   * direct (the default): 1:1 between two staff members of the same clinic.
+   * support: one staff member and the MyClinicSoft platform team, who have no clinic account
+   * and so aren't a member; their side of the conversation is `support`.
+   */
+  kind?: 'direct' | 'support';
   members: IConversationMember[];
-  // Sorted member ids joined with ':' so a pair maps to exactly one conversation
+  // Sorted member ids joined with ':' so a pair maps to exactly one conversation;
+  // `support:<userId>` for a support thread (supportMemberKey)
   memberKey: string;
+  /** Support threads: the platform team's unread count and when they last read it. */
+  support?: { unread: number; lastReadAt?: Date };
   lastMessage?: {
     body: string;
-    sender: Types.ObjectId;
+    /** Unset when the platform support team sent it. */
+    sender?: Types.ObjectId;
     createdAt: Date;
   };
   lastMessageAt?: Date;
@@ -41,8 +50,13 @@ const ConversationMemberSchema = new Schema<IConversationMember>(
 const ConversationSchema: Schema = new Schema(
   {
     tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true },
+    kind: { type: String, enum: ['direct', 'support'], default: undefined },
     members: { type: [ConversationMemberSchema], required: true },
     memberKey: { type: String, required: true },
+    support: {
+      type: new Schema({ unread: { type: Number, default: 0, min: 0 }, lastReadAt: { type: Date } }, { _id: false }),
+      default: undefined,
+    },
     lastMessage: {
       body: { type: String },
       sender: { type: Schema.Types.ObjectId, ref: 'User' },
@@ -55,9 +69,15 @@ const ConversationSchema: Schema = new Schema(
 
 ConversationSchema.index({ tenantId: 1, memberKey: 1 }, { unique: true });
 ConversationSchema.index({ tenantId: 1, 'members.user': 1, lastMessageAt: -1 });
+// The platform's support inbox, across clinics; partial so direct conversations don't pay for it.
+ConversationSchema.index({ lastMessageAt: -1 }, { partialFilterExpression: { kind: 'support' } });
 
 export function conversationMemberKey(a: string, b: string) {
   return [a, b].sort().join(':');
+}
+
+export function supportMemberKey(userId: string) {
+  return `support:${userId}`;
 }
 
 export default mongoose.models.Conversation ||
