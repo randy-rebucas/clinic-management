@@ -4,6 +4,7 @@ import PatientNote from '@/models/PatientNote';
 import { requirePermission, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
 import { Types } from 'mongoose';
+import { logPatientChange } from '../../../_lib/patient-audit';
 
 /**
  * PUT /api/patients/[id]/notes/[noteId]
@@ -45,6 +46,7 @@ export async function PUT(
 
     const body = await request.json().catch(() => ({}));
     const { content, visibility, priority, tags } = body ?? {};
+    const was = { content: note.content, visibility: note.visibility, priority: note.priority, tags: [...(note.tags ?? [])] };
 
     if (content && typeof content === 'string' && content.trim()) {
       note.content = content.trim().slice(0, 20000);
@@ -66,6 +68,23 @@ export async function PUT(
     }
 
     await note.save();
+
+    // The text itself stays on the note; the log records that it changed.
+    const changes = [
+      was.content !== note.content ? { field: 'content', oldValue: 'Not copied to the log', newValue: 'Not copied to the log' } : null,
+      was.visibility !== note.visibility ? { field: 'visibility', oldValue: was.visibility, newValue: note.visibility } : null,
+      was.priority !== note.priority ? { field: 'priority', oldValue: was.priority, newValue: note.priority } : null,
+      was.tags.join(', ') !== (note.tags ?? []).join(', ') ? { field: 'tags', oldValue: was.tags.join(', ') || null, newValue: (note.tags ?? []).join(', ') || null } : null,
+    ].filter((c) => c !== null);
+    if (changes.length) {
+      await logPatientChange(ctx, request, {
+        action: 'update',
+        patientId: id,
+        description: `Edited a note${note.author.userId.toString() !== session.userId ? ` written by ${note.author.name || 'a colleague'}` : ''}`,
+        changes,
+        metadata: { noteId },
+      });
+    }
 
     return NextResponse.json({
       success: true,
@@ -116,6 +135,14 @@ export async function DELETE(
     }
 
     await PatientNote.deleteOne(query);
+
+    // An update of the patient's record: "delete" would read as removing the patient.
+    await logPatientChange(ctx, request, {
+      action: 'update',
+      patientId: id,
+      description: `Deleted a ${note.visibility} note${note.author.userId.toString() !== session.userId ? ` written by ${note.author.name || 'a colleague'}` : ''}`,
+      metadata: { noteId },
+    });
 
     return NextResponse.json({
       success: true,
