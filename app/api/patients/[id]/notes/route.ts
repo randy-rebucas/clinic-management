@@ -7,6 +7,7 @@ import { requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, isValidId, patientTenantFilter, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { Types } from 'mongoose';
+import { logPatientChange } from '../../_lib/patient-audit';
 
 /**
  * GET /api/patients/[id]/notes
@@ -123,6 +124,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       priority,
       tags: tags.filter((t) => t.length > 0),
       tenantId: tenantObjectId,
+    });
+
+    // The note's text stays on the note; the log says that one was written, and how it's shared.
+    // An update of the patient's record: "create" would read as registering the patient.
+    await logPatientChange(ctx, request, {
+      action: 'update',
+      patientId: id,
+      description: `Added a${priority === 'high' ? ' high-priority' : ''} ${visibility} note`,
+      metadata: { noteId: String(note._id) },
     });
 
     return NextResponse.json(

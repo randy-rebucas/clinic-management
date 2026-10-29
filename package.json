@@ -37,6 +37,7 @@
     "db:local:scrub": "tsx scripts/dev-db/refresh.ts --scrub-only",
     "prod": "tsx scripts/prod.ts",
     "db:cleanup:notifications": "tsx scripts/cleanup-orphan-notifications.ts",
+    "db:fix:specialization-names": "tsx scripts/fix-specialization-names.ts",
     "db:migrate:audit": "tsx scripts/migrate-2026-10-audit.ts",
     "db:migrate:attachment-tenants": "tsx scripts/migrate-patient-attachment-tenants.ts",
     "storage:migrate-attachments": "tsx scripts/migrate-attachments-to-cloudinary.ts",

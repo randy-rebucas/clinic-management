@@ -6,6 +6,7 @@ import Invoice from '@/models/Invoice';
 import Visit from '@/models/Visit';
 import { requirePermission } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
+import { doctorLabel } from '../../_lib/doctor-audit';
 import {
   requireTenantSession,
   isTenantSessionError,
@@ -99,7 +100,7 @@ export async function POST(
       resource: 'doctor',
       resourceId: doctor._id,
       changes: [{ field: 'professionalFees', newValue: fee }],
-      description: `Added professional fee for doctor ${doctor._id}`,
+      description: `Added a professional fee for ${doctorLabel(doc)}`,
       success: true,
       requestMethod: request.method,
       requestPath: request.nextUrl.pathname,
