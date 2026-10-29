@@ -52,7 +52,7 @@ The refresh and scrub refuse to run unless `MONGODB_URI` is a single host on thi
 - **Patients:** fake names, `0900…` phone numbers, `@dev.local` emails, a generic address, and birth dates moved within the same year. Contacts, government and PhilHealth IDs, credentials, attachments and free-text notes are removed. Clinical data and `patientCode` are kept.
 - **Staff and medical reps:** fake names and contacts, dev logins, license and PTR numbers replaced, signature images removed.
 - **Copied names** on queues, invoices (`billedTo`), HMO claims and digital signatures follow the fake names.
-- **Secrets and outbound links:** payment account keys, platform payment secrets, webhook endpoints (disabled), third-party lab keys, activation codes, feedback tokens and teleconsult rooms are removed. Refresh tokens, nonces, webhook deliveries, devices, push subscriptions and API keys are emptied.
+- **Secrets and outbound links:** payment account keys, platform payment secrets, webhook endpoints (disabled), third-party lab keys, activation codes, feedback tokens and teleconsult rooms are removed. Refresh tokens, nonces, webhook deliveries, devices, push subscriptions, API keys and audit-log archive records (they point at production files) are emptied.
 - **Files:** attachments and images are cleared, and documents point at a placeholder instead of Cloudinary.
 - **Logs and messages:** audit logs lose IP, user agent, change details and query strings, and keep only "action resource" as the description. Chat, patient messages, survey comments and support replies are redacted.
 

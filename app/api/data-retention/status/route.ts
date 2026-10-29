@@ -10,6 +10,7 @@ import LabResult from '@/models/LabResult';
 import Prescription from '@/models/Prescription';
 import Document from '@/models/Document';
 import AuditLog from '@/models/AuditLog';
+import AuditLogArchive from '@/models/AuditLogArchive';
 
 /**
  * Get data retention status
@@ -94,15 +95,24 @@ export async function GET(request: NextRequest) {
             status: { $ne: 'archived' },
           });
           break;
-        case 'audit-logs':
-          totalCount = await AuditLog.countDocuments({ tenantId: tenantIdObj });
-          archivedCount = await AuditLog.countDocuments({ tenantId: tenantIdObj, archived: true });
+        case 'audit-logs': {
+          // Archived entries live in files (lib/audit-archive.ts), not in the database. Whole
+          // months move, so "to archive" counts up to the start of the month of archiveDate.
+          const [inDatabase, files] = await Promise.all([
+            AuditLog.countDocuments({ tenantId: tenantIdObj }),
+            AuditLogArchive.aggregate<{ entries: number }>([
+              { $match: { tenantId: tenantIdObj } },
+              { $group: { _id: null, entries: { $sum: '$entries' } } },
+            ]),
+          ]);
+          archivedCount = files[0]?.entries ?? 0;
+          totalCount = inDatabase + archivedCount;
           toArchiveCount = await AuditLog.countDocuments({
             tenantId: tenantIdObj,
-            createdAt: { $lt: archiveDate },
-            $or: [{ archived: { $exists: false } }, { archived: { $ne: true } }],
+            timestamp: { $lt: new Date(Date.UTC(archiveDate.getUTCFullYear(), archiveDate.getUTCMonth(), 1)) },
           });
           break;
+        }
       }
 
       status[policy.resource] = {

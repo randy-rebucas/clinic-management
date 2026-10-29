@@ -48,6 +48,7 @@
     "@date-fns/tz": "1.2.0",
     "@sentry/nextjs": "11.8.0",
     "@sparticuz/chromium": "^153.0.0",
+    "@vercel/blob": "2.8.2",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.8.0",
     "date-fns": "^4.1.0",

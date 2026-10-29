@@ -34,7 +34,11 @@ const LAST_NAMES = [
 ];
 
 /** Copies of data, credentials and device links; emptied (not dropped, so their indexes stay). */
-const EMPTY = ['backuprecords', 'refreshtokens', 'platformnonces', 'webhookdeliveries', 'mobiledevices', 'pushsubscriptions', 'apikeys'];
+const EMPTY = [
+  'backuprecords', 'refreshtokens', 'platformnonces', 'webhookdeliveries', 'mobiledevices', 'pushsubscriptions', 'apikeys',
+  // Point at production Blob files that dev can't (and shouldn't) read.
+  'auditlogarchives',
+];
 
 /** Staff profile collections and the User field that links each. */
 const PROFILES: [collection: string, userField: string][] = [
