@@ -26,6 +26,12 @@ export interface ChatMessage {
   deleted: boolean;
 }
 
+/** Sender id of the MyClinicSoft platform team in a support thread. */
+export const SUPPORT_ID = 'support';
+
+/** The platform team, as a contact and as the other side of a support thread. */
+export const SUPPORT_CONTACT: ChatUser = { id: SUPPORT_ID, name: 'MyClinicSoft Support', role: 'Support team' };
+
 export const MESSAGE_MAX_LENGTH = 4000;
 /** How long after sending a message its sender may still edit it. */
 export const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
