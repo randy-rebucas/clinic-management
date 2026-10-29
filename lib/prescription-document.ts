@@ -170,6 +170,13 @@ export function generatePrescriptionHTML(
         <div style="text-align: right;">
           <h2 style="margin: 0; color: #000000;">PRESCRIPTION ${isPatientCopy ? '(PATIENT COPY)' : '(CLINIC COPY)'}</h2>
           <strong>Code:</strong> ${e(prescription.prescriptionCode)}<br>
+          ${patient.patientCode ? `<strong>Patient Code:</strong> ${e(patient.patientCode)}<br>` : ''}
+          ${(() => {
+      const hours = formatUsualHours(settingInfo?.businessHours);
+      return hours.length
+        ? `<div style="font-size: 12px; line-height: 1.3; margin-top: 2px;"><strong>Usual Hours:</strong><br>${hours.map(e).join('<br>')}</div>`
+        : '';
+    })()}
           ${!isPatientCopy ? `<small style="color: #000000;">Archived: ${formatInTz(new Date(), 'MM/dd/yyyy h:mm a', tz)}</small>` : ''}
         </div>
       </div>
@@ -178,50 +185,43 @@ export function generatePrescriptionHTML(
     <!-- CONTENT ROW -->
     <div style="flex: 1 1 auto;">
       <div class="info-section" style="display: flex; flex-wrap: wrap;">
+        <!-- Full-width name row, then identity (left) and contact/issue details (right) -->
+        <div class="info-row" style="flex: 0 0 100%;">
+          <div class="info-label">Patient:</div>
+          <div><strong>${e(patient.firstName)} ${e(patient.lastName)}</strong></div>
+        </div>
         <div class="info-col">
-          <div class="info-row">
-            <div class="info-label">Patient:</div>
-            <div>${e(patient.firstName)} ${e(patient.lastName)}</div>
-          </div>
-          ${patient.patientCode ? `
-          <div class="info-row">
-            <div class="info-label">Patient Code:</div>
-            <div>${e(patient.patientCode)}</div>
-          </div>
-          ` : ''}
           ${patient.dateOfBirth ? `
           <div class="info-row">
             <div class="info-label">Date of Birth:</div>
             <div>${formatInTz(patient.dateOfBirth, 'MM/dd/yyyy', tz)}</div>
           </div>
-          ` : ''}
-          ${patient.gender ? `
-          <div class="info-row">
-            <div class="info-label">Gender:</div>
-            <div>${e(patient.gender)}</div>
-          </div>
-          ` : ''}
-          ${patient.dateOfBirth ? `
           <div class="info-row">
             <div class="info-label">Age:</div>
             <div>${formatAgeWithMonths(patient.dateOfBirth)}</div>
           </div>
           ` : ''}
+          ${patient.gender ? `
+          <div class="info-row">
+            <div class="info-label">Gender:</div>
+            <div style="text-transform: capitalize;">${e(patient.gender)}</div>
+          </div>
+          ` : ''}
         </div>
         <div class="info-col">
+          <div class="info-row">
+            <div class="info-label">Date Issued:</div>
+            <div>${date}</div>
+          </div>
           ${patient.phone ? `
           <div class="info-row">
             <div class="info-label">Phone:</div>
             <div>${e(patient.phone)}</div>
           </div>
           ` : ''}
-          <div class="info-row">
-            <div class="info-label">Date Issued:</div>
-            <div>${date}</div>
-          </div>
         </div>
         ${patient.address ? `
-        <div class="info-row">
+        <div class="info-row" style="flex: 0 0 100%;">
           <div class="info-label">Address:</div>
           <div>${e((() => {
         if (typeof patient.address === 'object' && patient.address !== null) {
@@ -260,6 +260,8 @@ export function generatePrescriptionHTML(
 
     <!-- FOOTER ROW -->
     <div class="footer" style="flex: 0 0 auto;">
+      <!-- Notes sit beside the doctor's block, bottom-aligned with it -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px;">
     ${(() => {
       // Use followUpDate from visit if available
       let followUpDate = '';
@@ -267,17 +269,17 @@ export function generatePrescriptionHTML(
         followUpDate = formatInTz(prescription.visit.followUpDate, 'MMM d, yyyy', tz);
       }
       return (prescription.notes || followUpDate) ? `
-        <div style="margin-top: 10px; line-height: 1.2; text-align: left;">
-          <h3 style="margin-bottom: 4px;">Additional Notes:</h3>
+        <div style="flex: 1 1 auto; line-height: 1.2; text-align: left;">
+          <h3 style="margin: 0 0 4px;">Additional Notes:</h3>
           <div style="display: flex; gap: 16px; flex-wrap: wrap;">
             ${prescription.notes ? `<span>${e(prescription.notes)}</span>` : ''}
             ${followUpDate ? `<span style="font-weight: bold;"><strong>Follow-up Date:</strong> ${followUpDate}</span>` : ''}
           </div>
         </div>
-        ` : '';
+        ` : '<div></div>';
     })()}
 
-      <div class="signature-section">
+      <div class="signature-section" style="flex: 0 0 auto;">
         ${signatureSrc ? `<div><img class="signature-image" src="${signatureSrc}" alt="Signature" /></div>` : ''}
         <div class="signature-box"${signatureSrc ? ' style="margin-top: 0;"' : ''}>
           <div>${e(signer?.name || provider?.name || 'Provider')}</div>
@@ -299,10 +301,9 @@ export function generatePrescriptionHTML(
           </div>
         </div>
       </div>
+      </div>
 
-      ${protection.seal}
-
-      <p>This prescription was generated digitally by ${e(clinicName)}.</p>
+      <p style="margin-top: 10px;">This prescription was generated digitally by ${e(clinicName)}.</p>
       <p>Please verify all information before dispensing. For questions or concerns, contact:</p>
       <p>
         ${settingInfo?.clinicPhone ? 'Tel: ' + e(settingInfo.clinicPhone) : ''}<br>
@@ -314,6 +315,42 @@ export function generatePrescriptionHTML(
 </body>
 </html>
   `;
+}
+
+const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+function to12h(time: string): string {
+  const [h, m] = String(time || '').split(':').map(Number);
+  if (Number.isNaN(h)) return time;
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const hour = h % 12 || 12;
+  return `${hour}:${String(m || 0).padStart(2, '0')} ${suffix}`;
+}
+
+/** Clinic business hours as lines like "Mon–Fri 9:00 AM – 5:00 PM", grouping consecutive days with equal hours. */
+function formatUsualHours(businessHours?: { day: string; open: string; close: string; closed?: boolean }[]): string[] {
+  if (!Array.isArray(businessHours)) return [];
+  const open = businessHours
+    .filter((d) => d && !d.closed && d.open && d.close)
+    .sort((a, b) => DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day));
+
+  const groups: { first: string; last: string; range: string; lastIndex: number }[] = [];
+  for (const d of open) {
+    const range = `${to12h(d.open)} – ${to12h(d.close)}`;
+    const index = DAY_ORDER.indexOf(d.day);
+    const prev = groups[groups.length - 1];
+    if (prev && prev.range === range && prev.lastIndex === index - 1) {
+      prev.last = d.day;
+      prev.lastIndex = index;
+    } else {
+      groups.push({ first: d.day, last: d.day, range, lastIndex: index });
+    }
+  }
+
+  const short = (day: string) => day.charAt(0).toUpperCase() + day.slice(1, 3);
+  return groups.map((g) =>
+    `${g.first === g.last ? short(g.first) : `${short(g.first)}–${short(g.last)}`} ${g.range}`
+  );
 }
 
 function formatAgeWithMonths(dateOfBirth?: string | Date): string {
