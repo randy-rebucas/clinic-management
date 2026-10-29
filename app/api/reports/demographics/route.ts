@@ -12,7 +12,7 @@ import { openReport, dayKeys } from '../_lib/report-range';
  * (senior by flag or by age 60+, PWD, membership). Aggregations only; no records leave the DB.
  */
 export async function GET(request: NextRequest) {
-  const open = await openReport(request.nextUrl.searchParams, 'patients');
+  const open = await openReport(request, 'patients');
   if (open instanceof NextResponse) return open;
   const { tenantObjectId, tz, start, end } = open;
 

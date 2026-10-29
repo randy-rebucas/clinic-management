@@ -42,7 +42,8 @@ export type AuditResource =
   | 'hmo'
   | 'hmo_claim'
   | 'philhealth'
-  | 'message';
+  | 'message'
+  | 'report';
 
 export interface IAuditLog extends Document {
   // Tenant reference for multi-tenant support
@@ -118,7 +119,7 @@ const AuditLogSchema: Schema = new Schema(
     },
     resource: {
       type: String,
-      enum: ['patient', 'visit', 'appointment', 'prescription', 'lab_result', 'invoice', 'document', 'user', 'doctor', 'room', 'service', 'notification', 'referral', 'membership', 'staff', 'medicine', 'settings', 'system', 'hmo', 'hmo_claim', 'philhealth', 'clinical_template', 'message'],
+      enum: ['patient', 'visit', 'appointment', 'prescription', 'lab_result', 'invoice', 'document', 'user', 'doctor', 'room', 'service', 'notification', 'referral', 'membership', 'staff', 'medicine', 'settings', 'system', 'hmo', 'hmo_claim', 'philhealth', 'clinical_template', 'message', 'report'],
       required: true,
     },
     resourceId: { type: Schema.Types.ObjectId },

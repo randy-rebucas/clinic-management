@@ -11,7 +11,7 @@ import { openReport, dayKeys } from '../_lib/report-range';
  * status. Aggregations only.
  */
 export async function GET(request: NextRequest) {
-  const open = await openReport(request.nextUrl.searchParams, 'consultations');
+  const open = await openReport(request, 'consultations');
   if (open instanceof NextResponse) return open;
   const { tenantObjectId, tz, start, end } = open;
 

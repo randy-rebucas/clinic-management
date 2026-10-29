@@ -32,7 +32,7 @@ interface Row {
  * invoices stay listed, marked cancelled, and count in no total, so the serials have no gaps.
  */
 export async function GET(request: NextRequest) {
-  const open = await openReport(request.nextUrl.searchParams, 'bir');
+  const open = await openReport(request, 'bir');
   if (open instanceof NextResponse) return open;
   const { tenantObjectId, tz, start, end } = open;
 
