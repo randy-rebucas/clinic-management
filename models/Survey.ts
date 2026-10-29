@@ -26,7 +26,7 @@ export interface ISurveyResponse extends Document {
 const SurveySchema = new Schema<ISurveyResponse>(
   {
     tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', index: true },
-    visitId: { type: Schema.Types.ObjectId, ref: 'Visit', required: true, index: true },
+    visitId: { type: Schema.Types.ObjectId, ref: 'Visit', required: true }, // unique index below
     patientId: { type: Schema.Types.ObjectId, ref: 'Patient', index: true },
 
     overallRating: { type: Number, required: true, min: 1, max: 5 },

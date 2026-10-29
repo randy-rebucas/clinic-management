@@ -262,7 +262,7 @@ async function processTenant(tenant: AutomationTenant): Promise<RecurringResult>
 export async function processRecurringAppointments(tenantId?: string | Types.ObjectId): Promise<RecurringResult> {
   try {
     await connectDB();
-    const runs = await forEachTenant(tenantId, processTenant);
+    const runs = await forEachTenant(tenantId, processTenant, { setting: 'autoRecurringAppointments' });
     const total: RecurringResult = { success: runs.every((r) => r.success), processed: 0, created: 0, errors: 0, results: [] };
     for (const run of runs) {
       if (!run.result) {

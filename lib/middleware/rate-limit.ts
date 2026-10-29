@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
+import { redisPipeline } from '@/lib/redis';
 
 interface RateLimitConfig {
   /** Namespace for the counter; limiters with different names never share counts. */
@@ -85,32 +86,8 @@ function hitMemory(key: string, windowMs: number): { count: number; resetTime: n
   return { count: entry.count, resetTime: entry.resetTime };
 }
 
-function upstashConfig(): { url: string; token: string } | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  return url && token ? { url: url.replace(/\/$/, ''), token } : null;
-}
-
-async function upstashPipeline(commands: (string | number)[][]): Promise<{ result?: unknown; error?: string }[] | null> {
-  const cfg = upstashConfig();
-  if (!cfg) return null;
-  try {
-    const res = await fetch(`${cfg.url}/pipeline`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${cfg.token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(commands),
-      cache: 'no-store',
-      signal: AbortSignal.timeout(1500),
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as { result?: unknown; error?: string }[];
-  } catch {
-    return null;
-  }
-}
-
 async function hit(key: string, windowMs: number): Promise<{ count: number; resetTime: number }> {
-  const results = await upstashPipeline([
+  const results = await redisPipeline([
     ['INCR', key],
     ['PEXPIRE', key, windowMs, 'NX'],
     ['PTTL', key],
@@ -145,7 +122,7 @@ export async function consumeRateLimit(
 export async function resetRateLimit(config: RateLimitConfig, ip: string, identifier?: string): Promise<void> {
   const key = buildKey(config, ip, identifier);
   memoryStore.delete(key);
-  await upstashPipeline([['DEL', key]]);
+  await redisPipeline([['DEL', key]]);
 }
 
 function tooManyRequests(config: RateLimitConfig, result: RateLimitResult): NextResponse {

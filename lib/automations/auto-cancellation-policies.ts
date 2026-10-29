@@ -227,7 +227,7 @@ export async function processAutoCancellationPolicies(
 ): Promise<CancellationPolicyResult> {
   try {
     await connectDB();
-    const runs = await forEachTenant(tenantId, processTenant);
+    const runs = await forEachTenant(tenantId, processTenant, { setting: 'autoCancellationPolicies' });
 
     const total: CancellationPolicyResult = {
       success: runs.every((r) => r.success),

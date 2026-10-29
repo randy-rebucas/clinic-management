@@ -191,7 +191,7 @@ async function processTenant(tenant: AutomationTenant): Promise<NoShowResult> {
 export async function processNoShows(tenantId?: string | Types.ObjectId): Promise<NoShowResult> {
   try {
     await connectDB();
-    const runs = await forEachTenant(tenantId, processTenant);
+    const runs = await forEachTenant(tenantId, processTenant, { setting: 'autoNoShowHandling' });
     const total: NoShowResult = { success: runs.every((r) => r.success), processed: 0, handled: 0, errors: 0, results: [] };
     for (const run of runs) {
       if (!run.result) {

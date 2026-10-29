@@ -253,7 +253,7 @@ async function processTenant(tenant: AutomationTenant): Promise<HealthResult> {
 export async function processHealthReminders(tenantId?: string | Types.ObjectId): Promise<HealthResult> {
   try {
     await connectDB();
-    const runs = await forEachTenant(tenantId, processTenant);
+    const runs = await forEachTenant(tenantId, processTenant, { setting: 'autoHealthReminders' });
     const total: HealthResult = { success: runs.every((r) => r.success), processed: 0, remindersSent: 0, errors: 0, results: [] };
     for (const run of runs) {
       if (!run.result) {

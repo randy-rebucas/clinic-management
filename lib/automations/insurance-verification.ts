@@ -264,7 +264,7 @@ export async function verifyInsuranceForUpcomingAppointments(
 ): Promise<UpcomingResult> {
   try {
     await connectDB();
-    const runs = await forEachTenant(tenantId, processTenant);
+    const runs = await forEachTenant(tenantId, processTenant, { setting: 'autoInsuranceVerification' });
     const total: UpcomingResult = { success: runs.every((r) => r.success), appointmentsChecked: 0, verified: 0, failed: 0 };
     for (const run of runs) {
       total.appointmentsChecked += run.result?.appointmentsChecked ?? 0;

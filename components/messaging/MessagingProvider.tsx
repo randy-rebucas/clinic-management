@@ -2,8 +2,11 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DELETED_MESSAGE_PREVIEW, type ChatMessage, type ConversationSummary } from '@/lib/messaging';
+import { startVisiblePoll } from '@/lib/visible-poll';
 
-const POLL_MS = 15000;
+// The conversation list refreshes every 30 s while the tab is in use, every 5 min once idle.
+const POLL_MS = 30_000;
+const IDLE_POLL_MS = 300_000;
 // How many chat windows the floating dock keeps open side by side
 const MAX_OPEN_CHATS = 2;
 
@@ -105,15 +108,7 @@ export default function MessagingProvider({ meId, children }: { meId: string | n
   useEffect(() => {
     if (!meId || !available) return;
     refresh();
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') refresh();
-    }, POLL_MS);
-    const onVisible = () => document.visibilityState === 'visible' && refresh();
-    document.addEventListener('visibilitychange', onVisible);
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
+    return startVisiblePoll(refresh, { activeMs: POLL_MS, idleMs: IDLE_POLL_MS });
   }, [meId, available, refresh]);
 
   const upsertConversation = useCallback((conversation: ConversationSummary) => {

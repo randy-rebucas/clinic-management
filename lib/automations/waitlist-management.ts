@@ -388,7 +388,7 @@ async function processTenant(tenant: AutomationTenant): Promise<WaitlistResult> 
 export async function processWaitlistFills(tenantId?: string | Types.ObjectId): Promise<WaitlistResult> {
   try {
     await connectDB();
-    const runs = await forEachTenant(tenantId, processTenant);
+    const runs = await forEachTenant(tenantId, processTenant, { setting: 'autoWaitlistManagement' });
     const total: WaitlistResult = { success: runs.every((r) => r.success), processed: 0, filled: 0, errors: 0, results: [] };
     for (const run of runs) {
       if (!run.result) {

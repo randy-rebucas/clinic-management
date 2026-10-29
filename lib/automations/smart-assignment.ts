@@ -299,7 +299,7 @@ async function processTenant(tenant: AutomationTenant): Promise<UnassignedResult
 export async function processUnassignedAppointments(tenantId?: string | Types.ObjectId): Promise<UnassignedResult> {
   try {
     await connectDB();
-    const runs = await forEachTenant(tenantId, processTenant);
+    const runs = await forEachTenant(tenantId, processTenant, { setting: 'autoSmartAssignment' });
     const total: UnassignedResult = { success: runs.every((r) => r.success), processed: 0, assigned: 0, errors: 0, results: [] };
     for (const run of runs) {
       if (!run.result) {

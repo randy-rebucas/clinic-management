@@ -6,6 +6,7 @@ import User from '@/models/User';
 import { resolveTimezone, formatInTz } from '@/lib/tz';
 import { nextAppointmentCode as bookingNextAppointmentCode } from '@/lib/appointment-booking';
 import { createNotification, type CreateNotificationOptions } from '@/lib/notifications';
+import { preloadSettings } from '@/lib/settings';
 
 export { escapeHtml } from '@/lib/email';
 
@@ -71,15 +72,26 @@ const TENANT_CONCURRENCY = 3;
 export const RUN_BUDGET_MS = Number(process.env.AUTOMATION_RUN_BUDGET_MS) || 240_000;
 
 /**
+ * The tenants with automationSettings[setting] on. All their settings are read in one query and
+ * cached, so `fn` reading them again costs nothing; tenants with the automation off are dropped
+ * instead of each costing a run. A tenant with no settings record yet is kept (on by default).
+ */
+async function withAutomationOn(tenants: AutomationTenant[], setting: string): Promise<AutomationTenant[]> {
+  const loaded = await preloadSettings(tenants.map((t) => t.tenantId));
+  return tenants.filter((t) => !loaded.has(t.tenantId) || automationEnabled(loaded.get(t.tenantId), setting));
+}
+
+/**
  * Run `fn` for one tenant (when `tenantId` is given) or for every active tenant.
  * A failure in one tenant never stops the others. All-tenant runs work on a few clinics at a time,
  * start from a different clinic each run (so a run cut short doesn't always miss the same ones)
  * and stop starting clinics once the time budget is spent.
+ * With `setting`, an all-tenant run skips clinics that have that automation switched off.
  */
 export async function forEachTenant<T>(
   tenantId: string | Types.ObjectId | null | undefined,
   fn: (tenant: AutomationTenant) => Promise<T>,
-  options: { budgetMs?: number; concurrency?: number } = {}
+  options: { budgetMs?: number; concurrency?: number; setting?: string } = {}
 ): Promise<TenantRunResult<T>[]> {
   let tenants: AutomationTenant[];
   if (tenantId) {
@@ -87,6 +99,7 @@ export async function forEachTenant<T>(
     tenants = one ? [one] : [];
   } else {
     tenants = rotate(await getActiveTenants(), Math.floor(Date.now() / 60_000));
+    if (options.setting) tenants = await withAutomationOn(tenants, options.setting);
   }
 
   const deadline = Date.now() + (options.budgetMs ?? RUN_BUDGET_MS);
