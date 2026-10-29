@@ -11,6 +11,7 @@ import InventoryMovement from '@/models/InventoryMovement';
 import { recordMovement, USAGE_MATCH } from '@/lib/inventory-movements';
 import { expiryRange, isExpiryKey, type InventorySort } from '@/lib/inventory';
 import { INVENTORY_CATEGORIES, INVENTORY_STATUSES, inventoryCreateSchema, medicinePopulate } from './schema';
+import { logInventoryChange, stockWords } from './_lib/inventory-audit';
 
 function ensureModels() {
   if (!mongoose.models.Medicine) void Medicine;
@@ -162,6 +163,13 @@ export async function POST(request: NextRequest) {
       change: item.quantity,
       quantityAfter: item.quantity,
       performedBy: ctx.session.userId,
+    });
+
+    await logInventoryChange(ctx, request, {
+      action: 'create',
+      itemId: item._id,
+      description: `Added ${item.name} to inventory with ${stockWords(item.quantity, item.unit)} on hand`,
+      metadata: { category: item.category, quantity: item.quantity, unit: item.unit, unitCost: item.unitCost, sku: item.sku },
     });
 
     await item.populate(medicinePopulate(tenantFilter(ctx.tenantId)));
