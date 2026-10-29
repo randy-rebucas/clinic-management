@@ -4,12 +4,13 @@ import connectDB from '@/lib/mongodb';
 import Referral from '@/models/Referral';
 import Appointment from '@/models/Appointment';
 import { hasPermission, requirePermission } from '@/app/lib/auth-helpers';
-import { createAuditLog } from '@/lib/audit';
+import { logRecordOpened } from '@/lib/audit';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { dayToDate, normalizeReferral, referralDetailsSchema, referralPopulate, referralStatusSchema, validateReferralRefs } from '@/lib/referral-helpers';
 import { NEXT_STATUS, OPEN_STATUSES, type ReferralStatus } from '@/lib/referrals';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { changedSentence, logReferral, referralChanges } from '../_lib/referral-audit';
 
 const STATUS_WORDS: Record<ReferralStatus, string> = {
   pending: 'waiting for a reply',
@@ -69,17 +70,7 @@ export async function GET(
         .lean();
     }
 
-    await createAuditLog({
-      userId: session.userId,
-      userEmail: session.email,
-      userRole: session.role,
-      tenantId,
-      action: 'view',
-      resource: 'referral',
-      resourceId: referral._id,
-      dataSubject: patientId,
-      description: `Viewed referral ${referral.referralCode ?? id}`,
-    });
+    await logRecordOpened({ session, tenantId, resource: 'referral', resourceId: referral._id, patientId, request });
 
     return NextResponse.json({ success: true, data: referral, scheduled });
   } catch (error: any) {
@@ -114,9 +105,10 @@ export async function PUT(
     const { id } = await params;
     if (!isValidId(id)) return notFound('Referral');
 
+    // The whole referral, so the log can say what an edit changed.
     const current = await Referral.findOne(tenantFilter(tenantId, { _id: id }))
-      .select('status patient referralCode followUpDate')
-      .lean<{ _id: Types.ObjectId; status: ReferralStatus; patient: Types.ObjectId; referralCode?: string; followUpDate?: Date }>();
+      .select('-feedback')
+      .lean<{ _id: Types.ObjectId; status: ReferralStatus; patient: Types.ObjectId; referralCode?: string; followUpDate?: Date } & Record<string, any>>();
     if (!current) return notFound('Referral');
     const patientId = String(current.patient);
 
@@ -124,7 +116,8 @@ export async function PUT(
     const isStatusChange = raw && typeof raw === 'object' && 'status' in raw;
 
     let update: Record<string, unknown>;
-    let description: string;
+    // A state change's sentence; an edit's is made from what it changed.
+    let description = '';
 
     if (isStatusChange) {
       const parsed = await parseBody(request, referralStatusSchema);
@@ -175,7 +168,6 @@ export async function PUT(
       const newFollowUp = set.followUpDate instanceof Date ? set.followUpDate.getTime() : null;
       if (newFollowUp !== (current.followUpDate ? new Date(current.followUpDate).getTime() : null)) unset.push('followUpReminderSentAt');
       update = { $set: set, ...(unset.length ? { $unset: Object.fromEntries(unset.map((k) => [k, ''])) } : {}) };
-      description = `Edited referral ${current.referralCode ?? id}`;
     }
 
     // Only if nobody changed the state meanwhile.
@@ -187,17 +179,18 @@ export async function PUT(
       return NextResponse.json({ success: false, error: 'Someone else changed this referral just now. Reload it and try again.' }, { status: 409 });
     }
 
-    await createAuditLog({
-      userId: session.userId,
-      userEmail: session.email,
-      userRole: session.role,
-      tenantId,
-      action: 'update',
-      resource: 'referral',
-      resourceId: referral._id,
-      dataSubject: patientId,
-      description,
-    });
+    const written = [...Object.keys((update.$set as object) ?? {}), ...Object.keys((update.$unset as object) ?? {})];
+    const changes = await referralChanges(tenantObjectId, current, referral.toObject(), written, await getTenantTimezone(tenantId));
+    // A state change is always logged; an edit only when it changed something.
+    if (isStatusChange || changes.length) {
+      await logReferral(ctx, request, {
+        action: 'update',
+        referralId: referral._id,
+        patientId,
+        description: isStatusChange ? description : changedSentence(current.referralCode ?? id, changes),
+        changes,
+      });
+    }
 
     return NextResponse.json({ success: true, data: { _id: String(referral._id), status: referral.status } });
   } catch (error: any) {
