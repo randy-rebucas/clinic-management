@@ -6,6 +6,7 @@ import { Modal } from "../ui/Modal";
 import { useKeyedFetch } from "../hooks/useKeyedFetch";
 import { FIELD, FOCUS_RING } from "../appointments/shared";
 import { formatApiError } from "../utils/apiError";
+import { printInviteSlip } from "./printInviteSlip";
 
 const QRCode = dynamic(() => import("react-qr-code"), { ssr: false });
 
@@ -162,21 +163,8 @@ export default function AppInviteDialog({
     }
   };
 
-  // Print the slip on its own page, so the rest of the record never reaches the printer.
   const printSlip = () => {
-    const slip = slipRef.current;
-    if (!slip) return;
-    const win = window.open("", "_blank", "width=420,height=640");
-    if (!win) return setError("Allow pop-ups for this site to print the slip.");
-    win.document
-      .write(`<!doctype html><html><head><meta charset="utf-8"><title>eMCR invite</title>
-<style>body{font-family:system-ui,sans-serif;margin:0;padding:24px;color:#111}.slip{max-width:300px;margin:0 auto;text-align:center}
-h1{font-size:18px;margin:0 0 4px}p{font-size:13px;margin:4px 0;line-height:1.4}.code{font:700 24px ui-monospace,monospace;letter-spacing:3px;margin:12px 0 4px}
-.qr{margin:16px auto 8px;width:180px}.qr svg{width:180px;height:180px}ol{text-align:left;font-size:13px;padding-left:20px;margin:12px 0}
-.muted{color:#555;font-size:12px}</style></head><body>${slip.innerHTML}</body></html>`);
-    win.document.close();
-    win.focus();
-    win.print();
+    if (!printInviteSlip(slipRef.current)) setError("Allow pop-ups for this site to print the slip.");
   };
 
   const who = mode === "self" ? firstName : `${firstName}’s parent or carer`;

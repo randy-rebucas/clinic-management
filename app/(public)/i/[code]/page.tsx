@@ -37,6 +37,13 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
               New to eMCR? Install it, choose <span className="font-medium text-gray-900">I have an invite from my clinic</span>, and enter
               the code above. We’ll text a sign-in code to the number your clinic has for you.
             </p>
+            <p className="mt-3 text-sm text-gray-600">
+              Already set up?{' '}
+              <Link href="/my-qr" className="font-semibold text-brand-teal-dark hover:underline">
+                Get a sign-in QR
+              </Link>{' '}
+              for another device, for you or your child.
+            </p>
           </>
         ) : (
           <p className="text-gray-600">This invite link isn’t complete. Check the text message, or ask your clinic for a new invite.</p>

@@ -183,6 +183,12 @@ export function generatePrescriptionHTML(
             <div class="info-label">Patient:</div>
             <div>${e(patient.firstName)} ${e(patient.lastName)}</div>
           </div>
+          ${patient.patientCode ? `
+          <div class="info-row">
+            <div class="info-label">Patient Code:</div>
+            <div>${e(patient.patientCode)}</div>
+          </div>
+          ` : ''}
           ${patient.dateOfBirth ? `
           <div class="info-row">
             <div class="info-label">Date of Birth:</div>

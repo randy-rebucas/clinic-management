@@ -221,16 +221,18 @@ export async function redeemPatientLoginQr(token: string): Promise<{ patient: an
 /**
  * Issue a new login QR for a patient. The QR carries a random 256-bit token; only its
  * SHA-256 is stored. Issuing a new one revokes the previous (unused) QR. It works once and
- * expires after LOGIN_QR_TTL_MINUTES. `tenantId` scopes sessions started from it to one clinic.
+ * expires after LOGIN_QR_TTL_MINUTES, or `ttlSeconds` (the self-serve page shows it for under a
+ * minute). `tenantId` scopes sessions started from it to one clinic.
  * Returns the string to encode in the QR image.
  */
 export async function issuePatientLoginQr(
   patientId: string | Types.ObjectId,
-  options: { tenantId?: string | Types.ObjectId | null } = {}
+  options: { tenantId?: string | Types.ObjectId | null; ttlSeconds?: number } = {}
 ): Promise<{ qrData: string; expiresAt: Date }> {
   await connectDB();
   const token = randomBytes(32).toString('base64url');
-  const expiresAt = new Date(Date.now() + LOGIN_QR_TTL_MINUTES * 60 * 1000);
+  const ttlMs = options.ttlSeconds ? options.ttlSeconds * 1000 : LOGIN_QR_TTL_MINUTES * 60 * 1000;
+  const expiresAt = new Date(Date.now() + ttlMs);
   const set: Record<string, unknown> = { loginQrTokenHash: hashLoginQrToken(token), loginQrTokenExpiry: expiresAt };
   const update: Record<string, unknown> = { $set: set };
   if (options.tenantId) set.loginQrTenantId = new Types.ObjectId(String(options.tenantId));
