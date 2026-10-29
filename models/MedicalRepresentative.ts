@@ -8,7 +8,6 @@ export interface IMedicalRepresentative extends Document {
       {
         type: Schema.Types.ObjectId,
         ref: 'Tenant',
-        index: true,
       },
     ],
     required: false,

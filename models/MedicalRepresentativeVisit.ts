@@ -23,7 +23,6 @@ const MedicalRepresentativeVisitSchema: Schema = new Schema(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
-      index: true,
     },
     userId: {
       type: Schema.Types.ObjectId,

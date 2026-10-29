@@ -47,7 +47,7 @@ export interface IPaymentAccount extends Document {
 
 const PaymentAccountSchema = new Schema<IPaymentAccount>(
   {
-    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true, index: true },
+    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true },
     ownerType: { type: String, enum: ['clinic', 'doctor'], required: true },
     doctorId: { type: Schema.Types.ObjectId, ref: 'Doctor' },
     provider: { type: String, enum: PAYMENT_PROVIDERS, required: true },

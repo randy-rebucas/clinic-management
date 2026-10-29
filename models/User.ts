@@ -54,7 +54,6 @@ const UserSchema = new Schema<IUser>(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
-      index: true,
     },
     password: {
       type: String,
@@ -67,7 +66,6 @@ const UserSchema = new Schema<IUser>(
       type: Schema.Types.ObjectId,
       ref: 'Role',
       required: [true, 'Role is required'],
-      index: true,
     },
     staffInfo: {
       type: Schema.Types.ObjectId,

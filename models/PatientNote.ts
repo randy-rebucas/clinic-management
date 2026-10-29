@@ -28,7 +28,6 @@ const PatientNoteSchema = new Schema<IPatientNote>(
       type: Schema.Types.ObjectId,
       ref: 'Patient',
       required: true,
-      index: true,
     },
     author: {
       userId: {
@@ -76,7 +75,6 @@ const PatientNoteSchema = new Schema<IPatientNote>(
     ],
     tenantId: {
       type: Schema.Types.ObjectId,
-      index: true,
     },
   },
   {

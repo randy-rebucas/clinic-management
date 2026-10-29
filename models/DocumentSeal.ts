@@ -42,7 +42,7 @@ export interface IDocumentSeal extends Document {
 
 const DocumentSealSchema = new Schema<IDocumentSeal>(
   {
-    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', index: true },
+    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant' },
     serial: { type: String, required: true },
     documentType: {
       type: String,

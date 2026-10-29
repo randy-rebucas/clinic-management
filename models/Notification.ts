@@ -64,7 +64,6 @@ const NotificationSchema: Schema = new Schema(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
-      index: true,
     },
     
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },

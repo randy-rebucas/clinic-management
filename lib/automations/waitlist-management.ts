@@ -1,10 +1,11 @@
 // Waitlist Management Automation
 // Automatically fills cancelled appointment slots from waitlist
 
-import mongoose, { Schema, Types } from 'mongoose';
+import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
 import Patient from '@/models/Patient';
+import WaitlistEntryModel from '@/models/WaitlistEntry';
 import { getSettings } from '@/lib/settings';
 import { sendEmail, escapeHtml } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
@@ -30,30 +31,6 @@ export interface WaitlistEntry {
   priority?: number; // Higher number = higher priority
   createdAt: Date;
 }
-
-// Persisted waitlist (an in-memory list was lost between serverless invocations).
-const WaitlistEntrySchema = new Schema(
-  {
-    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true, index: true },
-    patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true },
-    doctor: { type: Schema.Types.ObjectId, ref: 'Doctor' },
-    preferredDate: { type: Date },
-    preferredTime: { type: String, trim: true },
-    priority: { type: Number, default: 0 },
-    status: { type: String, enum: ['waiting', 'filled', 'removed'], default: 'waiting', index: true },
-    filledAppointmentId: { type: Schema.Types.ObjectId, ref: 'Appointment' },
-    filledAt: { type: Date },
-  },
-  { timestamps: true }
-);
-WaitlistEntrySchema.index({ tenantId: 1, status: 1, priority: -1, createdAt: 1 });
-WaitlistEntrySchema.index(
-  { tenantId: 1, patient: 1 },
-  { unique: true, partialFilterExpression: { status: 'waiting' }, name: 'uniq_waiting_patient' }
-);
-
-const WaitlistEntryModel =
-  (mongoose.models.WaitlistEntry as mongoose.Model<any>) || mongoose.model('WaitlistEntry', WaitlistEntrySchema);
 
 function toObjectId(id: string | Types.ObjectId | undefined | null): Types.ObjectId | undefined {
   if (!id || !Types.ObjectId.isValid(String(id))) return undefined;

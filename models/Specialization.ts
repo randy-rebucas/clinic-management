@@ -25,7 +25,6 @@ const SpecializationSchema: Schema = new Schema(
     category: {
       type: String,
       trim: true,
-      index: true,
     },
     active: { 
       type: Boolean, 

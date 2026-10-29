@@ -35,7 +35,6 @@ const RoomSchema: Schema = new Schema(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
-      index: true,
     },
     
     name: {
@@ -104,7 +103,6 @@ const RoomSchema: Schema = new Schema(
 // Indexes for efficient queries (tenant-scoped)
 RoomSchema.index({ tenantId: 1, roomType: 1, status: 1 });
 RoomSchema.index({ tenantId: 1, status: 1 });
-RoomSchema.index({ tenantId: 1, roomType: 1 }); // For room type queries
 RoomSchema.index({ tenantId: 1, name: 1 }, { unique: true, sparse: true }); // Tenant-scoped room name
 
 export default mongoose.models.Room || mongoose.model<IRoom>('Room', RoomSchema);

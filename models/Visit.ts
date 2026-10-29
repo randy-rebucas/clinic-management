@@ -175,7 +175,6 @@ const VisitSchema: Schema = new Schema(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
-      index: true,
     },
     
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },
@@ -262,7 +261,6 @@ const VisitSchema: Schema = new Schema(
 );
 
 VisitSchema.index({ tenantId: 1, patient: 1, date: -1 });
-VisitSchema.index({ tenantId: 1, provider: 1 });
 VisitSchema.index({ tenantId: 1, provider: 1, date: -1 }); // Tenant-scoped provider visit history
 VisitSchema.index({ tenantId: 1, status: 1, date: -1 }); // Tenant-scoped status queries
 VisitSchema.index(
