@@ -27,7 +27,6 @@ interface DashboardData {
     totalOutstanding: number;
     outstandingInvoiceCount: number;
   };
-  recentAppointments: DashboardAppointment[];
   upcomingAppointments: DashboardAppointment[];
   permissions: {
     canViewPatients: boolean;
