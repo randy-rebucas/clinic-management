@@ -117,7 +117,6 @@ const LabResultSchema: Schema = new Schema(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
-      index: true,
     },
     
     visit: { type: Schema.Types.ObjectId, ref: 'Visit' },
@@ -164,9 +163,7 @@ const LabResultSchema: Schema = new Schema(
 // Indexes for efficient queries (tenant-scoped)
 LabResultSchema.index({ tenantId: 1, patient: 1, orderDate: -1 });
 LabResultSchema.index({ tenantId: 1, visit: 1 });
-LabResultSchema.index({ tenantId: 1, orderedBy: 1 });
 LabResultSchema.index({ tenantId: 1, reviewedBy: 1 });
-LabResultSchema.index({ tenantId: 1, status: 1 });
 LabResultSchema.index({ tenantId: 1, orderedBy: 1, orderDate: -1 }); // For orderer history
 LabResultSchema.index({ tenantId: 1, status: 1, orderDate: -1 }); // For status-based date queries
 LabResultSchema.index({ tenantId: 1, patient: 1, status: 1 }); // For patient's pending results

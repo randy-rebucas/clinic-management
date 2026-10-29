@@ -27,7 +27,7 @@ export interface IWebhookEndpoint extends Document {
 
 const WebhookEndpointSchema = new Schema<IWebhookEndpoint>(
   {
-    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true, index: true },
+    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true },
     url: { type: String, required: true, maxlength: 2048 },
     description: { type: String, trim: true, maxlength: 200 },
     events: { type: [String], enum: WEBHOOK_EVENTS, default: [] },

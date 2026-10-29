@@ -23,7 +23,6 @@ const ProcedureSchema: Schema = new Schema(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
-      index: true,
     },
     
     visit: { type: Schema.Types.ObjectId, ref: 'Visit' },
@@ -41,7 +40,6 @@ const ProcedureSchema: Schema = new Schema(
 // Indexes for efficient queries (tenant-scoped)
 ProcedureSchema.index({ tenantId: 1, patient: 1, date: -1 });
 ProcedureSchema.index({ tenantId: 1, visit: 1 });
-ProcedureSchema.index({ tenantId: 1, performedBy: 1 });
 ProcedureSchema.index({ tenantId: 1, performedBy: 1, date: -1 }); // For performer history
 ProcedureSchema.index({ tenantId: 1, type: 1, date: -1 }); // For procedure type queries
 

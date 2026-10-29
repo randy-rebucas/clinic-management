@@ -27,7 +27,6 @@ const ImagingSchema: Schema = new Schema(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
-      index: true,
     },
     
     visit: { type: Schema.Types.ObjectId, ref: 'Visit' },
@@ -49,9 +48,7 @@ const ImagingSchema: Schema = new Schema(
 // Indexes for efficient queries (tenant-scoped)
 ImagingSchema.index({ tenantId: 1, patient: 1, orderDate: -1 });
 ImagingSchema.index({ tenantId: 1, visit: 1 });
-ImagingSchema.index({ tenantId: 1, orderedBy: 1 });
 ImagingSchema.index({ tenantId: 1, reportedBy: 1 });
-ImagingSchema.index({ tenantId: 1, status: 1 });
 ImagingSchema.index({ tenantId: 1, orderedBy: 1, orderDate: -1 }); // For orderer history
 ImagingSchema.index({ tenantId: 1, status: 1, orderDate: -1 }); // For status-based date queries
 ImagingSchema.index({ tenantId: 1, patient: 1, status: 1 }); // For patient's pending imaging

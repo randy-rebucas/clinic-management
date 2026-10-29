@@ -49,7 +49,7 @@ export interface IPlatformInvoice extends Document {
 const PlatformInvoiceSchema = new Schema<IPlatformInvoice>(
   {
     orderId: { type: String, required: true, unique: true },
-    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true, index: true },
+    tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true },
     transactionId: { type: String },
     serialNo: { type: String },
     status: { type: String, enum: ['pending', 'held', 'issued', 'cancelled'], default: 'pending', index: true },

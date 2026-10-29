@@ -55,7 +55,6 @@ const SupportRequestSchema: Schema = new Schema(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
-      index: true,
     },
     userId: {
       type: Schema.Types.ObjectId,
@@ -75,7 +74,6 @@ const SupportRequestSchema: Schema = new Schema(
       type: String,
       enum: ['open', 'in-progress', 'resolved', 'closed'],
       default: 'open',
-      index: true,
     },
     source: { type: String, enum: ['clinic', 'medical-rep'] },
     replies: { type: [SupportReplySchema], default: [] },
