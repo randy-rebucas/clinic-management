@@ -42,8 +42,10 @@ try {
   run('mongodump', [`--config=${cfg}`, `--out=${dumpDir}`, '--excludeCollection=backuprecords']);
 
   console.log('🗜️   Zipping…');
-  // bsdtar (Windows 10+, macOS) writes zip with -a; elsewhere fall back to Info-ZIP.
+  // bsdtar (Windows 10+, macOS) writes zip with -a; elsewhere fall back to Info-ZIP. On Windows call
+  // its own tar by path: Git Bash puts GNU tar first, which reads "C:\..." as a remote host.
   if (process.platform === 'linux') run('zip', ['-rq', zipPath, name], work);
+  else if (process.platform === 'win32') run(join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe'), ['-a', '-c', '-f', zipPath, name], work);
   else run('tar', ['-a', '-c', '-f', zipPath, name], work);
 
   const sizeMB = (statSync(zipPath).size / 1024 / 1024).toFixed(2);

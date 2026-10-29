@@ -1,0 +1,21 @@
+# Local development database. See docs/LOCAL_DEV_DATABASE.md.
+#   pnpm db:local:up        start it
+#   pnpm db:local:refresh   load the newest backup from backups/, anonymized
+# Same major version as production (Atlas, MongoDB 8.0). No auth: it only listens on this machine.
+services:
+  mongo:
+    image: mongo:8.0
+    container_name: clinic-mongo
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - clinic-mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  clinic-mongo-data:
