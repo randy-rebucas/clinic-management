@@ -13,7 +13,7 @@ export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export const AUDIT_RESOURCES = [
   'patient', 'visit', 'appointment', 'prescription', 'lab_result', 'invoice', 'document', 'user', 'doctor',
   'room', 'service', 'notification', 'referral', 'membership', 'staff', 'medicine', 'settings', 'system',
-  'hmo', 'hmo_claim', 'philhealth', 'clinical_template', 'message', 'report',
+  'hmo', 'hmo_claim', 'philhealth', 'clinical_template', 'message', 'report', 'inventory',
 ] as const;
 export type AuditResource = (typeof AUDIT_RESOURCES)[number];
 
@@ -85,6 +85,7 @@ const NOUN: Record<AuditResource, string> = {
   clinical_template: 'a colleague’s shared template',
   message: 'a chat message',
   report: 'a report',
+  inventory: 'a stock item',
 };
 
 /** "Patient records", for menus and CSV. */
@@ -113,6 +114,7 @@ export const RESOURCE_LABEL: Record<AuditResource, string> = {
   clinical_template: 'Shared templates',
   message: 'Chat messages',
   report: 'Reports',
+  inventory: 'Inventory',
 };
 
 const noun = (resource: string) => NOUN[resource as AuditResource] ?? `a ${resource.replace(/_/g, ' ')}`;
@@ -178,6 +180,7 @@ export function recordHref(resource: string, id: string | null, action: string):
     doctor: '/doctors/',
     referral: '/referrals/',
     membership: '/memberships/',
+    inventory: '/inventory/',
   };
   if (id && byId[resource]) return `${byId[resource]}${id}`;
   const lists: Record<string, string> = {

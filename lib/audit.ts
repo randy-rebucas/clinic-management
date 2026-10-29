@@ -12,7 +12,7 @@ export interface AuditLogOptions {
   userRole?: string;
   tenantId?: string | Types.ObjectId; // Tenant ID for multi-tenant support
   action: 'create' | 'read' | 'update' | 'delete' | 'login' | 'logout' | 'export' | 'print' | 'download' | 'view' | 'access_denied' | 'password_change' | 'permission_change' | 'backup' | 'restore' | 'data_export' | 'data_deletion';
-  resource: 'patient' | 'visit' | 'appointment' | 'prescription' | 'lab_result' | 'invoice' | 'document' | 'user' | 'doctor' | 'room' | 'service' | 'notification' | 'referral' | 'membership' | 'staff' | 'medicine' | 'settings' | 'system' | 'hmo' | 'hmo_claim' | 'philhealth' | 'clinical_template' | 'message' | 'report';
+  resource: 'patient' | 'visit' | 'appointment' | 'prescription' | 'lab_result' | 'invoice' | 'document' | 'user' | 'doctor' | 'room' | 'service' | 'notification' | 'referral' | 'membership' | 'staff' | 'medicine' | 'settings' | 'system' | 'hmo' | 'hmo_claim' | 'philhealth' | 'clinical_template' | 'message' | 'report' | 'inventory';
   resourceId?: string | Types.ObjectId;
   ipAddress?: string;
   userAgent?: string;
@@ -270,6 +270,7 @@ const PERMISSION_RESOURCE: Record<string, AuditLogOptions['resource']> = {
   medicines: 'medicine',
   settings: 'settings',
   reports: 'report',
+  inventory: 'inventory',
 };
 
 /** True when the same entry was written in the last `minutes`, so retries and refetches log once. */
