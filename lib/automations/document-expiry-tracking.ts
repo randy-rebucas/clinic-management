@@ -260,7 +260,7 @@ export async function processDocumentExpiryTracking(
 ): Promise<TrackingResult> {
   try {
     await connectDB();
-    const runs = await forEachTenant(tenantId, processTenant);
+    const runs = await forEachTenant(tenantId, processTenant, { setting: 'autoDocumentExpiryTracking' });
     const total: TrackingResult = { success: runs.every((r) => r.success), processed: 0, alertsSent: 0, errors: 0, alerts: [] };
     for (const run of runs) {
       if (!run.result) {

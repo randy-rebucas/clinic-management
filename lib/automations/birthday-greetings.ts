@@ -174,7 +174,7 @@ async function processTenant(tenant: AutomationTenant): Promise<BirthdayResult> 
 export async function processBirthdayGreetings(tenantId?: string | Types.ObjectId): Promise<BirthdayResult> {
   try {
     await connectDB();
-    const runs = await forEachTenant(tenantId, processTenant);
+    const runs = await forEachTenant(tenantId, processTenant, { setting: 'autoBirthdayGreetings' });
     const total: BirthdayResult = { success: runs.every((r) => r.success), processed: 0, greetingsSent: 0, errors: 0, results: [] };
     for (const run of runs) {
       if (!run.result) {

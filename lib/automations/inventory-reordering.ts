@@ -280,7 +280,7 @@ export async function processInventoryReordering(
 ): Promise<ReorderResult> {
   try {
     await connectDB();
-    const runs = await forEachTenant(tenantId, processTenant);
+    const runs = await forEachTenant(tenantId, processTenant, { setting: 'autoInventoryReordering' });
     const total = emptyResult();
     total.success = runs.every((r) => r.success);
     for (const run of runs) {

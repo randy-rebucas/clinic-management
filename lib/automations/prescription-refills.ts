@@ -202,7 +202,7 @@ async function processTenant(tenant: AutomationTenant): Promise<RefillResult> {
 export async function processRefillReminders(tenantId?: string | Types.ObjectId): Promise<RefillResult> {
   try {
     await connectDB();
-    const runs = await forEachTenant(tenantId, processTenant);
+    const runs = await forEachTenant(tenantId, processTenant, { setting: 'autoPrescriptionRefills' });
     const total: RefillResult = { success: runs.every((r) => r.success), processed: 0, remindersSent: 0, errors: 0, results: [] };
     for (const run of runs) {
       if (!run.result) {

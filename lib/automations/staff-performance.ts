@@ -280,7 +280,8 @@ async function processStaffPerformance(period: 'weekly' | 'monthly', tenantId?: 
   try {
     await connectDB();
     const runs = await forEachTenant(tenantId, (t) =>
-      generateStaffPerformanceReport({ period, tenantId: t.tenantObjectId, sendEmail: true })
+      generateStaffPerformanceReport({ period, tenantId: t.tenantObjectId, sendEmail: true }),
+      { setting: 'autoStaffPerformanceReports' }
     );
     return {
       success: runs.every((r) => r.success && r.result?.success),
