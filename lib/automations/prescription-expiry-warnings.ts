@@ -200,7 +200,7 @@ export async function processPrescriptionExpiryWarnings(
 ): Promise<ExpiryWarningsResult> {
   try {
     await connectDB();
-    const runs = await forEachTenant(tenantId, processTenant);
+    const runs = await forEachTenant(tenantId, processTenant, { setting: 'autoPrescriptionExpiryWarnings' });
     const total: ExpiryWarningsResult = { success: runs.every((r) => r.success), processed: 0, warningsSent: 0, errors: 0, warnings: [] };
     for (const run of runs) {
       if (!run.result) {

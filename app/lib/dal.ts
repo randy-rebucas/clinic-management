@@ -6,6 +6,7 @@ import { cookies } from 'next/headers';
 import type { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
+import { redisPipeline } from '@/lib/redis';
 
 const secretKey = process.env.SESSION_SECRET;
 // Only enforce SESSION_SECRET at runtime, not during build
@@ -164,10 +165,59 @@ interface UserSessionState {
 
 const userStateCache = new Map<string, { state: UserSessionState | null; expires: number }>();
 
+/**
+ * Session state is cached per instance and, when Redis is configured, shared across instances.
+ * An entry is good for SESSION_CHECK_TTL_MS from when it was read from the database, wherever
+ * it is copied, so a change that doesn't call forgetUserSessionState is seen within that time.
+ */
+const sharedStateKey = (userId: string) => `sess:${userId}`;
+
+type SharedUserState = { at: number; state: (Omit<UserSessionState, 'revoked'> & { revoked: string[] }) | null };
+
+function rememberUserState(userId: string, state: UserSessionState | null, readAt: number) {
+  userStateCache.set(userId, { state, expires: readAt + SESSION_CHECK_TTL_MS });
+  if (userStateCache.size > 5000) {
+    const now = Date.now();
+    for (const [key, entry] of userStateCache) if (entry.expires < now) userStateCache.delete(key);
+  }
+}
+
+async function readSharedUserState(userId: string): Promise<{ state: UserSessionState | null; at: number } | null> {
+  const res = await redisPipeline([['GET', sharedStateKey(userId)]]);
+  const raw = res?.[0]?.result;
+  if (typeof raw !== 'string') return null;
+  try {
+    const shared = JSON.parse(raw) as SharedUserState;
+    if (typeof shared.at !== 'number' || Date.now() - shared.at >= SESSION_CHECK_TTL_MS) return null;
+    const state = shared.state ? { ...shared.state, revoked: new Set(shared.state.revoked) } : null;
+    return { state, at: shared.at };
+  } catch {
+    return null;
+  }
+}
+
+async function writeSharedUserState(userId: string, state: UserSessionState | null, at: number) {
+  const shared: SharedUserState = { at, state: state ? { ...state, revoked: [...state.revoked] } : null };
+  await redisPipeline([['SET', sharedStateKey(userId), JSON.stringify(shared), 'PX', SESSION_CHECK_TTL_MS]]);
+}
+
+/** Drop the cached session state so the next request reads the database. */
+async function forgetUserSessionState(userId: string) {
+  userStateCache.delete(userId);
+  await redisPipeline([['DEL', sharedStateKey(userId)]]);
+}
+
 async function loadUserSessionState(userId: string): Promise<UserSessionState | null> {
   const cached = userStateCache.get(userId);
   if (cached && cached.expires > Date.now()) return cached.state;
 
+  const shared = await readSharedUserState(userId);
+  if (shared) {
+    rememberUserState(userId, shared.state, shared.at);
+    return shared.state;
+  }
+
+  const readAt = Date.now();
   await connectDB();
   await import('@/models/Role');
   const user = await User.findById(userId)
@@ -194,11 +244,8 @@ async function loadUserSessionState(userId: string): Promise<UserSessionState | 
       revoked: new Set((user.revokedSessions ?? []).map((r) => r.jti)),
     };
   }
-  userStateCache.set(userId, { state, expires: Date.now() + SESSION_CHECK_TTL_MS });
-  if (userStateCache.size > 5000) {
-    const now = Date.now();
-    for (const [key, entry] of userStateCache) if (entry.expires < now) userStateCache.delete(key);
-  }
+  rememberUserState(userId, state, readAt);
+  await writeSharedUserState(userId, state, readAt);
   return state;
 }
 
@@ -237,7 +284,7 @@ export async function verifySessionToken(token: string | undefined): Promise<Ses
 export async function revokeUserSessions(userId: string): Promise<void> {
   await connectDB();
   await User.updateOne({ _id: userId }, { $inc: { sessionVersion: 1 } });
-  userStateCache.delete(String(userId));
+  await forgetUserSessionState(String(userId));
 }
 
 /**
@@ -252,7 +299,7 @@ export async function revokeSessionToken(token: string | undefined): Promise<voi
   // Entries past their token's expiry are dropped as new ones are added.
   await User.updateOne({ _id: session.userId }, { $pull: { revokedSessions: { exp: { $lt: new Date() } } } });
   await User.updateOne({ _id: session.userId }, { $push: { revokedSessions: { jti: session.jti, exp } } });
-  userStateCache.delete(String(session.userId));
+  await forgetUserSessionState(String(session.userId));
 }
 
 export const SESSION_TTL_SECONDS = SESSION_TTL_MS / 1000;
@@ -277,7 +324,7 @@ export async function issueSessionToken(
   }
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
   const token = await encrypt({ userId, email, role, roleId, tenantId, expiresAt, sv });
-  userStateCache.delete(userId);
+  await forgetUserSessionState(userId);
   return { token, expiresAt };
 }
 
@@ -331,7 +378,7 @@ export async function createViewAsSession(opts: {
     .setIssuedAt()
     .setExpirationTime(`${VIEW_AS_TTL_MS / 1000}s`)
     .sign(encodedKey);
-  userStateCache.delete(opts.userId);
+  await forgetUserSessionState(opts.userId);
   const cookieStore = await cookies();
   cookieStore.set('session', token, cookieOptions(expiresAt));
 }

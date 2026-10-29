@@ -1,3 +1,5 @@
+import { redisRestEnv } from './redis';
+
 /**
  * Environment variable validation
  * Validates required environment variables at startup
@@ -15,6 +17,8 @@ const envConfig: EnvConfig = {
     'INSTALL_SECRET', // Bearer secret for /api/install/* (all environments); routes are disabled when unset
     'UPSTASH_REDIS_REST_URL', // Shared rate-limit store (falls back to per-instance memory when unset)
     'UPSTASH_REDIS_REST_TOKEN',
+    'KV_REST_API_URL', // Same, under the names Vercel's Upstash integration sets
+    'KV_REST_API_TOKEN',
     'LAB_WEBHOOK_SECRET', // HMAC secret for third-party lab webhook verification
     'DOCUMENT_SEAL_SECRET', // HMAC key for printed-document seals (falls back to a key derived from SESSION_SECRET)
     'DOCUMENT_VERIFY_BASE_URL', // Canonical origin printed in document QR codes, e.g. https://www.myclinicsoft.solutions
@@ -70,8 +74,9 @@ export function validateEnv(): { valid: boolean; errors: string[] } {
     errors.push('ENCRYPTION_KEY must be a 64-character hex string (32 bytes for AES-256)');
   }
 
-  if (!!process.env.UPSTASH_REDIS_REST_URL !== !!process.env.UPSTASH_REDIS_REST_TOKEN) {
-    errors.push('UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set together');
+  const redis = redisRestEnv();
+  if (!!redis.url !== !!redis.token) {
+    errors.push('Redis REST URL and token must be set together (UPSTASH_REDIS_REST_URL/_TOKEN or KV_REST_API_URL/_TOKEN)');
   }
 
   if (process.env.INSTALL_SECRET && process.env.INSTALL_SECRET.length < 32) {
@@ -90,8 +95,8 @@ export function validateEnv(): { valid: boolean; errors: string[] } {
 
   // Not fatal, but each leaves a protection off in production; say so at every start.
   if (isProduction) {
-    if (!process.env.UPSTASH_REDIS_REST_URL) {
-      console.warn('Security: UPSTASH_REDIS_REST_* unset; login and OTP rate limits are per serverless instance.');
+    if (!redisRestEnv().url) {
+      console.warn('Security: UPSTASH_REDIS_REST_* (or KV_REST_API_*) unset; login and OTP rate limits are per serverless instance.');
     }
     if (!process.env.TURNSTILE_SECRET_KEY) {
       console.warn('Security: TURNSTILE_SECRET_KEY unset; public booking and registration have no bot check.');

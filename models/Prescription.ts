@@ -132,7 +132,6 @@ const PrescriptionSchema: Schema = new Schema(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
-      index: true,
     },
     
     prescriptionCode: { type: String, required: true },
@@ -196,8 +195,6 @@ const PrescriptionSchema: Schema = new Schema(
 // Indexes for efficient queries (tenant-scoped)
 PrescriptionSchema.index({ tenantId: 1, patient: 1, issuedAt: -1 });
 PrescriptionSchema.index({ tenantId: 1, visit: 1 });
-PrescriptionSchema.index({ tenantId: 1, prescribedBy: 1 });
-PrescriptionSchema.index({ tenantId: 1, status: 1 });
 PrescriptionSchema.index({ tenantId: 1, prescribedBy: 1, issuedAt: -1 }); // For prescriber history
 PrescriptionSchema.index({ tenantId: 1, status: 1, issuedAt: -1 }); // For status-based date queries
 PrescriptionSchema.index({ tenantId: 1, patient: 1, status: 1 }); // For patient's active prescriptions

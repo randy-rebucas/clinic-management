@@ -17,6 +17,7 @@ import Queue from '@/models/Queue';
 import Referral from '@/models/Referral';
 import Survey from '@/models/Survey';
 import Visit from '@/models/Visit';
+import WaitlistEntry from '@/models/WaitlistEntry';
 import { cloudinaryRefForDocument } from '@/lib/document-file';
 import { deleteFromCloudinary } from '@/lib/cloudinary';
 import { deleteStoredAttachment } from '@/lib/attachment-file';
@@ -53,6 +54,7 @@ export const PATIENT_RECORDS: Link[] = [
   { model: Referral, field: 'patient' },
   { model: Survey, field: 'patientId' },
   { model: Visit, field: 'patient' },
+  { model: WaitlistEntry, field: 'patient' },
 ];
 
 /** Records that mention the patient without being about them: the mention goes, the record stays. */
@@ -76,7 +78,7 @@ export const PATIENT_REFS_KEPT = ['AuditLog.dataSubject', 'EmcrAccount.selfPatie
 const RETAINED_RECORDS = new Set<Model<any>>([Invoice]);
 
 /** Not part of the medical record; removed in both modes. */
-const NON_CLINICAL = [DocumentModel, PatientMessage, MobileDevice, Survey, EmcrAccessRequest, EmcrInvite];
+const NON_CLINICAL = [DocumentModel, PatientMessage, MobileDevice, Survey, EmcrAccessRequest, EmcrInvite, WaitlistEntry];
 
 const ANONYMIZED = '[ANONYMIZED]';
 

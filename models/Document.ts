@@ -140,7 +140,6 @@ const DocumentSchema: Schema = new Schema(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
-      index: true,
     },
     
     documentCode: { type: String, required: true, index: true },
@@ -201,7 +200,6 @@ DocumentSchema.index({ tenantId: 1, tags: 1 });
 DocumentSchema.index({ tenantId: 1, title: 'text', description: 'text', ocrText: 'text' }); // Full-text search
 DocumentSchema.index({ tenantId: 1, uploadDate: -1 });
 DocumentSchema.index({ tenantId: 1, expiryDate: 1 });
-DocumentSchema.index({ tenantId: 1, uploadedBy: 1 });
 DocumentSchema.index({ tenantId: 1, uploadedBy: 1, uploadDate: -1 }); // For uploader history
 DocumentSchema.index({ tenantId: 1, lastModifiedBy: 1 });
 DocumentSchema.index({ tenantId: 1, visit: 1, category: 1 }); // For visit-related documents

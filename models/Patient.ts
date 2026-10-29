@@ -180,7 +180,6 @@ const PatientSchema: Schema = new Schema(
         {
           type: Schema.Types.ObjectId,
           ref: 'Tenant',
-          index: true,
         },
       ],
       required: false,

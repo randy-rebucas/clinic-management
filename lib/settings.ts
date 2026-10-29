@@ -69,6 +69,30 @@ export async function getSettings(tenantIdInput?: string | { toString(): string 
 }
 
 /**
+ * Load many tenants' settings in one query and cache them, for runs over every clinic.
+ * Returns what was found; a tenant without a settings record is left out (getSettings creates it).
+ */
+export async function preloadSettings(tenantIds: string[]): Promise<Map<string, any>> {
+  const found = new Map<string, any>();
+  if (!tenantIds.length) return found;
+  try {
+    await connectDB();
+    const { Types } = await import('mongoose');
+    const docs = await Settings.find({ tenantId: { $in: tenantIds.map((id) => new Types.ObjectId(id)) } });
+    const now = Date.now();
+    for (const doc of docs) {
+      const tenantId = String(doc.tenantId);
+      const settingsObj = { ...getDefaultSettings(), ...doc.toObject() };
+      settingsCache.set(tenantId, { value: settingsObj, at: now });
+      found.set(tenantId, settingsObj);
+    }
+  } catch (error) {
+    console.error('Error preloading settings:', error);
+  }
+  return found;
+}
+
+/**
  * Get default settings (fallback)
  */
 /**

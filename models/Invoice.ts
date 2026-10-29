@@ -179,7 +179,6 @@ const InvoiceSchema: Schema = new Schema(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
-      index: true,
     },
     
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },
@@ -368,14 +367,11 @@ const InvoiceSchema: Schema = new Schema(
 
 // Indexes for efficient queries (tenant-scoped)
 InvoiceSchema.index({ tenantId: 1, patient: 1, createdAt: -1 });
-InvoiceSchema.index({ tenantId: 1, visit: 1 });
-InvoiceSchema.index({ tenantId: 1, status: 1 });
 InvoiceSchema.index(
   { tenantId: 1, invoiceNumber: 1 },
   { unique: true, name: 'uniq_tenant_invoiceNumber', partialFilterExpression: { invoiceNumber: { $type: 'string' } } }
 );
 InvoiceSchema.index({ tenantId: 1, archived: 1, createdAt: 1 });
-InvoiceSchema.index({ tenantId: 1, createdBy: 1 });
 InvoiceSchema.index({ tenantId: 1, createdBy: 1, createdAt: -1 }); // For creator history
 InvoiceSchema.index({ tenantId: 1, status: 1, createdAt: -1 }); // For status-based date queries
 InvoiceSchema.index({ tenantId: 1, patient: 1, status: 1 }); // For patient's unpaid invoices

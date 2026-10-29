@@ -26,7 +26,7 @@ const ActivationCodeSchema = new Schema<IActivationCode>(
     codeHash: { type: String, required: true, unique: true },
     codeEncrypted: { type: String, required: true, select: false },
     last4: { type: String, required: true },
-    batchId: { type: Schema.Types.ObjectId, ref: 'VoucherBatch', required: true, index: true },
+    batchId: { type: Schema.Types.ObjectId, ref: 'VoucherBatch', required: true },
     tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', required: true, index: true },
     status: { type: String, enum: ['unsold', 'redeemed', 'void'], default: 'unsold' },
     redeemedBy: { type: Schema.Types.ObjectId, ref: 'EmcrAccount' },

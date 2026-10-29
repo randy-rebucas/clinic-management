@@ -200,7 +200,7 @@ export async function processMedicationReminders(
   try {
     await connectDB();
     const now = reminderTime || new Date();
-    const runs = await forEachTenant(tenantId, (t) => processTenant(t, now));
+    const runs = await forEachTenant(tenantId, (t) => processTenant(t, now), { setting: 'autoMedicationAdherence' });
     const total: AdherenceResult = { success: runs.every((r) => r.success), processed: 0, remindersSent: 0, errors: 0, results: [] };
     for (const run of runs) {
       if (!run.result) {

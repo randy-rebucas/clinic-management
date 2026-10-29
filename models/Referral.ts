@@ -83,7 +83,6 @@ const ReferralSchema: Schema = new Schema(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
-      index: true,
     },
     
     referralCode: { type: String, index: true },

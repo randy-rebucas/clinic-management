@@ -6,6 +6,7 @@ import { logout } from '@/app/actions/auth';
 import Link from 'next/link';
 import { useSidebar } from './SidebarContext';
 import { UNREAD_EVENT } from '@/lib/notification-kinds';
+import { startVisiblePoll } from '@/lib/visible-poll';
 import { useMessaging } from './messaging/MessagingProvider';
 
 interface ContentHeaderProps {
@@ -72,21 +73,16 @@ export default function ContentHeader({ user }: ContentHeaderProps) {
     };
 
     fetchUnreadCount();
-    // Refresh every 30 seconds while the tab is visible, and at once when it becomes visible
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') fetchUnreadCount();
-    }, 30000);
-    const onVisible = () => document.visibilityState === 'visible' && fetchUnreadCount();
+    // Refresh every minute while the tab is in use (every 5 once idle), and at once when it becomes visible
+    const stopPolling = startVisiblePoll(fetchUnreadCount, { activeMs: 60_000, idleMs: 300_000 });
     // The notifications page reports changes it makes, so the count follows at once.
     const onUnread = (e: Event) => {
       const n = (e as CustomEvent<number>).detail;
       if (typeof n === 'number') setUnreadCount(n);
     };
-    document.addEventListener('visibilitychange', onVisible);
     window.addEventListener(UNREAD_EVENT, onUnread);
     return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', onVisible);
+      stopPolling();
       window.removeEventListener(UNREAD_EVENT, onUnread);
       controller.abort();
     };

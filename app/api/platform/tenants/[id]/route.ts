@@ -8,6 +8,7 @@ import { parseBody, isValidationError } from '@/lib/api/validate';
 import { isValidId, notFound } from '@/lib/api/tenant-session';
 import { requirePlatformApi, isPlatformError } from '@/lib/platform-auth';
 import { createAuditLog } from '@/lib/audit';
+import { clearTenantCache } from '@/lib/tenant';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -54,6 +55,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   if (changes.length) {
     await Tenant.updateOne({ _id: id }, { $set: set });
+    clearTenantCache();
     if (set.status === 'suspended') {
       // End every session in the clinic; sign-in is refused while the clinic is not active.
       await User.updateMany({ tenantId: new Types.ObjectId(id) }, { $inc: { sessionVersion: 1 } });

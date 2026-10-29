@@ -180,7 +180,7 @@ async function sendTenantDailyReport(tenant: AutomationTenant, options: DailyRep
 export async function sendDailyReport(options: DailyReportOptions = {}): Promise<SendResult & { tenants?: unknown[] }> {
   try {
     await connectDB();
-    const runs = await forEachTenant(options.tenantId, (t) => sendTenantDailyReport(t, options));
+    const runs = await forEachTenant(options.tenantId, (t) => sendTenantDailyReport(t, options), { setting: 'autoDailyReports' });
     let sent = 0;
     let errors = 0;
     for (const run of runs) {

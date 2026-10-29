@@ -29,7 +29,7 @@ export interface IMobileDevice extends Document {
 
 const MobileDeviceSchema = new Schema<IMobileDevice>(
   {
-    patientId: { type: Schema.Types.ObjectId, ref: 'Patient', index: true },
+    patientId: { type: Schema.Types.ObjectId, ref: 'Patient' },
     userId: { type: Schema.Types.ObjectId, ref: 'User' },
     tenantId: { type: Schema.Types.ObjectId, ref: 'Tenant', index: true },
     deviceId: { type: String, required: true },

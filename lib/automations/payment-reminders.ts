@@ -191,7 +191,7 @@ async function processTenant(tenant: AutomationTenant): Promise<PaymentReminders
 export async function processPaymentReminders(tenantId?: string | Types.ObjectId): Promise<PaymentRemindersResult> {
   try {
     await connectDB();
-    const runs = await forEachTenant(tenantId, processTenant);
+    const runs = await forEachTenant(tenantId, processTenant, { setting: 'autoPaymentReminders' });
     const total: PaymentRemindersResult = { success: runs.every((r) => r.success), processed: 0, sent: 0, errors: 0, results: [] };
     for (const run of runs) {
       if (!run.result) {

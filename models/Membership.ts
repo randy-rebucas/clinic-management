@@ -81,7 +81,6 @@ const MembershipSchema: Schema = new Schema(
     tenantId: {
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
-      index: true,
     },
     
     patient: { type: Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },

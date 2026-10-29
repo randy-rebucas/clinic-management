@@ -195,7 +195,7 @@ async function processTenant(tenant: AutomationTenant): Promise<ExpiryResult> {
 export async function processExpiryAlerts(tenantId?: string | Types.ObjectId): Promise<ExpiryResult> {
   try {
     await connectDB();
-    const runs = await forEachTenant(tenantId, processTenant);
+    const runs = await forEachTenant(tenantId, processTenant, { setting: 'autoExpiryMonitoring' });
     const total: ExpiryResult = { success: runs.every((r) => r.success), processed: 0, alertsSent: 0, errors: 0, results: [] };
     for (const run of runs) {
       if (!run.result) {

@@ -101,6 +101,34 @@ export function extractSubdomain(host?: string | null): string | null {
 }
 
 /**
+ * Active tenants by subdomain, per instance. Every request on a clinic subdomain resolves its
+ * tenant, so this saves a read per request. Only hits are kept: a clinic onboarded a moment
+ * ago is found at once. Other instances see a change (suspension, settings) within the TTL.
+ */
+const TENANT_CACHE_TTL_MS = 60 * 1000;
+const tenantBySubdomain = new Map<string, { tenant: TenantLean; expires: number }>();
+
+async function findActiveTenantBySubdomain(subdomain: string): Promise<TenantLean | null> {
+  const hit = tenantBySubdomain.get(subdomain);
+  if (hit && hit.expires > Date.now()) return hit.tenant;
+
+  await connectDB();
+  const tenant = await Tenant.findOne({
+    subdomain,
+    status: 'active'
+  }).select('_id name subdomain displayName status settings subscription').lean() as TenantLean | null;
+
+  if (tenant) tenantBySubdomain.set(subdomain, { tenant, expires: Date.now() + TENANT_CACHE_TTL_MS });
+  else tenantBySubdomain.delete(subdomain);
+  return tenant;
+}
+
+/** Forget cached tenants on this instance; call after changing a tenant. */
+export function clearTenantCache(): void {
+  tenantBySubdomain.clear();
+}
+
+/**
  * Get tenant context from request headers
  * This is used in server components and API routes (memoized per request)
  */
@@ -120,11 +148,7 @@ export const getTenantContext = cache(async (): Promise<TenantContext> => {
       };
     }
 
-    await connectDB();
-    const tenant = await Tenant.findOne({ 
-      subdomain: subdomain.toLowerCase(),
-      status: 'active'
-    }).select('_id name subdomain displayName status settings subscription').lean() as TenantLean | null;
+    const tenant = await findActiveTenantBySubdomain(subdomain.toLowerCase());
 
     if (!tenant) {
       return {

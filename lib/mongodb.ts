@@ -40,6 +40,11 @@ async function connectDB(): Promise<typeof mongoose> {
       // Limit pool size for serverless environments where each invocation may open a new connection.
       // Without a cap, a traffic spike can exhaust MongoDB Atlas's free-tier connection limit (500).
       maxPoolSize: 10,
+      // In production every cold start would otherwise send createIndex for every model's
+      // indexes (and createCollection per model), each one a billed operation. Indexes are
+      // built by `pnpm db:indexes` instead; run it after deploying a schema index change.
+      autoIndex: process.env.NODE_ENV !== 'production',
+      autoCreate: process.env.NODE_ENV !== 'production',
     };
 
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
