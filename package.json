@@ -31,6 +31,7 @@
     "db:backup:zip": "tsx scripts/db-backup-zip.ts",
     "db:restore": "tsx scripts/db-restore.ts",
     "db:indexes": "tsx scripts/sync-indexes.ts",
+    "db:cleanup:notifications": "tsx scripts/cleanup-orphan-notifications.ts",
     "db:migrate:audit": "tsx scripts/migrate-2026-10-audit.ts",
     "db:migrate:attachment-tenants": "tsx scripts/migrate-patient-attachment-tenants.ts",
     "storage:migrate-attachments": "tsx scripts/migrate-attachments-to-cloudinary.ts",
