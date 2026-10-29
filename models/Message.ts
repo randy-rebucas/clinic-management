@@ -9,6 +9,8 @@ export interface IMessage extends Document {
   fromSupport?: boolean;
   /** Which platform admin wrote it; shown in the platform console only. */
   supportAgentEmail?: string;
+  /** Set on each copy of a support broadcast (SupportBroadcast). */
+  broadcastId?: Types.ObjectId;
   body: string;
   editedAt?: Date;
   // Deleted for everyone by the sender. The body is kept for the clinic's records but never served.
@@ -30,6 +32,7 @@ const MessageSchema: Schema = new Schema(
     },
     fromSupport: { type: Boolean, default: undefined },
     supportAgentEmail: { type: String },
+    broadcastId: { type: Schema.Types.ObjectId, ref: 'SupportBroadcast' },
     body: { type: String, required: true, trim: true, maxlength: MESSAGE_MAX_LENGTH },
     editedAt: { type: Date },
     deletedAt: { type: Date },
