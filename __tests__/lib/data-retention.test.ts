@@ -39,6 +39,13 @@ vi.mock('@/lib/settings', () => ({
   getSettings: vi.fn(),
 }));
 
+vi.mock('@/lib/audit-archive', () => ({
+  AUDIT_ARCHIVE_DEFAULTS: { keepInDatabaseDays: 90, keepArchiveDays: 1826 },
+  archiveAuditLogs: vi.fn(),
+  deleteExpiredArchives: vi.fn(),
+  isArchiveStorageConfigured: vi.fn(),
+}));
+
 vi.mock('@/lib/logger', () => ({
   default: {
     error: vi.fn(),
@@ -140,22 +147,38 @@ describe('Data Retention', () => {
       expect(Appointment.deleteMany).not.toHaveBeenCalled();
     });
 
-    it('should not delete audit logs younger than the minimum retention', async () => {
+    it('moves audit logs to archive files instead of deleting them', async () => {
       const { getSettings } = await import('@/lib/settings');
       const AuditLog = (await import('@/models/AuditLog')).default;
+      const archive = await import('@/lib/audit-archive');
 
       vi.mocked(getSettings).mockResolvedValue({ automationSettings: { autoDataRetention: true } } as any);
-      vi.mocked(AuditLog.find).mockReturnValue(mockIdQuery([]));
+      vi.mocked(archive.isArchiveStorageConfigured).mockReturnValue(true);
+      vi.mocked(archive.archiveAuditLogs).mockResolvedValue({ entries: 7, files: 1 });
+      vi.mocked(archive.deleteExpiredArchives).mockResolvedValue(2);
 
-      await applyDataRetentionPolicy(tenantId, [
-        { resource: 'audit-logs', archiveAfterDays: 0, deleteAfterDays: 1 },
+      const result = await applyDataRetentionPolicy(tenantId, [
+        { resource: 'audit-logs', archiveAfterDays: 90, deleteAfterDays: 1826 },
       ]);
 
-      const filter = (vi.mocked(AuditLog.find).mock.calls[0] as any[])[0];
-      const cutoff: Date = filter.createdAt.$lt;
-      const ageDays = (Date.now() - cutoff.getTime()) / (24 * 60 * 60 * 1000);
-      expect(ageDays).toBeGreaterThanOrEqual(364);
+      expect(archive.archiveAuditLogs).toHaveBeenCalledWith(tenantId, 90);
+      expect(archive.deleteExpiredArchives).toHaveBeenCalledWith(tenantId, 1826);
+      expect(result.archived['audit-logs']).toBe(7);
       expect(AuditLog.deleteMany).not.toHaveBeenCalled();
+      expect(AuditLog.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('leaves audit logs alone when no archive storage is set up', async () => {
+      const { getSettings } = await import('@/lib/settings');
+      const archive = await import('@/lib/audit-archive');
+
+      vi.mocked(getSettings).mockResolvedValue({ automationSettings: { autoDataRetention: true } } as any);
+      vi.mocked(archive.isArchiveStorageConfigured).mockReturnValue(false);
+
+      await applyDataRetentionPolicy(tenantId, [{ resource: 'audit-logs', archiveAfterDays: 90, deleteAfterDays: 1826 }]);
+
+      expect(archive.archiveAuditLogs).not.toHaveBeenCalled();
+      expect(archive.deleteExpiredArchives).not.toHaveBeenCalled();
     });
   });
 

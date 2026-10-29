@@ -7,6 +7,7 @@ import { FIELD, FOCUS_RING, ICON, Svg } from '../appointments/shared';
 import { SERIES, TrendChart } from '../dashboards/charts';
 import PatientSearch, { type PatientOption } from '../patients/PatientSearch';
 import AuditEntry, { ENTRY_GRID } from './AuditEntry';
+import AuditLogArchives from './AuditLogArchives';
 import {
   AUDIT_EXPORT_MAX,
   AUDIT_KINDS,
@@ -242,8 +243,8 @@ export default function AuditLogClient({ meId, start, retentionOn }: { meId: str
 
       <p className="-mt-3 text-sm text-gray-500">
         {retentionOn
-          ? 'Entries are kept for three years; the weekly “Archive old records” job then deletes them. Downloading is recorded here too.'
-          : 'Entries are kept until “Archive old records” is turned on; it deletes entries older than three years. Downloading is recorded here too.'}{' '}
+          ? 'Entries stay here for about three months; the weekly “Archive old records” job then moves each finished month into a file, kept for five years (Archived months, below). Downloading is recorded here too.'
+          : 'Entries stay here until “Archive old records” is turned on; it then moves months older than about three months into files, kept for five years. Downloading is recorded here too.'}{' '}
         {insights.value?.oldest && (
           <>
             On file since{' '}
@@ -554,6 +555,8 @@ export default function AuditLogClient({ meId, start, retentionOn }: { meId: str
           </nav>
         )}
       </div>
+
+      <AuditLogArchives />
     </div>
   );
 }

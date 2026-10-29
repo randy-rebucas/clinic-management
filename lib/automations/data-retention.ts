@@ -1,6 +1,8 @@
 /**
  * Data Retention Policy Automation
- * Flags old records as archived; only audit logs are ever hard-deleted.
+ * Flags old clinical and billing records as archived (they stay in the database). Audit logs are
+ * moved out of the database into archive files, and only those files are ever deleted
+ * (lib/audit-archive.ts).
  */
 
 import connectDB from '@/lib/mongodb';
@@ -10,7 +12,12 @@ import Invoice from '@/models/Invoice';
 import LabResult from '@/models/LabResult';
 import Prescription from '@/models/Prescription';
 import Document from '@/models/Document';
-import AuditLog from '@/models/AuditLog';
+import {
+  AUDIT_ARCHIVE_DEFAULTS,
+  archiveAuditLogs,
+  deleteExpiredArchives,
+  isArchiveStorageConfigured,
+} from '@/lib/audit-archive';
 import { getSettings } from '@/lib/settings';
 import logger from '@/lib/logger';
 import { Types, Model } from 'mongoose';
@@ -36,9 +43,8 @@ export interface DataRetentionResult {
 /** Records touched per batch, and batches per resource per run (the job is weekly). */
 const BATCH_SIZE = 1000;
 const MAX_BATCHES = 20;
-/** Floors that caller-supplied policies cannot go below. */
+/** Floor that caller-supplied policies cannot go below (audit logs have their own, in lib/audit-archive.ts). */
 const MIN_ARCHIVE_DAYS = 30;
-const MIN_AUDIT_LOG_DELETE_DAYS = 365;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -84,8 +90,8 @@ export function getDefaultRetentionPolicies(): RetentionPolicy[] {
     },
     {
       resource: 'audit-logs',
-      archiveAfterDays: 90, // Archive after 90 days
-      deleteAfterDays: 1095, // Delete after 3 years
+      archiveAfterDays: AUDIT_ARCHIVE_DEFAULTS.keepInDatabaseDays, // Moved to an archive file (whole months)
+      deleteAfterDays: AUDIT_ARCHIVE_DEFAULTS.keepArchiveDays, // Archive files deleted after this
     },
   ];
 }
@@ -119,6 +125,20 @@ export async function applyDataRetentionPolicy(
 
     for (const policy of retentionPolicies) {
       try {
+        if (policy.resource === 'audit-logs') {
+          // Entries leave the database only into a verified archive file; without a Blob store
+          // they simply stay.
+          if (isArchiveStorageConfigured()) {
+            if (policy.archiveAfterDays > 0) {
+              archived[policy.resource] = (await archiveAuditLogs(tenantIdObj, policy.archiveAfterDays)).entries;
+            }
+            if (policy.deleteAfterDays > 0) {
+              deleted['audit-log-archive-files'] = await deleteExpiredArchives(tenantIdObj, policy.deleteAfterDays);
+            }
+          }
+          continue;
+        }
+
         if (policy.archiveAfterDays > 0) {
           const days = Math.max(MIN_ARCHIVE_DAYS, policy.archiveAfterDays);
           const archiveDate = new Date(Date.now() - days * DAY_MS);
@@ -126,10 +146,6 @@ export async function applyDataRetentionPolicy(
           archived[policy.resource] = archiveResult.count;
         }
 
-        if (policy.deleteAfterDays > 0) {
-          const deleteResult = await deleteRecords(policy.resource, tenantIdObj, policy.deleteAfterDays);
-          deleted[policy.resource] = deleteResult.count;
-        }
       } catch (error: any) {
         logger.error('Error applying retention policy', error as Error, {
           resource: policy.resource,
@@ -206,41 +222,10 @@ async function archiveRecords(
           { status: 'archived', lastModifiedDate: new Date() }
         ),
       };
-    case 'audit-logs':
-      return { count: await archiveInBatches(AuditLog, older, flag) };
     default:
       // Patients are never archived
       return { count: 0 };
   }
-}
-
-/**
- * Delete records older than the retention period. Only audit logs are ever deleted;
- * clinical, billing and patient records are kept indefinitely.
- */
-async function deleteRecords(
-  resource: RetentionPolicy['resource'],
-  tenantId: Types.ObjectId,
-  deleteAfterDays: number
-): Promise<{ count: number }> {
-  if (resource !== 'audit-logs') {
-    return { count: 0 };
-  }
-
-  const days = Math.max(MIN_AUDIT_LOG_DELETE_DAYS, deleteAfterDays);
-  const deleteDate = new Date(Date.now() - days * DAY_MS);
-  // Age is judged by when the event happened, never by when it was archived.
-  const filter = { tenantId, archived: true, createdAt: { $lt: deleteDate } };
-
-  let count = 0;
-  for (let i = 0; i < MAX_BATCHES; i++) {
-    const ids = (await AuditLog.find(filter).select('_id').limit(BATCH_SIZE).lean()).map((d: any) => d._id);
-    if (ids.length === 0) break;
-    const res = await AuditLog.deleteMany({ _id: { $in: ids }, tenantId });
-    count += res.deletedCount ?? 0;
-    if (ids.length < BATCH_SIZE) break;
-  }
-  return { count };
 }
 
 /**
@@ -274,6 +259,16 @@ export async function processDataRetentionForAllTenants(): Promise<{
         logger.error('Error processing retention for tenant', error as Error, {
           tenantId: String(tenant._id),
         });
+      }
+    }
+
+    // Entries that belong to no clinic (platform sign-ins, unknown emails) follow the default policy.
+    if (isArchiveStorageConfigured()) {
+      try {
+        totalArchived += (await archiveAuditLogs(null)).entries;
+        totalDeleted += await deleteExpiredArchives(null);
+      } catch (error: any) {
+        logger.error('Error archiving platform audit log entries', error as Error);
       }
     }
 
