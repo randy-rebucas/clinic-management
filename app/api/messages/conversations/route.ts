@@ -8,10 +8,13 @@ import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/
 import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
 import { serializeConversations } from '../_lib/conversations';
 import { logChatChange, memberName } from '../_lib/message-audit';
+import { SUPPORT_CONTACT, SUPPORT_ID } from '@/lib/messaging';
+import { upsertSupportThread } from '@/lib/support-chat';
 
 const LIST_LIMIT = 50;
 
-const startConversationSchema = z.object({ userId: zObjectId });
+// A colleague's id, or "support" for the caller's thread with the MyClinicSoft team.
+const startConversationSchema = z.object({ userId: z.union([zObjectId, z.literal(SUPPORT_ID)]) });
 
 /** The caller's conversations, most recent first, plus their total unread message count. */
 export async function GET() {
@@ -51,7 +54,7 @@ export async function GET() {
   }
 }
 
-/** Find or start the direct conversation between the caller and another staff member. */
+/** Find or start the caller's conversation with another staff member, or with Support. */
 export async function POST(request: NextRequest) {
   const ctx = await requireTenantSession();
   if (isTenantSessionError(ctx)) return ctx;
@@ -62,6 +65,19 @@ export async function POST(request: NextRequest) {
     const parsed = await parseBody(request, startConversationSchema);
     if (isValidationError(parsed)) return parsed;
     const { userId } = parsed.data;
+
+    if (userId === SUPPORT_ID) {
+      const { conversation, created } = await upsertSupportThread(tenantObjectId, session.userId);
+      if (created) {
+        await logChatChange(ctx, request, {
+          action: 'create',
+          resourceId: conversation._id,
+          description: `Started a conversation with ${SUPPORT_CONTACT.name}`,
+        });
+      }
+      const [summary] = await serializeConversations(tenantObjectId, session.userId, [conversation]);
+      return NextResponse.json({ success: true, data: summary });
+    }
 
     if (userId === session.userId) {
       return NextResponse.json({ success: false, error: 'You cannot message yourself' }, { status: 400 });

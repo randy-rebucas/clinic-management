@@ -7,17 +7,20 @@ const SECTIONS = [
   { label: 'Overview', href: '/platform' },
   { label: 'Clinics', href: '/platform/clinics' },
   { label: 'Support', href: '/platform/support' },
+  { label: 'Chat', href: '/platform/chat' },
   { label: 'eMCR vouchers', href: '/platform/vouchers' },
   { label: 'Notify', href: '/platform/notifications' },
   { label: 'Configuration', href: '/platform/configuration' },
 ];
 
-export default function PlatformNav({ waiting }: { waiting: number }) {
+/** `waiting`: support requests awaiting a reply. `chatWaiting`: support chats with unread messages. */
+export default function PlatformNav({ waiting, chatWaiting }: { waiting: number; chatWaiting: number }) {
   const pathname = usePathname();
   return (
     <ul className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {SECTIONS.map((s) => {
         const active = s.href === '/platform' ? pathname === s.href : pathname.startsWith(s.href);
+        const count = s.href === '/platform/support' ? waiting : s.href === '/platform/chat' ? chatWaiting : 0;
         return (
           <li key={s.href} className="shrink-0">
             <Link
@@ -28,9 +31,9 @@ export default function PlatformNav({ waiting }: { waiting: number }) {
               }`}
             >
               {s.label}
-              {s.href === '/platform/support' && waiting > 0 && (
-                <span className="rounded-full bg-amber-400 px-1.5 text-[11px] font-bold leading-4 text-brand-navy" aria-label={`${waiting} waiting`}>
-                  {waiting}
+              {count > 0 && (
+                <span className="rounded-full bg-amber-400 px-1.5 text-[11px] font-bold leading-4 text-brand-navy" aria-label={`${count} waiting`}>
+                  {count}
                 </span>
               )}
               {active && <span aria-hidden="true" className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-brand-teal" />}

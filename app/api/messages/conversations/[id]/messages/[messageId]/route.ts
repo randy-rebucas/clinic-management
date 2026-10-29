@@ -6,7 +6,8 @@ import Message from '@/models/Message';
 import Conversation from '@/models/Conversation';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
-import { DELETED_MESSAGE_PREVIEW, MESSAGE_MAX_LENGTH, canEditMessage } from '@/lib/messaging';
+import { DELETED_MESSAGE_PREVIEW, MESSAGE_MAX_LENGTH, SUPPORT_CONTACT, canEditMessage } from '@/lib/messaging';
+import { noteStaffMessageWithdrawn } from '@/lib/support-chat';
 import { findMemberConversation, toChatMessage, visibleMessagesFilter } from '../../../../_lib/conversations';
 import { logChatChange, memberName } from '../../../../_lib/message-audit';
 
@@ -35,7 +36,8 @@ async function loadMessage(params: Params['params']) {
 }
 
 /** "to Maria Santos": the conversation's other member. */
-async function toWhom(conversation: { members: { user: unknown }[] }, tenantObjectId: Types.ObjectId, meId: string) {
+async function toWhom(conversation: { kind?: string; members: { user: unknown }[] }, tenantObjectId: Types.ObjectId, meId: string) {
+  if (conversation.kind === 'support') return `to ${SUPPORT_CONTACT.name}`;
   const other = conversation.members.find((m) => String(m.user) !== meId);
   return other ? `to ${await memberName(tenantObjectId, other.user)}` : 'in a conversation';
 }
@@ -116,6 +118,7 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       message.deletedAt = new Date();
       await message.save();
       await syncLastMessage(conversation._id, tenantObjectId, message, DELETED_MESSAGE_PREVIEW);
+      await noteStaffMessageWithdrawn(conversation, message.createdAt);
       await logChatChange(ctx, request, {
         action: 'delete',
         resourceId: message._id,
