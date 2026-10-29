@@ -19,6 +19,8 @@ const envConfig: EnvConfig = {
     'UPSTASH_REDIS_REST_TOKEN',
     'KV_REST_API_URL', // Same, under the names Vercel's Upstash integration sets
     'KV_REST_API_TOKEN',
+    'BLOB_STORE_ID', // Private Vercel Blob store for audit log archives (lib/audit-archive.ts); OIDC on Vercel
+    'BLOB_READ_WRITE_TOKEN', // Same store from outside Vercel
     'LAB_WEBHOOK_SECRET', // HMAC secret for third-party lab webhook verification
     'DOCUMENT_SEAL_SECRET', // HMAC key for printed-document seals (falls back to a key derived from SESSION_SECRET)
     'DOCUMENT_VERIFY_BASE_URL', // Canonical origin printed in document QR codes, e.g. https://www.myclinicsoft.solutions

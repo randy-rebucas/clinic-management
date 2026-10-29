@@ -84,10 +84,9 @@ export interface IAuditLog extends Document {
   
   // Timestamp
   timestamp: Date;
-  
-  archived?: boolean;
-  archivedAt?: Date;
-  createdAt: Date;
+
+  /** Only on entries written before Oct 2026, when the schema still had timestamps; use `timestamp`. */
+  createdAt?: Date;
 }
 
 const ChangeSchema: Schema = new Schema(
@@ -133,11 +132,9 @@ const AuditLogSchema: Schema = new Schema(
     errorMessage: { type: String },
     isSensitive: { type: Boolean, default: false },
     dataSubject: { type: Schema.Types.ObjectId, ref: 'Patient' }, // For PH DPA compliance
+    // When it happened. Entries are never edited, so there are no createdAt/updatedAt timestamps.
     timestamp: { type: Date, default: Date.now, required: true },
-    archived: { type: Boolean },
-    archivedAt: { type: Date },
   },
-  { timestamps: true }
 );
 
 // Every audit entry writes each of these, so keep only what a query uses. Reads are tenant-scoped
@@ -146,11 +143,9 @@ AuditLogSchema.index({ userId: 1, timestamp: -1 }); // Own activity (lib/account
 AuditLogSchema.index({ tenantId: 1, resource: 1, resourceId: 1, timestamp: -1 });
 AuditLogSchema.index({ tenantId: 1, action: 1, timestamp: -1 });
 AuditLogSchema.index({ tenantId: 1, dataSubject: 1, timestamp: -1 }); // For PH DPA queries
-AuditLogSchema.index({ tenantId: 1, timestamp: -1 }); // For time-based queries
-AuditLogSchema.index({ tenantId: 1, archived: 1, archivedAt: 1 });
+AuditLogSchema.index({ tenantId: 1, timestamp: -1 }); // Time-based queries, and archiving (lib/audit-archive.ts)
 
-// TTL index to auto-delete old logs (optional - keep for 7 years for compliance)
-// AuditLogSchema.index({ timestamp: 1 }, { expireAfterSeconds: 220752000 }); // 7 years
+// Old entries move to archive files (lib/audit-archive.ts), so there is no TTL index.
 
 export default mongoose.models.AuditLog || mongoose.model<IAuditLog>('AuditLog', AuditLogSchema);
 
