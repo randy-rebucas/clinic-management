@@ -12,7 +12,7 @@ export interface AuditLogOptions {
   userRole?: string;
   tenantId?: string | Types.ObjectId; // Tenant ID for multi-tenant support
   action: 'create' | 'read' | 'update' | 'delete' | 'login' | 'logout' | 'export' | 'print' | 'download' | 'view' | 'access_denied' | 'password_change' | 'permission_change' | 'backup' | 'restore' | 'data_export' | 'data_deletion';
-  resource: 'patient' | 'visit' | 'appointment' | 'prescription' | 'lab_result' | 'invoice' | 'document' | 'user' | 'doctor' | 'room' | 'service' | 'notification' | 'referral' | 'membership' | 'staff' | 'medicine' | 'settings' | 'system' | 'hmo' | 'hmo_claim' | 'philhealth' | 'clinical_template' | 'message';
+  resource: 'patient' | 'visit' | 'appointment' | 'prescription' | 'lab_result' | 'invoice' | 'document' | 'user' | 'doctor' | 'room' | 'service' | 'notification' | 'referral' | 'membership' | 'staff' | 'medicine' | 'settings' | 'system' | 'hmo' | 'hmo_claim' | 'philhealth' | 'clinical_template' | 'message' | 'report';
   resourceId?: string | Types.ObjectId;
   ipAddress?: string;
   userAgent?: string;
@@ -269,10 +269,11 @@ const PERMISSION_RESOURCE: Record<string, AuditLogOptions['resource']> = {
   staff: 'staff',
   medicines: 'medicine',
   settings: 'settings',
+  reports: 'report',
 };
 
 /** True when the same entry was written in the last `minutes`, so retries and refetches log once. */
-async function recentlyLogged(filter: Record<string, unknown>, minutes: number): Promise<boolean> {
+export async function recentlyLogged(filter: Record<string, unknown>, minutes: number): Promise<boolean> {
   try {
     await connectDB();
     return !!(await AuditLog.exists({ ...filter, timestamp: { $gte: new Date(Date.now() - minutes * MINUTE_MS) } }));
