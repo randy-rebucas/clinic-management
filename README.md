@@ -239,6 +239,21 @@ MONGODB_URI=mongodb://127.0.0.1:27017/clinic-management
 ```
 Keep production settings in `.env.prod.local` and run scripts against production with `pnpm prod <script>`. See [docs/LOCAL_DEV_DATABASE.md](docs/LOCAL_DEV_DATABASE.md).
 
+#### Local dev logins
+
+The scrub replaces every real email and password, so production accounts do not exist locally. Every account uses the password `devpassword`, and emails follow `<role><n>@<subdomain>.dev`.
+
+Login is per clinic: sign in at `http://<subdomain>.localhost:3000/login`. Plain `localhost:3000` only finds users that belong to no clinic.
+
+| Clinic (subdomain) | Accounts |
+|---|---|
+| `my-clinic` | `admin1@my-clinic.dev`, `nurse1@my-clinic.dev`, `receptionist1@my-clinic.dev`, `accountant1@my-clinic.dev` |
+| `kidz-klinika` | `admin1@kidz-klinika.dev`, `receptionist1@kidz-klinika.dev`, `receptionist2@kidz-klinika.dev` |
+| `kristoperce-eugenio` | `admin1@kristoperce-eugenio.dev` |
+| `dr-barrantes-havilah-polymedic` | `admin1@dr-barrantes-havilah-polymedic.dev` |
+
+The list comes from the latest backup and can change after `pnpm db:local:refresh`.
+
 ## Project Structure
 
 ```
