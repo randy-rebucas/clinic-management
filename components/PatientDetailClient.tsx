@@ -1242,6 +1242,11 @@ function AppAccessPanel({ patientId, fallbackEmail, firstName }: { patientId: st
             </button>
           </div>
         )}
+        <p className="mt-3 text-xs text-gray-500">
+          Patients and parents can also get a sign-in QR themselves at{' '}
+          <span className="font-mono text-gray-700">/my-qr</span>, or on a clinic tablet at{' '}
+          <span className="font-mono text-gray-700">/kiosk/qr</span>, after a code to their phone and a few questions.
+        </p>
       </div>
       <AppInviteDialog open={inviteOpen} onOpenChange={setInviteOpen} patientId={patientId} firstName={firstName} />
       <Modal open={!!qr} onOpenChange={(o) => !o && setQr(null)} className="max-w-sm" labelledBy={`${ids}-qr-title`}>

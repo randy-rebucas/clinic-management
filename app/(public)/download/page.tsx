@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -33,6 +34,13 @@ export default async function DownloadPage() {
           {EMCR_APP_STORE_URL
             ? 'The eMCR app is available for Android phones and iPhones. Open this link on your phone to download it.'
             : 'The eMCR app is available for Android phones. Open this link on an Android device to download it from Google Play.'}
+        </p>
+        <p className="mt-6 text-sm text-gray-600">
+          Already have the app on your phone?{' '}
+          <Link href="/my-qr" className="font-semibold text-brand-teal-dark hover:underline">
+            Show a sign-in QR here
+          </Link>{' '}
+          and scan it with the app.
         </p>
       </div>
     </section>
