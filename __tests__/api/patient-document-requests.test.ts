@@ -20,7 +20,10 @@ vi.mock('@/lib/tenant', () => ({ getTenantContext: vi.fn(async () => ({ tenantId
 vi.mock('@/app/lib/dal', () => ({ deriveKey: (purpose: string) => Buffer.from(`test-key-${purpose}`) }));
 vi.mock('@/lib/counters', () => ({ nextSequence: vi.fn(async () => 7), maxCodeSeed: vi.fn(), formatCode: (p: string, n: number) => `${p}-${String(n).padStart(6, '0')}` }));
 vi.mock('@/lib/push-notifications', () => ({ sendPushToTenant: vi.fn(), sendPushToPatientDevices: vi.fn() }));
-vi.mock('@/app/lib/auth-helpers', () => ({ requirePermission: vi.fn(async () => null) }));
+vi.mock('@/app/lib/auth-helpers', () => ({
+  requirePermission: vi.fn(async () => null),
+  isAdmin: (s: { role?: string } | null) => s?.role === 'admin' || s?.role === 'owner',
+}));
 vi.mock('@/lib/api/tenant-session', async (orig) => ({
   ...(await orig<typeof import('@/lib/api/tenant-session')>()),
   requireTenantSession: vi.fn(),
@@ -331,7 +334,7 @@ describe('staff decisions on document requests', () => {
     expect(update.$set.availableUntil).toBeInstanceOf(Date);
   });
 
-  it('only doctors release a certificate', async () => {
+  it('only doctors and admins release a certificate', async () => {
     vi.mocked(requireTenantSession).mockResolvedValue({
       session: { userId: STAFF_ID, email: 'nurse@clinic.ph', role: 'nurse' },
       tenantId: TENANT_A,

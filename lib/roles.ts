@@ -42,9 +42,12 @@ export const BUILT_IN: Record<string, Record<string, string[]>> = {
     write: ['patients', 'visits', 'queue', 'lab-results'],
     delete: [],
   },
+  // Hands the patient their medicines at checkout: sees prescriptions and records what was
+  // given, but never changes what the doctor wrote.
   receptionist: {
-    read: ['patients', 'appointments', 'queue', 'invoices', 'visits', 'doctors', 'services', 'rooms'],
+    read: ['patients', 'appointments', 'queue', 'invoices', 'visits', 'doctors', 'services', 'rooms', 'prescriptions'],
     write: ['patients', 'appointments', 'queue', 'invoices'],
+    dispense: ['prescriptions'],
     delete: [],
   },
   accountant: {
@@ -107,7 +110,8 @@ export const ACCESS: AccessGroup[] = [
       item('visits:delete', 'Delete visit notes'),
       item('prescriptions:read', 'See prescriptions'),
       item('prescriptions:write', 'Write prescriptions'),
-      item('prescriptions:update', 'Dispense and change prescriptions'),
+      item('prescriptions:dispense', 'Record medicines handed to the patient'),
+      item('prescriptions:update', 'Dispense, change, cancel and close prescriptions'),
       item('prescriptions:delete', 'Delete prescriptions'),
       item('lab-results:read', 'See lab tests and results'),
       item('lab-results:write', 'Order lab tests'),

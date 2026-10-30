@@ -34,7 +34,7 @@ function purposeText(purpose: string, other: string): string {
 }
 
 /**
- * Issue a medical certificate from the patient's page (doctors only): pick the visit it
+ * Issue a medical certificate from the patient's page (doctors and clinic admins): pick the visit it
  * certifies and, optionally, what it is for. The certificate is the visit's own sealed
  * certificate (GET /api/visits/:id/print/medical-certificate), so it prints what the visit says.
  */

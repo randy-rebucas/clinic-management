@@ -215,7 +215,7 @@ function RequestCard({
   const period = `${r.periodFrom ? ymd(r.periodFrom) : 'First record'} to ${r.periodTo ? ymd(r.periodTo) : 'latest'}`;
   const isPending = r.status === 'pending';
   const isLive = r.status === 'released' && !r.expired;
-  // Certificates are released by doctors only; anyone who can write visits may still decline.
+  // Certificates are released by doctors and clinic admins; anyone who can write visits may still decline.
   const doctorOnly = r.kind === 'medical_certificate' && !canCertify;
 
   async function decide(action: 'release' | 'decline' | 'revoke') {
@@ -401,7 +401,7 @@ function RequestCard({
               </button>
             )}
           </div>
-          {isPending && doctorOnly && <p className="text-sm text-gray-600">Only a doctor can release a medical certificate.</p>}
+          {isPending && doctorOnly && <p className="text-sm text-gray-600">Only a doctor or clinic admin can release a medical certificate.</p>}
           {problem && (
             <p role="alert" className="text-sm text-red-800">
               {problem}

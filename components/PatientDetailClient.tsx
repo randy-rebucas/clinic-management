@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import MessagePatientButton from './patients/MessagePatientButton';
+import { useEffect, useId, useState, type KeyboardEvent, type ReactNode } from 'react';
+import MessagePatientDialog from './patients/MessagePatientDialog';
 import AppInviteDialog from './patients/AppInviteDialog';
+import MoreMenu, { type MoreMenuItem } from './ui/MoreMenu';
 import MedicalCertificateDialog from './patients/MedicalCertificateDialog';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
@@ -117,7 +118,6 @@ const ICONS = {
   pen: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
   doc: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
   plus: 'M12 4v16m8-8H4',
-  more: 'M5 12h.01M12 12h.01M19 12h.01',
   download: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4',
   external: 'M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14',
   trash: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
@@ -140,6 +140,7 @@ export default function PatientDetailClient({ patientId, permissions }: { patien
   const [tab, setTab] = useState<TabKey>('all');
   const [showQr, setShowQr] = useState(false);
   const [showCertificate, setShowCertificate] = useState(false);
+  const [showMessage, setShowMessage] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<Patient['attachments'][number] | null>(null);
@@ -252,9 +253,11 @@ export default function PatientDetailClient({ patientId, permissions }: { patien
     }
   };
 
-  const more: { label: string; href?: string; onClick?: () => void }[] = [
+  const more: MoreMenuItem[] = [
     ...(permissions.canOrderLab ? [{ label: 'Order a lab test', href: `/lab-results/new?patientId=${patientId}` }] : []),
     ...(permissions.canInvoice ? [{ label: 'New invoice', href: `/invoices/new?patientId=${patientId}` }] : []),
+    ...(permissions.canIssueCertificate && data.visits ? [{ label: 'Medical certificate', onClick: () => setShowCertificate(true) }] : []),
+    ...(permissions.canMessage ? [{ label: 'Message patient', onClick: () => setShowMessage(true) }] : []),
     { label: 'Show the patient’s QR code', onClick: () => setShowQr(true) },
   ];
 
@@ -325,17 +328,6 @@ export default function PatientDetailClient({ patientId, permissions }: { patien
               New visit
             </Link>
           )}
-          {permissions.canIssueCertificate && data.visits && (
-            <button
-              type="button"
-              onClick={() => setShowCertificate(true)}
-              className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}
-            >
-              <Svg d={ICONS.doc} />
-              Medical certificate
-            </button>
-          )}
-          {permissions.canMessage && <MessagePatientButton patientId={patientId} patientName={p.firstName} />}
           <MoreMenu items={more} />
         </div>
       </header>
@@ -396,6 +388,7 @@ export default function PatientDetailClient({ patientId, permissions }: { patien
       {permissions.canIssueCertificate && data.visits && (
         <MedicalCertificateDialog open={showCertificate} onOpenChange={setShowCertificate} patientName={fullName} visits={data.visits.items} />
       )}
+      {permissions.canMessage && <MessagePatientDialog patientId={patientId} patientName={p.firstName} open={showMessage} onOpenChange={setShowMessage} />}
 
       <Modal open={showQr} onOpenChange={setShowQr} className="max-w-sm" labelledBy="patient-qr-title">
         <div className="p-6 text-center">
@@ -470,68 +463,6 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 const NotOnFile = () => <span className="text-gray-400">Not on file</span>;
-
-function MoreMenu({ items }: { items: { label: string; href?: string; onClick?: () => void }[] }) {
-  const ids = useId();
-  const [open, setOpen] = useState(false);
-  const wrap = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
-  const itemClass = 'block w-full rounded-md px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-teal';
-  return (
-    <div ref={wrap} className="relative">
-      <button
-        type="button"
-        aria-haspopup="true"
-        aria-expanded={open}
-        aria-controls={`${ids}-menu`}
-        aria-label="More actions"
-        title="More actions"
-        onClick={() => setOpen((o) => !o)}
-        className={`rounded-md border border-gray-300 bg-white p-2 text-gray-700 transition-colors hover:border-gray-900 ${FOCUS_RING}`}
-      >
-        <Svg d={ICONS.more} />
-      </button>
-      {open && (
-        <ul id={`${ids}-menu`} className="motion-panel-in absolute right-0 top-full z-30 mt-1 w-56 rounded-lg border border-gray-200 bg-white p-1 shadow-[0_8px_30px_rgb(15,23,42,0.1)]">
-          {items.map((it) => (
-            <li key={it.label}>
-              {it.href ? (
-                <Link href={it.href} className={itemClass} onClick={() => setOpen(false)}>
-                  {it.label}
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  className={itemClass}
-                  onClick={() => {
-                    setOpen(false);
-                    it.onClick?.();
-                  }}
-                >
-                  {it.label}
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Summary: the four things a front desk or doctor asks first

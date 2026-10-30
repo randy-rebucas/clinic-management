@@ -4,7 +4,10 @@ import { NextRequest } from 'next/server';
 vi.mock('server-only', () => ({}));
 vi.mock('@/app/lib/dal', () => ({ verifySession: vi.fn() }));
 vi.mock('@/lib/tenant', () => ({ getTenantContext: vi.fn().mockResolvedValue({ tenantId: null }) }));
-vi.mock('@/app/lib/auth-helpers', () => ({ requirePermission: vi.fn().mockResolvedValue(null) }));
+vi.mock('@/app/lib/auth-helpers', () => ({
+  requirePermission: vi.fn().mockResolvedValue(null),
+  getPermissionChecker: vi.fn().mockResolvedValue(() => true),
+}));
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn() }));
 vi.mock('@/lib/inventory-movements', () => ({ recordMovement: vi.fn() }));
 vi.mock('@/models/Prescription', () => ({ default: { findOne: vi.fn(), findOneAndUpdate: vi.fn() } }));
