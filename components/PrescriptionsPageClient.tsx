@@ -522,7 +522,8 @@ function RxRow({ rx, index, onOpen }: { rx: Prescription; index: number; onOpen:
 
       <span className="min-w-0">
         <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${st.badge}`}>{st.label}</span>
-        {!cancelled && progress.total > 0 && rx.status !== 'completed' && (
+        {/* Once dispensed the badge says so; a count would read "0 of N" when no quantities were written. */}
+        {!cancelled && progress.total > 0 && rx.status !== 'completed' && rx.status !== 'dispensed' && (
           <span className="mt-1 block text-xs text-gray-500" title={lastPharmacy ? `Last dispensed by ${lastPharmacy}` : undefined}>
             <span className="font-mono">{progress.done}</span> of <span className="font-mono">{progress.total}</span> medicine{progress.total === 1 ? '' : 's'} given
           </span>
