@@ -6,6 +6,7 @@ import Invoice from '@/models/Invoice';
 import { getSettings } from '@/lib/settings';
 import { sendEmail, escapeHtml } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
+import { sendPushToPatientDevices } from '@/lib/push-notifications';
 import { Types } from 'mongoose';
 import {
   forEachTenant,
@@ -26,6 +27,7 @@ export interface PaymentReminderOptions {
   sendSMS?: boolean;
   sendEmail?: boolean;
   sendNotification?: boolean;
+  sendPush?: boolean;
 }
 
 /** Reminder schedule in days since the invoice: 7, 14, 30, then weekly until MAX_REMINDER_DAYS. */
@@ -105,6 +107,21 @@ export async function sendPaymentReminder(options: PaymentReminderOptions): Prom
         if (delivered(emailResult)) sent = true;
       } catch (error) {
         console.error('Error sending payment reminder email:', error);
+      }
+    }
+
+    if (options.sendPush !== false && patient._id) {
+      try {
+        const pushResult = await sendPushToPatientDevices(patient._id.toString(), {
+          title: 'Payment Reminder',
+          // No amount or invoice details: it shows on the lock screen.
+          body: 'You have an unpaid balance. Tap to view your invoice.',
+          tag: `invoice-${invoice._id}`,
+          url: `/invoices/${invoice._id}`,
+        }, { tenantId });
+        if (pushResult.sent) sent = true;
+      } catch (error) {
+        console.error('Error sending payment reminder push notification:', error);
       }
     }
 

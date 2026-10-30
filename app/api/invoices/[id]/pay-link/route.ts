@@ -12,19 +12,13 @@ import { sendSMS, isSMSConfigured } from '@/lib/sms';
 import { createAuditLog } from '@/lib/audit';
 import { invoicePayOptions } from '@/lib/payments/accounts';
 import { PROVIDER_LABEL } from '@/lib/payments/account-schema';
-import { createPayPageToken } from '@/lib/payments/invoice-pay';
+import { makePayLink, payableBalance, payLinkOrigin } from '@/lib/payments/pay-link';
 
 const bodySchema = z.object({
   sms: z.boolean().default(false),
   /** One account to offer; omitted = every account this invoice can be paid into. */
   accountId: z.string().refine((v) => Types.ObjectId.isValid(v), 'Unknown account').optional(),
 });
-
-function appOrigin(request: NextRequest): string {
-  const o = request.headers.get('origin');
-  if (o && o !== 'null') return o;
-  return (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/$/, '');
-}
 
 async function loadInvoice(id: string, tenantId: Types.ObjectId, tenantIdStr: string) {
   return Invoice.findOne({ _id: new Types.ObjectId(id), tenantId })
@@ -84,7 +78,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const inv = await loadInvoice(id, ctx.tenantObjectId, ctx.tenantId);
     if (!inv) return notFound('Invoice');
     if (inv.status === 'refunded') return NextResponse.json({ success: false, error: 'This invoice was refunded.' }, { status: 409 });
-    const owed = Math.round((Number(inv.outstandingBalance ?? inv.total) || 0) * 100) / 100;
+    const owed = payableBalance(inv);
     if (owed <= 0) return NextResponse.json({ success: false, error: 'Nothing is owed on this invoice.' }, { status: 400 });
 
     const settings = await getSettings(ctx.tenantId);
@@ -101,8 +95,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    const { token, expiresAt } = createPayPageToken(ctx.tenantId, id, chosen ? String(chosen._id) : null);
-    const url = `${appOrigin(request)}/pay/${token}`;
+    const { url, expiresAt } = makePayLink(payLinkOrigin(request.headers.get('origin')), ctx.tenantId, id, chosen ? String(chosen._id) : null);
     const clinic = settings.clinicName || 'the clinic';
 
     let texted = false;

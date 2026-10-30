@@ -6,6 +6,7 @@ import connectDB from '@/lib/mongodb';
 import Visit from '@/models/Visit';
 import { sendEmail, escapeHtml } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
+import { sendPushToPatientDevices } from '@/lib/push-notifications';
 import { dayRangeInTz, dayRangeOffsetInTz } from '@/lib/tz';
 import { Types } from 'mongoose';
 import { forEachTenant, daysUntilInTz, displayDate, errorMessage, BATCH_LIMIT, type AutomationTenant } from './shared';
@@ -76,6 +77,21 @@ async function processTenant(tenant: AutomationTenant): Promise<VisitFollowUpRes
             </div>
           `,
         });
+      }
+
+      // Lock-screen text: the date only, never the provider's instructions.
+      if (patient._id) {
+        const appointmentId = visit.followUpAppointmentId ? String(visit.followUpAppointmentId) : null;
+        try {
+          await sendPushToPatientDevices(String(patient._id), {
+            title: 'Follow-up Visit Reminder',
+            body: `Your follow-up visit is on ${followUpDateStr} (${when}). ${appointmentId ? 'Tap for details.' : 'Tap to book a time.'}`,
+            tag: `followup-${visit._id}`,
+            ...(appointmentId ? { data: { appointmentId } } : {}),
+          }, { tenantId: tenant.tenantObjectId });
+        } catch (error) {
+          console.error('Error sending follow-up reminder push notification:', error);
+        }
       }
 
       // Patients have no User account, so no in-app notification. The marker is set once

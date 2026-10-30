@@ -144,6 +144,9 @@ export function pushCategoryForTag(tag: string | undefined): PushCategory | null
   if (tag.startsWith('lab-result-')) return 'labResults';
   if (tag.startsWith('queue-')) return 'queue';
   if (tag.startsWith('message-')) return 'messages';
+  if (tag.startsWith('invoice-')) return 'billing';
+  if (tag.startsWith('prescription-')) return 'prescriptions';
+  if (tag.startsWith('followup-')) return 'followUps';
   return null;
 }
 

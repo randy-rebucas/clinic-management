@@ -9,6 +9,7 @@ import WaitlistEntryModel from '@/models/WaitlistEntry';
 import { getSettings } from '@/lib/settings';
 import { sendEmail, escapeHtml } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
+import { sendPushToPatientDevices } from '@/lib/push-notifications';
 import { buildAppointmentActionUrl } from '@/lib/appointment-links';
 import { combineDateAndTimeInTz, formatInTz } from '@/lib/tz';
 import {
@@ -291,6 +292,24 @@ export async function fillCancelledSlot(
       } catch (error) {
         console.error('Error sending waitlist fill SMS:', error);
       }
+    }
+
+    // The app routes `appointment-waitlist-<id>` to the booked appointment (muted with the
+    // patient's "appointments" push setting).
+    try {
+      await sendPushToPatientDevices(
+        patient._id.toString(),
+        {
+          title: 'A slot opened up for you',
+          body: `You're booked for ${dateText} at ${timeText} from the waitlist. Tap to confirm, or cancel if it doesn't suit you.`,
+          tag: `appointment-waitlist-${newAppointment._id}`,
+          url: `/appointments/${newAppointment._id}`,
+          data: { appointmentId: newAppointment._id.toString() },
+        },
+        { tenantId: tenantIdObj }
+      );
+    } catch (error) {
+      console.error('Error sending waitlist fill push notification:', error);
     }
 
     if (patient.email) {

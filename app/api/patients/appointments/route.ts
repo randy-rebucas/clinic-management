@@ -5,24 +5,19 @@ import connectDB from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
 import Doctor from '@/models/Doctor';
 import Patient from '@/models/Patient';
-import { sendSMS } from '@/lib/sms';
 import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { doctorSummary, PATIENT_DOCTOR_POPULATE } from '../_lib/doctor-summary';
 import { getTenantContext } from '@/lib/tenant';
 import { isValidId } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
-import { normalizePhone } from '@/lib/phone';
 import { checkSubscriptionLimit } from '@/lib/subscription-limits';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
-import { formatInTz } from '@/lib/tz';
 import { weekSummary } from '@/lib/doctors';
 import { getSettings } from '@/lib/settings';
-import { withPatientTeleconsult } from '@/lib/teleconsult';
 import {
   ACTIVE_APPOINTMENT_STATUSES,
   appointmentDayRange,
-  findDoctorConflict,
   nextAppointmentCode,
   normalizeTime,
   timeToMinutes,
@@ -37,9 +32,9 @@ import {
   clinicClock,
   freeSlots,
   minutesToHHmm,
-  slotRejection,
 } from '@/lib/booking-slots';
 import { requireActiveEmcr } from '@/lib/emcr/activation';
+import { checkPatientSlot, sendBookingConfirmation, slotTaken, teleconsultOffered, toPatientBooking } from './_lib/booking';
 
 /**
  * Which of the patient's clinics this request is for: the subdomain's clinic (when the
@@ -63,20 +58,6 @@ async function resolvePatientClinic(
   if (ctx.tenantId) return ids.includes(ctx.tenantId) ? new Types.ObjectId(ctx.tenantId) : null;
   if (param) return new Types.ObjectId(param);
   return ids[0] ? new Types.ObjectId(ids[0]) : null;
-}
-
-/** The booked appointment as the patient sees it: no internal staff notes, no raw video room. */
-function toPatientBooking(appointment: { toObject?: () => Record<string, any> } & Record<string, any>, tz: string) {
-  const { notes: _notes, createdBy: _createdBy, ...rest } =
-    typeof appointment.toObject === 'function' ? appointment.toObject() : appointment;
-  return withPatientTeleconsult(rest, { tz, displayName: rest.patient?.firstName });
-}
-
-/** Video visits are offered when the clinic turned them on and its plan includes them. */
-async function teleconsultOffered(tenantId: Types.ObjectId): Promise<boolean> {
-  const settings = await getSettings(String(tenantId));
-  if (settings.appointmentSettings?.teleconsultBooking !== true) return false;
-  return (await checkSubscriptionLimit(tenantId, 'useFeature', 'teleconsult')).allowed;
 }
 
 /**
@@ -246,51 +227,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Doctor not found' }, { status: 404 });
     }
 
-    // Only a slot the GET could have offered: not in the past (clinic time), inside the
-    // booking horizon, inside the doctor's hours and the clinic's opening hours, on the slot grid.
-    const tz = await getTenantTimezone(tenantId);
-    const rules = bookingRulesFrom(await getSettings(String(tenantId)));
-    const rejection = slotRejection(doctor, appointmentDate, timeToMinutes(appointmentTime), clinicClock(tz), rules);
-    if (rejection) {
-      const error = {
-        past: 'Please choose a future date and time.',
-        'beyond-horizon': 'Appointments can only be booked up to 60 days ahead.',
-        'not-working': `Dr. ${doctor.lastName} isn't seeing patients at that time. Please choose another time.`,
-        'off-grid': 'Please choose one of the offered appointment times.',
-      }[rejection];
-      return NextResponse.json({ success: false, error, code: `SLOT_${rejection.toUpperCase().replace('-', '_')}` }, { status: 400 });
-    }
-
-    const conflictingAppointment = await findDoctorConflict({
-      tenantId,
-      doctorId,
-      appointmentDate,
-      appointmentTime,
-      duration: rules.slotMinutes,
-      tz,
-    });
-    if (conflictingAppointment) {
-      return NextResponse.json(
-        { success: false, error: 'This time slot is no longer available. Please choose another time.' },
-        { status: 409 }
-      );
-    }
-
-    const { start, end } = appointmentDayRange(appointmentDate, tz);
-    const patientConflict = await Appointment.findOne({
-      tenantId,
-      patient: patient._id,
-      appointmentDate: { $gte: start, $lte: end },
-      appointmentTime,
-      status: { $in: ACTIVE_APPOINTMENT_STATUSES },
-    }).select('_id').lean();
-
-    if (patientConflict) {
-      return NextResponse.json(
-        { success: false, error: 'You already have an appointment at this time.' },
-        { status: 409 }
-      );
-    }
+    // Only a slot the GET could have offered, free for the doctor and for the patient.
+    const slot = await checkPatientSlot({ tenantId, doctor, patientId: patient._id, appointmentDate, appointmentTime });
+    if (slot instanceof NextResponse) return slot;
+    const { tz, rules } = slot;
 
     const limitCheck = await checkSubscriptionLimit(tenantId, 'createAppointment');
     if (!limitCheck.allowed) {
@@ -325,12 +265,7 @@ export async function POST(request: NextRequest) {
         modality: video ? 'teleconsult' : 'in-person',
       });
     } catch (err: any) {
-      if (isSlotDuplicateError(err)) {
-        return NextResponse.json(
-          { success: false, error: 'This time slot is no longer available. Please choose another time.' },
-          { status: 409 }
-        );
-      }
+      if (isSlotDuplicateError(err)) return slotTaken();
       throw err;
     }
 
@@ -370,30 +305,5 @@ export async function POST(request: NextRequest) {
       { success: false, error: 'Failed to create appointment' },
       { status: 500 }
     );
-  }
-}
-
-// Send booking confirmation via SMS
-async function sendBookingConfirmation(appointment: any, tz: string) {
-  const patient = appointment.patient;
-  const doctor = appointment.doctor;
-  if (!patient) return;
-  const appointmentDate = formatInTz(appointment.appointmentDate, 'EEEE, MMMM d, yyyy', tz);
-  const [hours, minutes] = String(appointment.appointmentTime).split(':').map(Number);
-  const displayTime = hours >= 12
-    ? `${hours % 12 || 12}:${minutes.toString().padStart(2, '0')} PM`
-    : `${hours}:${minutes.toString().padStart(2, '0')} AM`;
-
-  const video = appointment.modality === 'teleconsult';
-  const message = `Hi ${patient.firstName}! Your ${video ? 'video visit' : 'appointment'} request (${appointment.appointmentCode}) has been submitted. Date: ${appointmentDate} at ${displayTime}${doctor ? ` with Dr. ${doctor.firstName} ${doctor.lastName}` : ''}. Status: Pending confirmation. We'll notify you once confirmed.${video ? ' Join from the eMCR app, from 15 minutes before the start.' : ''}`;
-
-  const phoneNumber = patient.phone ? normalizePhone(patient.phone) : null;
-  if (phoneNumber) {
-    await sendSMS({
-      to: phoneNumber,
-      message,
-    }).catch((error) => {
-      console.error('Failed to send booking confirmation SMS:', error);
-    });
   }
 }

@@ -6,6 +6,7 @@ import Prescription from '@/models/Prescription';
 import { getSettings } from '@/lib/settings';
 import { sendEmail, escapeHtml } from '@/lib/email';
 import { sendSMS } from '@/lib/sms';
+import { sendPushToPatientDevices } from '@/lib/push-notifications';
 import { Types } from 'mongoose';
 import {
   forEachTenant,
@@ -25,6 +26,7 @@ export interface PrescriptionRefillOptions {
   sendSMS?: boolean;
   sendEmail?: boolean;
   sendNotification?: boolean;
+  sendPush?: boolean;
 }
 
 /** Days before the refill date at which a reminder is sent (each once). */
@@ -116,6 +118,21 @@ export async function sendRefillReminder(options: PrescriptionRefillOptions): Pr
         if (delivered(emailResult)) sent = true;
       } catch (error) {
         console.error('Error sending refill reminder email:', error);
+      }
+    }
+
+    if (options.sendPush !== false && patient._id) {
+      try {
+        const pushResult = await sendPushToPatientDevices(patient._id.toString(), {
+          title: 'Prescription Refill Reminder',
+          // Never the medicine names: they show on the lock screen and go through Apple/Google.
+          body: `A prescription is due for a refill ${refillWhen(daysUntilRefill)}. Tap to view it.`,
+          tag: `prescription-refill-${prescription._id}`,
+          url: `/prescriptions/${prescription._id}`,
+        }, { tenantId });
+        if (pushResult.sent) sent = true;
+      } catch (error) {
+        console.error('Error sending refill reminder push notification:', error);
       }
     }
 
@@ -225,6 +242,13 @@ export async function processRefillReminders(tenantId?: string | Types.ObjectId)
       results: [],
     };
   }
+}
+
+/** "today", "tomorrow" or "in N days". */
+function refillWhen(daysUntilRefill: number): string {
+  if (daysUntilRefill <= 0) return 'today';
+  if (daysUntilRefill === 1) return 'tomorrow';
+  return `in ${daysUntilRefill} days`;
 }
 
 function generateRefillMessage(prescription: any, daysUntilRefill: number): string {

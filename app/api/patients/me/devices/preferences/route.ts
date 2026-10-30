@@ -16,7 +16,7 @@ function normalize(prefs: Partial<PushPrefs> | undefined): PushPrefs {
  * GET /api/patients/me/devices/preferences?deviceId=...
  * Which push categories this device receives. Unset categories are on.
  *
- * Response data: { appointments, labResults, queue, messages } (booleans)
+ * Response data: { appointments, labResults, queue, messages, billing, prescriptions, followUps } (booleans)
  */
 export async function GET(request: NextRequest) {
   const session = await verifyPatientAuth(request, { profile: 'ignore' });
@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
  * Turns push categories on or off for one device. Only the categories sent change.
  * The device must already be registered (POST /api/patients/me/devices).
  *
- * Body: { deviceId, appointments?, labResults?, queue?, messages? } (booleans)
+ * Body: { deviceId, appointments?, labResults?, queue?, messages?, billing?, prescriptions?, followUps? } (booleans)
  * Response data: the full preferences after the change.
  */
 export async function PATCH(request: NextRequest) {
