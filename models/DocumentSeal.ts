@@ -6,6 +6,8 @@ export type SealDocumentType =
   | 'lab_request'
   | 'lab_request_form'
   | 'referral_letter'
+  | 'medical_records'
+  | 'clinical_abstract'
   | 'receipt';
 
 export type SealCopyType = 'original' | 'patient' | 'clinic';
@@ -46,7 +48,7 @@ const DocumentSealSchema = new Schema<IDocumentSeal>(
     serial: { type: String, required: true },
     documentType: {
       type: String,
-      enum: ['prescription', 'medical_certificate', 'lab_request', 'lab_request_form', 'referral_letter', 'receipt'],
+      enum: ['prescription', 'medical_certificate', 'lab_request', 'lab_request_form', 'referral_letter', 'medical_records', 'clinical_abstract', 'receipt'],
       required: true,
     },
     documentId: { type: Schema.Types.ObjectId, required: true },

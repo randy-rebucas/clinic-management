@@ -17,6 +17,10 @@ to the endpoints below. Staff keep the web app.
 | `POST /api/patients/self-qr/doctors` | **New.** `{ ticket, patientId }` → `{ doctors: [{ id, name }] }`: the doctors on the person's recent visits mixed with others from the clinic, shuffled. An empty list means no visit is on file |
 | `POST /api/patients/self-qr/issue` | **New.** `{ ticket, patientId, kind: "login"\|"invite", relationship?, answers: { firstName, lastName, dateOfBirth, patientCode?, lastVisitDate, doctorId } }`. Every answer must match the record; the last visit is checked against the last 3 visits or prescriptions, ±1 day. `login` gives `{ qrData, expiresAt }`: a normal login QR, **single use, valid 90 seconds, not scoped to a clinic**. `invite` gives `{ code, link, expiresAt }` (an app invite on the proven phone). A wrong answer gets `400 NO_MATCH`, without saying which answer. Limit: 5 tries per 15 minutes and 10 per day per record. Audited |
 | `POST /api/patients/self-qr/revoke` | **New.** `{ ticket, patientId }`. The page calls this when the QR leaves the screen (after 45 s, or 75 s with the one extension), so a photo of it stops working |
+| `GET /api/document-requests?status&kind` | **New.** Patients' document requests at this clinic (visits → read). Page: `/document-requests` |
+| `PATCH /api/document-requests/[id]` | **New.** `{ action: "release"\|"decline"\|"revoke", note? }` (visits → write). Declining needs a `note`; the patient sees it. Releasing a certificate needs its visit to be open or closed, and a doctor (`403` otherwise) |
+| `GET /api/document-requests/[id]/preview` | **New.** The document as an unsealed, watermarked preview (`?format=pdf` for a PDF) |
+| `GET/PUT /api/document-requests/[id]/abstract` | **New.** Clinical abstracts: GET returns the saved text or a draft from the chart (`fromChart`); PUT saves it while pending (visits → write) and makes the saver its signing author. Release answers `409 ABSTRACT_INCOMPLETE` until the diagnosis and present condition are saved |
 
 ## Conventions
 
@@ -234,6 +238,36 @@ latest 10 point changes, newest first, with redeemed and expired points as negat
 - `POST /api/patients/me/referrals/[id]/pdf-link` → `{ url, expiresAt }`, a short-lived link to a
   sealed patient copy of the letter (`GET /api/referral-letter/[token]`). `409 NO_LETTER` for
   referrals the clinic received, and cancelled or declined ones. Download it like the e-Rx PDF.
+
+### Document requests: medical records, medical certificates, clinical abstracts (new)
+
+A patient asks a clinic for a document; clinical staff review it on **Document requests** in the
+web app, preview exactly what the patient gets, and release or decline it. A released document is
+a sealed PDF (verifiable at `/verify`) the patient can download for 30 days. All routes need
+eMCR `records`. Two kinds:
+
+- `medical_records`: a copy of their records at one clinic (the right of access under the Data
+  Privacy Act). It covers the requested period **up to the moment of release**: anything
+  recorded later needs a new request.
+- `medical_certificate`: the certificate for one of their visits (pick it from
+  `GET /api/patients/me/visits`; drafts and cancelled visits can't be certified). It prints what
+  the visit says (diagnosis, recommendations such as rest days) plus "issued upon the request of
+  the patient for … purposes". Staff fix the visit before releasing.
+- `clinical_abstract`: a doctor's signed summary of the case (consultations, history, findings,
+  results, diagnosis, management, present condition, recommendations), the form insurers, HMOs,
+  employers and embassies usually ask for. A doctor writes it from a draft taken from the chart;
+  the patient only chooses the clinic and purpose.
+
+| Method & path | Notes |
+|---|---|
+| `GET /api/patients/me/document-requests?tenantId&kind` | `{ requests: [{ _id, kind, kindLabel, requestCode, clinic: { tenantId, name }, purpose, purposeLabel, purposeNote, visit: { _id, visitCode, date } \| null, periodFrom, periodTo, status: "pending"\|"released"\|"expired"\|"declined"\|"cancelled"\|"revoked", requestedAt, decidedAt, decisionNote, availableUntil, downloadable }], availableDays: 30, purposes: { medical_records: [{ value, label }], medical_certificate: [...], clinical_abstract: [...] } }`, newest first, at most 50. Build the request form's purpose picker from `purposes`. `decisionNote` is the clinic's reason, set only when declined or revoked (withdrawn) |
+| `POST /api/patients/me/document-requests` | Records: `{ kind: "medical_records", purpose, purposeNote?, tenantId?, periodFrom?, periodTo? }` (dates `yyyy-MM-dd`; leave them out for everything; `tenantId` may be left out only with records at one clinic, else `400 CHOOSE_CLINIC`). Certificate: `{ kind: "medical_certificate", purpose, purposeNote?, visitId }` (`404` for a visit that isn't theirs or can't be certified). Abstract: `{ kind: "clinical_abstract", purpose, purposeNote?, tenantId? }` (clinic chosen as for records; no period). `purpose` must be one offered for the kind; `other` needs `purposeNote` (max 500). One pending request of each kind per clinic: `409 ALREADY_PENDING`. → `201 { request }` |
+| `DELETE /api/patients/me/document-requests/[id]` | Cancel while pending → `{ request }`. `409 NOT_PENDING` once the clinic has answered |
+| `POST /api/patients/me/document-requests/[id]/pdf-link` | `{ url, expiresAt }`, a 10-minute link to the sealed PDF (`GET /api/requested-documents/[token]`). `409 NOT_RELEASED` unless released; `410 EXPIRED` after the 30 days (send a new request). Download it like the e-Rx PDF |
+
+Push tag `document-request-<id>` when the clinic releases or declines (not categorised, so it
+can't be muted). The text never names the document's contents. If the clinic withdraws a
+released document, the download stops working and copies already downloaded no longer verify.
 
 ### Notifications
 

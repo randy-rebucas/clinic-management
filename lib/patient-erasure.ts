@@ -14,6 +14,7 @@ import PatientNote from '@/models/PatientNote';
 import Prescription from '@/models/Prescription';
 import Procedure from '@/models/Procedure';
 import Queue from '@/models/Queue';
+import DocumentRequest from '@/models/DocumentRequest';
 import Referral from '@/models/Referral';
 import Survey from '@/models/Survey';
 import Visit from '@/models/Visit';
@@ -51,6 +52,7 @@ export const PATIENT_RECORDS: Link[] = [
   { model: Prescription, field: 'patient' },
   { model: Procedure, field: 'patient' },
   { model: Queue, field: 'patient' },
+  { model: DocumentRequest, field: 'patient' },
   { model: Referral, field: 'patient' },
   { model: Survey, field: 'patientId' },
   { model: Visit, field: 'patient' },
@@ -84,8 +86,11 @@ export const PATIENT_REFS_KEPT = [
  */
 const RETAINED_RECORDS = new Set<Model<any>>([Invoice]);
 
-/** Not part of the medical record; removed in both modes. */
-const NON_CLINICAL = [DocumentModel, PatientMessage, MobileDevice, Survey, EmcrAccessRequest, EmcrInvite, WaitlistEntry];
+/**
+ * Not part of the medical record; removed in both modes. Document requests go too: the audit log
+ * keeps the record of each release.
+ */
+const NON_CLINICAL = [DocumentModel, PatientMessage, MobileDevice, Survey, EmcrAccessRequest, EmcrInvite, WaitlistEntry, DocumentRequest];
 
 const ANONYMIZED = '[ANONYMIZED]';
 

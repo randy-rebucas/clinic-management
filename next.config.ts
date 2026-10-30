@@ -105,6 +105,8 @@ const nextConfig: NextConfig = {
       '/api/rx/[token]',
       '/api/health-summary/[token]',
       '/api/share/[token]',
+      '/api/requested-documents/[token]',
+      '/api/document-requests/[id]/preview',
       // Platform sales invoices: downloaded as PDF, or emailed with the PDF attached (lib/platform-invoice.ts).
       '/api/platform/invoices/[id]',
       '/api/platform/invoices/[id]/resend',
