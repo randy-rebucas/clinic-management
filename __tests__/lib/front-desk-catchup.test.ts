@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   visits: [] as unknown[],
   invoices: [] as unknown[],
   prescriptions: [] as unknown[],
+  reminders: [] as unknown[],
   settings: {} as Record<string, unknown>,
 }));
 const chain = (value: () => unknown) => {
@@ -17,7 +18,11 @@ const chain = (value: () => unknown) => {
   return q;
 };
 vi.mock('@/models/Visit', () => ({ default: { find: () => chain(() => state.visits) } }));
-vi.mock('@/models/Invoice', () => ({ default: { find: () => chain(() => state.invoices) } }));
+// The reminder look-ahead is the query that asks for invoices with no reminder sent yet.
+vi.mock('@/models/Invoice', () => ({
+  default: { find: (f: Record<string, unknown>) => chain(() => ('paymentRemindersSent.0' in f ? state.reminders : state.invoices)) },
+}));
+vi.mock('@/lib/automations/payment-reminders', () => ({ FIRST_REMINDER_DAYS: 7 }));
 vi.mock('@/models/Prescription', () => ({ default: { find: () => chain(() => state.prescriptions) } }));
 vi.mock('@/lib/settings', () => ({ getSettings: async () => state.settings }));
 
@@ -45,6 +50,7 @@ beforeEach(() => {
   state.visits = [];
   state.invoices = [];
   state.prescriptions = [];
+  state.reminders = [];
   state.settings = {};
 });
 
@@ -67,6 +73,12 @@ describe('catchUpMessage', () => {
   it('counts what it does not show', () => {
     const many = Array.from({ length: 13 }, (_, i) => ({ patientName: `P${i}`, needsInvoice: true }));
     expect(catchUpMessage(many)).toContain('• …and 3 more');
+  });
+
+  it('warns about tomorrow’s first payment reminders, even with nothing else to do', () => {
+    const text = catchUpMessage([], [{ patientName: 'Dee Cruz', invoiceNumber: 'INV-5', due: 300, billedOn: 'Oct 24, 2026' }])!;
+    expect(text).toMatch(/^1 patient will be sent a payment reminder tomorrow\./);
+    expect(text).toContain('record it today if they already paid):\n• Dee Cruz — INV-5, 300.00 due, billed Oct 24, 2026');
   });
 
   it('is empty when everything is done', () => {
@@ -104,6 +116,20 @@ describe('runFrontDeskCatchUp', () => {
     expect(generateInvoiceForVisit).not.toHaveBeenCalled();
     expect(result.needsInvoice).toBe(1);
     expect((notifyFrontDesk.mock.calls[0][1] as { message: string }).message).toContain('Needs an invoice:\n• Ana Cruz (V-1)');
+  });
+
+  it('lists invoices whose first reminder goes out tomorrow, unless reminders are off', async () => {
+    state.reminders = [{ invoiceNumber: 'INV-5', outstandingBalance: 300, createdAt: new Date(), patient: { firstName: 'Dee', lastName: 'Cruz' } }];
+    const on = await runFrontDeskCatchUp();
+    expect(on).toMatchObject({ visits: 0, remindersTomorrow: 1, notified: 2 });
+    expect((notifyFrontDesk.mock.calls[0][1] as { message: string; actionUrl: string })).toMatchObject({ actionUrl: '/invoices?status=open' });
+    expect((notifyFrontDesk.mock.calls[0][1] as { message: string }).message).toContain('Dee Cruz — INV-5, 300.00 due');
+
+    notifyFrontDesk.mockClear();
+    state.settings = { automationSettings: { autoPaymentReminders: false } };
+    const off = await runFrontDeskCatchUp();
+    expect(off.remindersTomorrow).toBe(0);
+    expect(notifyFrontDesk).not.toHaveBeenCalled();
   });
 
   it('sends nothing when every visit is settled', async () => {
