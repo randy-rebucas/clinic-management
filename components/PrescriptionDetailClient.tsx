@@ -271,7 +271,7 @@ export default function PrescriptionDetailClient({ prescriptionId, permissions }
               Close without the rest
             </button>
           )}
-          {permissions.canUpdate && open && (
+          {permissions.canDispense && open && (
             <button
               type="button"
               onClick={() => {

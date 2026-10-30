@@ -188,8 +188,9 @@ export async function PUT(
       const visitId = visit._id;
       const hasFollowUp = !!visit.followUpDate;
       after(async () => {
+        const { generateInvoiceForVisit } = await import('@/lib/automations/invoice-generation');
+        const { notifyFrontDeskOfClosedVisit, notifyFrontDeskToDispense } = await import('@/lib/automations/front-desk');
         try {
-          const { generateInvoiceForVisit } = await import('@/lib/automations/invoice-generation');
           await generateInvoiceForVisit({
             visitId,
             tenantId: tenantObjectId,
@@ -200,6 +201,12 @@ export async function PUT(
         } catch (error) {
           console.error('Error generating automatic invoice:', error);
         }
+        // After the invoice exists, so the front desk is sent straight to it.
+        // The prescription was made from the treatment plan above, before the response.
+        await Promise.all([
+          notifyFrontDeskOfClosedVisit({ visitId, tenantId: tenantObjectId, closedBy: session.userId }),
+          notifyFrontDeskToDispense({ visitId, tenantId: tenantObjectId, closedBy: session.userId }),
+        ]);
 
         if (hasFollowUp) {
           try {

@@ -5,7 +5,7 @@ import connectDB from '@/lib/mongodb';
 import Prescription from '@/models/Prescription';
 import InventoryItem from '@/models/Inventory';
 import { recordMovement } from '@/lib/inventory-movements';
-import { requirePermission } from '@/app/lib/auth-helpers';
+import { getPermissionChecker, requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, escapeRegex } from '@/lib/api/validate';
 import { distribute, dispensedPerMedication, type DispenseItem } from '@/lib/prescription-dispense';
@@ -35,8 +35,11 @@ export async function POST(
   if (isTenantSessionError(ctx)) return ctx;
   const { session, tenantId, tenantObjectId } = ctx;
 
-  const permissionCheck = await requirePermission(session, 'prescriptions', 'update');
-  if (permissionCheck) return permissionCheck;
+  // Whoever may change prescriptions may dispense them; the front desk may only dispense.
+  if (!(await getPermissionChecker(session))('prescriptions', 'update')) {
+    const permissionCheck = await requirePermission(session, 'prescriptions', 'dispense');
+    if (permissionCheck) return permissionCheck;
+  }
 
   try {
     await connectDB();
