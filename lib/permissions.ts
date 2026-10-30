@@ -52,6 +52,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<RoleName, PermissionData[]> = {
     { resource: 'patients', actions: ['read', 'write', 'update'] },
     { resource: 'appointments', actions: ['read', 'write', 'update', 'delete'] },
     { resource: 'visits', actions: ['read'] },
+    { resource: 'prescriptions', actions: ['read', 'dispense'] },
     { resource: 'invoices', actions: ['read', 'write', 'update'] },
     { resource: 'doctors', actions: ['read'] },
     { resource: 'queue', actions: ['read', 'write', 'update'] },

@@ -2,9 +2,8 @@
 
 import { useState } from 'react';
 import { Modal } from '../ui/Modal';
-import { FIELD, FOCUS_RING, Svg } from '../appointments/shared';
-
-const CHAT = 'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z';
+import { useKeyedFetch } from '../hooks/useKeyedFetch';
+import { FIELD, FOCUS_RING } from '../appointments/shared';
 import { formatApiError } from '../utils/apiError';
 
 type Sent = { id: string; title: string; message: string; from: string | null; createdAt: string };
@@ -13,29 +12,24 @@ type Sent = { id: string; title: string; message: string; from: string | null; c
  * A doctor or admin sends the patient a message: it appears in the patient app's notifications
  * from them, by name, and is pushed to the patient's phone. Shows what was sent before.
  */
-export default function MessagePatientButton({ patientId, patientName }: { patientId: string; patientName: string }) {
-  const [open, setOpen] = useState(false);
+export default function MessagePatientDialog({
+  patientId,
+  patientName,
+  open,
+  onOpenChange,
+}: {
+  patientId: string;
+  patientName: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
-  const [history, setHistory] = useState<Sent[] | null>(null);
-
-  async function loadHistory() {
-    try {
-      const res = await fetch(`/api/patients/${patientId}/messages`);
-      const json = await res.json().catch(() => null);
-      if (res.ok && json?.success) setHistory(json.data);
-    } catch {
-      // the history is a convenience; sending still works
-    }
-  }
-
-  function show() {
-    setOpen(true);
-    setNotice(null);
-    void loadHistory();
-  }
+  // Fetched each time the dialog opens. The history is a convenience; a failed load doesn't block sending.
+  const sent = useKeyedFetch<Sent[]>(open ? `/api/patients/${patientId}/messages` : null);
+  const history = sent.value;
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -55,7 +49,7 @@ export default function MessagePatientButton({ patientId, patientName }: { patie
       setNotice({ tone: 'ok', text: `Sent. ${patientName} will see it in the patient app.` });
       setTitle('');
       setMessage('');
-      void loadHistory();
+      sent.reload();
     } catch {
       setNotice({ tone: 'error', text: 'The server couldn’t be reached. Nothing was sent.' });
     } finally {
@@ -63,16 +57,14 @@ export default function MessagePatientButton({ patientId, patientName }: { patie
     }
   }
 
+  // A notice belongs to one sitting; clear it on the way out so the next open starts clean.
+  function setOpen(next: boolean) {
+    if (!next) setNotice(null);
+    onOpenChange(next);
+  }
+
   return (
     <>
-      <button
-        type="button"
-        onClick={show}
-        className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}
-      >
-        <Svg d={CHAT} />
-        Message patient
-      </button>
       <Modal open={open} onOpenChange={setOpen} labelledBy="message-patient-title" className="max-w-lg">
         <form onSubmit={send} className="space-y-4 p-6">
           <div>

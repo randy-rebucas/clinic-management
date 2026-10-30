@@ -4,7 +4,10 @@ import { NextRequest } from 'next/server';
 vi.mock('server-only', () => ({}));
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn() }));
 vi.mock('@/lib/audit', () => ({ logPrinted: vi.fn() }));
-vi.mock('@/app/lib/auth-helpers', () => ({ requirePermission: vi.fn(async () => null), isAdmin: vi.fn() }));
+vi.mock('@/app/lib/auth-helpers', () => ({
+  requirePermission: vi.fn(async () => null),
+  isAdmin: (s: { role?: string } | null) => s?.role === 'admin' || s?.role === 'owner',
+}));
 vi.mock('@/lib/api/tenant-session', async (orig) => ({
   ...(await orig<typeof import('@/lib/api/tenant-session')>()),
   requireTenantSession: vi.fn(),
@@ -39,18 +42,20 @@ describe('printing a medical certificate', () => {
     vi.mocked(User.findOne).mockReturnValue(q);
   });
 
-  it('is refused to staff who aren’t doctors, before any record is read', async () => {
+  it('is refused to staff who aren’t doctors or admins, before any record is read', async () => {
     asRole('nurse');
     const res = await print();
     expect(res.status).toBe(403);
-    expect((await res.json()).error).toMatch(/only doctors/i);
+    expect((await res.json()).error).toMatch(/only doctors and clinic admins/i);
     expect(tenantScopedQuery).not.toHaveBeenCalled();
   });
 
-  it('lets doctors through to the visit', async () => {
-    asRole('doctor');
-    // The visit lookup runs (and finds nothing here).
-    expect((await print()).status).toBe(404);
+  it('lets doctors and admins through to the visit', async () => {
+    for (const role of ['doctor', 'admin']) {
+      asRole(role);
+      // The visit lookup runs (and finds nothing here).
+      expect((await print()).status).toBe(404);
+    }
     expect(tenantScopedQuery).toHaveBeenCalledWith(VISIT, TENANT);
   });
 });
