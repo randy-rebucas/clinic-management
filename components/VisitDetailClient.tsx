@@ -14,7 +14,9 @@ import VitalsPanel, { type VitalsReading, type VitalsRecord } from './visits/Vit
 import AttachForm from './records/AttachForm';
 import { INVOICE_LABEL, LAB_LABEL, RX_LABEL, fileSize, money } from './records/labels';
 import type { VisitDetailPermissions } from '@/lib/visits-page';
-import PdfLink from './documents/PdfLink';
+import MoreMenu, { type MoreMenuItem } from './ui/MoreMenu';
+import MedicalCertificateDialog from './patients/MedicalCertificateDialog';
+import MessagePatientDialog from './patients/MessagePatientDialog';
 
 export interface Visit {
   _id: string;
@@ -124,6 +126,8 @@ export default function VisitDetailClient({ visitId, permissions }: { visitId: s
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<Confirm>(null);
+  const [showCertificate, setShowCertificate] = useState(false);
+  const [showMessage, setShowMessage] = useState(false);
   const [notice, setNotice] = useState<string | null>(() => (searchParams.get('saved') === '1' ? 'Visit saved.' : null));
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -326,6 +330,20 @@ export default function VisitDetailClient({ visitId, permissions }: { visitId: s
   const canEdit = permissions.canUpdate && !cancelled;
   const followUpDate = v.followUpDate || v.treatmentPlan?.followUp?.date;
   const ctx = context.value;
+  // Only a written-up visit (open or closed) can be certified, as on the patient page.
+  const certifiable = permissions.canIssueCertificate && (v.status === 'open' || v.status === 'closed');
+  const labRequest = `/api/visits/${v._id}/print/lab-request`;
+  const more: MoreMenuItem[] = [
+    // Lab requests can't be printed for a cancelled visit.
+    ...(!cancelled
+      ? [
+          { label: 'Print lab request', href: labRequest, document: 'open' as const },
+          { label: 'Download lab request (PDF)', href: `${labRequest}?format=pdf&download=1`, document: 'download' as const },
+        ]
+      : []),
+    ...(certifiable ? [{ label: 'Medical certificate', onClick: () => setShowCertificate(true) }] : []),
+    ...(permissions.canMessage && v.patient ? [{ label: 'Message patient', onClick: () => setShowMessage(true) }] : []),
+  ];
 
   return (
     <Shell>
@@ -348,34 +366,6 @@ export default function VisitDetailClient({ visitId, permissions }: { visitId: s
 
         {!editing && (
           <div className={`flex flex-wrap items-center gap-2 transition-opacity ${busy || refreshing ? 'opacity-60' : ''}`}>
-            {!cancelled && (
-              <>
-                {permissions.canIssueCertificate && (
-                  <>
-                    <a
-                      href={`/api/visits/${v._id}/print/medical-certificate`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}
-                    >
-                      <Svg d={ICONS.print} />
-                      Medical certificate
-                    </a>
-                    <PdfLink href={`/api/visits/${v._id}/print/medical-certificate`} label="medical certificate" />
-                  </>
-                )}
-                <a
-                  href={`/api/visits/${v._id}/print/lab-request`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}
-                >
-                  <Svg d={ICONS.print} />
-                  Lab request
-                </a>
-                <PdfLink href={`/api/visits/${v._id}/print/lab-request`} label="lab request" />
-              </>
-            )}
             {permissions.canUpdate && (v.status === 'draft' || v.status === 'open') && (
               <button
                 type="button"
@@ -423,6 +413,7 @@ export default function VisitDetailClient({ visitId, permissions }: { visitId: s
                 <Svg d={ICONS.x} />
               </button>
             )}
+            <MoreMenu items={more} />
           </div>
         )}
       </header>
@@ -553,6 +544,11 @@ export default function VisitDetailClient({ visitId, permissions }: { visitId: s
           </AlertDialog>,
           document.body
         )}
+
+      {certifiable && <MedicalCertificateDialog open={showCertificate} onOpenChange={setShowCertificate} patientName={who} visits={[v]} />}
+      {permissions.canMessage && v.patient && (
+        <MessagePatientDialog patientId={v.patient._id} patientName={v.patient.firstName} open={showMessage} onOpenChange={setShowMessage} />
+      )}
     </Shell>
   );
 }

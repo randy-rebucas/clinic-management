@@ -3,7 +3,8 @@ import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import { verifySession } from '@/app/lib/dal';
 import { denyPage, getPermissionChecker } from '@/app/lib/auth-helpers';
-import { isCertifyingDoctor } from '@/lib/doctor-access';
+import { canIssueMedicalCertificates } from '@/lib/doctor-access';
+import { STAFF_SENDER_ROLES } from '@/lib/notify';
 
 export interface VisitsPageContext {
   canWrite: boolean;
@@ -41,8 +42,10 @@ export interface VisitDetailPermissions {
   canBook: boolean;
   /** appointments:read — open the follow-up booked from this visit */
   canSeeAppointments: boolean;
-  /** Doctors only — print the visit's medical certificate (lib/doctor-access.ts isCertifyingDoctor) */
+  /** Doctors and clinic admins — print the visit's medical certificate (lib/doctor-access.ts) */
   canIssueCertificate: boolean;
+  /** Doctors and admins — send the patient a message in the patient app */
+  canMessage: boolean;
 }
 
 export async function loadVisitDetailPermissions(): Promise<VisitDetailPermissions> {
@@ -57,6 +60,7 @@ export async function loadVisitDetailPermissions(): Promise<VisitDetailPermissio
     canSeePatient: can('patients', 'read'),
     canBook: can('appointments', 'write'),
     canSeeAppointments: can('appointments', 'read'),
-    canIssueCertificate: await isCertifyingDoctor(session),
+    canIssueCertificate: await canIssueMedicalCertificates(session),
+    canMessage: STAFF_SENDER_ROLES.includes(session.role) && !session.imp,
   };
 }
