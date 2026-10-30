@@ -350,16 +350,20 @@ export default function VisitDetailClient({ visitId, permissions }: { visitId: s
           <div className={`flex flex-wrap items-center gap-2 transition-opacity ${busy || refreshing ? 'opacity-60' : ''}`}>
             {!cancelled && (
               <>
-                <a
-                  href={`/api/visits/${v._id}/print/medical-certificate`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}
-                >
-                  <Svg d={ICONS.print} />
-                  Medical certificate
-                </a>
-                <PdfLink href={`/api/visits/${v._id}/print/medical-certificate`} label="medical certificate" />
+                {permissions.canIssueCertificate && (
+                  <>
+                    <a
+                      href={`/api/visits/${v._id}/print/medical-certificate`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}
+                    >
+                      <Svg d={ICONS.print} />
+                      Medical certificate
+                    </a>
+                    <PdfLink href={`/api/visits/${v._id}/print/medical-certificate`} label="medical certificate" />
+                  </>
+                )}
                 <a
                   href={`/api/visits/${v._id}/print/lab-request`}
                   target="_blank"

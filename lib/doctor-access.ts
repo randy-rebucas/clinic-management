@@ -1,3 +1,4 @@
+import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import { isAdmin } from '@/app/lib/auth-helpers';
 import { tenantFilter } from '@/lib/api/tenant-session';
@@ -8,6 +9,17 @@ export async function myDoctorProfileId(tenantId: string, userId: string): Promi
     .select('doctorProfile')
     .lean<{ doctorProfile?: unknown } | null>();
   return user?.doctorProfile ? String(user.doctorProfile) : null;
+}
+
+/**
+ * Whether this login may issue medical certificates: doctors, and any other login linked to a
+ * doctor profile (an owner who also practises). Callers check visits:read separately.
+ */
+export async function isCertifyingDoctor(session: { role?: string; tenantId?: string; userId: string }): Promise<boolean> {
+  if (session.role === 'doctor') return true;
+  if (!session.tenantId) return false;
+  await connectDB();
+  return !!(await myDoctorProfileId(session.tenantId, session.userId));
 }
 
 /**

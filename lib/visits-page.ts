@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import { verifySession } from '@/app/lib/dal';
 import { denyPage, getPermissionChecker } from '@/app/lib/auth-helpers';
+import { isCertifyingDoctor } from '@/lib/doctor-access';
 
 export interface VisitsPageContext {
   canWrite: boolean;
@@ -40,6 +41,8 @@ export interface VisitDetailPermissions {
   canBook: boolean;
   /** appointments:read — open the follow-up booked from this visit */
   canSeeAppointments: boolean;
+  /** Doctors only — print the visit's medical certificate (lib/doctor-access.ts isCertifyingDoctor) */
+  canIssueCertificate: boolean;
 }
 
 export async function loadVisitDetailPermissions(): Promise<VisitDetailPermissions> {
@@ -49,5 +52,11 @@ export async function loadVisitDetailPermissions(): Promise<VisitDetailPermissio
   const can = await getPermissionChecker(session);
   if (!can('visits', 'read')) await denyPage(session, 'visits', 'read', '/dashboard?error=access_denied');
 
-  return { canUpdate: can('visits', 'update'), canSeePatient: can('patients', 'read'), canBook: can('appointments', 'write'), canSeeAppointments: can('appointments', 'read') };
+  return {
+    canUpdate: can('visits', 'update'),
+    canSeePatient: can('patients', 'read'),
+    canBook: can('appointments', 'write'),
+    canSeeAppointments: can('appointments', 'read'),
+    canIssueCertificate: await isCertifyingDoctor(session),
+  };
 }
