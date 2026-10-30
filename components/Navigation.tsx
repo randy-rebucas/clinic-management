@@ -28,6 +28,14 @@ const navItems = [
     // Same rule as the page and GET /api/emcr-requests; deciding needs patients:write.
     requiresPermission: { resource: 'patients', action: 'read' }
   },
+  {
+    href: '/document-requests',
+    label: 'Document requests',
+    icon: 'M9 13h6m-6 4h6M7 3h7l5 5v11a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2zm7 0v5h5',
+    category: 'Patient Management',
+    // Same rule as the page and GET /api/document-requests; releasing needs visits:write.
+    requiresPermission: { resource: 'visits', action: 'read' }
+  },
   // Scheduling
   { 
     href: '/appointments', 

@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import MessagePatientButton from './patients/MessagePatientButton';
 import AppInviteDialog from './patients/AppInviteDialog';
+import MedicalCertificateDialog from './patients/MedicalCertificateDialog';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
@@ -138,6 +139,7 @@ export default function PatientDetailClient({ patientId, permissions }: { patien
   const record = useKeyedFetch<PatientRecord>(`/api/patients/${patientId}/record`);
   const [tab, setTab] = useState<TabKey>('all');
   const [showQr, setShowQr] = useState(false);
+  const [showCertificate, setShowCertificate] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<Patient['attachments'][number] | null>(null);
@@ -323,6 +325,16 @@ export default function PatientDetailClient({ patientId, permissions }: { patien
               New visit
             </Link>
           )}
+          {permissions.canIssueCertificate && data.visits && (
+            <button
+              type="button"
+              onClick={() => setShowCertificate(true)}
+              className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}
+            >
+              <Svg d={ICONS.doc} />
+              Medical certificate
+            </button>
+          )}
           {permissions.canMessage && <MessagePatientButton patientId={patientId} patientName={p.firstName} />}
           <MoreMenu items={more} />
         </div>
@@ -380,6 +392,10 @@ export default function PatientDetailClient({ patientId, permissions }: { patien
           </aside>
         </div>
       </div>
+
+      {permissions.canIssueCertificate && data.visits && (
+        <MedicalCertificateDialog open={showCertificate} onOpenChange={setShowCertificate} patientName={fullName} visits={data.visits.items} />
+      )}
 
       <Modal open={showQr} onOpenChange={setShowQr} className="max-w-sm" labelledBy="patient-qr-title">
         <div className="p-6 text-center">
