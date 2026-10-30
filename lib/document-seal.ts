@@ -11,6 +11,7 @@ import Visit from '@/models/Visit';
 import LabResult from '@/models/LabResult';
 import Invoice from '@/models/Invoice';
 import Referral from '@/models/Referral';
+import DocumentRequest, { CLINICAL_ABSTRACT_FIELDS } from '@/models/DocumentRequest';
 import User from '@/models/User';
 import '@/models/Patient';
 import { nextSequence } from '@/lib/counters';
@@ -341,6 +342,64 @@ const SEAL_DEFINITIONS: Record<SealDocumentType, SealDefinition> = {
     ],
     patient: (r) => r.patient,
     issuer: (r) => (r.referringDoctor ? `Dr. ${r.referringDoctor.firstName} ${r.referringDoctor.lastName}` : undefined),
+  },
+
+  medical_records: {
+    label: 'Medical Records Copy',
+    load: (id, tenantId) => {
+      const q = tenantScopedQuery(id, tenantId);
+      return q
+        ? DocumentRequest.findOne(q).populate('patient', 'firstName lastName').populate('decidedBy', 'name')
+        : Promise.resolve(null);
+    },
+    code: (r) => r.requestCode,
+    canonical: (r) => ({
+      code: str(r.requestCode),
+      patient: idOf(r.patient),
+      periodFrom: str(r.periodFrom),
+      periodTo: str(r.periodTo),
+      cutoff: iso(r.cutoff),
+      releasedBy: idOf(r.decidedBy),
+    }),
+    revocation: (r) => (r.status === 'revoked' ? 'The clinic withdrew this copy of the medical records.' : null),
+    facts: (r, _currency, tz) => [
+      { label: 'Request code', value: r.requestCode || '—' },
+      {
+        label: 'Period covered',
+        value: `${r.periodFrom ? longDate(`${r.periodFrom}T12:00:00Z`, tz) : 'First record'} to ${r.periodTo ? longDate(`${r.periodTo}T12:00:00Z`, tz) : longDate(r.cutoff, tz)}`,
+      },
+      { label: 'Released on', value: longDate(r.cutoff, tz) },
+    ],
+    patient: (r) => r.patient,
+    issuer: (r) => r.decidedBy?.name,
+  },
+
+  clinical_abstract: {
+    label: 'Clinical Abstract',
+    load: (id, tenantId) => {
+      const q = tenantScopedQuery(id, tenantId);
+      return q
+        ? DocumentRequest.findOne(q).populate('patient', 'firstName lastName').populate('abstractAuthor', 'name')
+        : Promise.resolve(null);
+    },
+    code: (r) => r.requestCode,
+    canonical: (r) => ({
+      code: str(r.requestCode),
+      patient: idOf(r.patient),
+      author: idOf(r.abstractAuthor),
+      purpose: str(r.purpose),
+      purposeNote: str(r.purposeNote),
+      abstract: Object.fromEntries(CLINICAL_ABSTRACT_FIELDS.map((f) => [f, str(r.abstract?.[f])])),
+    }),
+    revocation: (r) => (r.status === 'revoked' ? 'The clinic withdrew this clinical abstract.' : null),
+    facts: (r, _currency, tz) => [
+      { label: 'Request code', value: r.requestCode || '—' },
+      { label: 'Diagnosis', value: String(r.abstract?.diagnosis || '—') },
+      ...(r.abstract?.condition ? [{ label: 'Present condition', value: String(r.abstract.condition) }] : []),
+      { label: 'Written on', value: longDate(r.abstractSavedAt, tz) },
+    ],
+    patient: (r) => r.patient,
+    issuer: (r) => r.abstractAuthor?.name,
   },
 
   receipt: {
