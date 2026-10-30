@@ -283,7 +283,7 @@ export const automationRegistry: Record<string, AutomationConfig> = {
     name: 'Front Desk Catch-up',
     description: 'Lists visits since yesterday still needing an invoice, a recorded payment or medicines handed over',
     enabled: true,
-    schedule: '0 10 * * *', // 10:00 UTC = 18:00 PHT
+    schedule: '0 8 * * *', // 08:00 UTC = 16:00 PHT, an hour before closing
     category: 'financial',
     priority: 'high',
   },
