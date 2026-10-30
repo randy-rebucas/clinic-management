@@ -9,7 +9,15 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
  * subscriptions for staff users — different payload shape, different channel.
  */
 /** Push categories a patient can mute on one device. A missing or true value means "send". */
-export const PUSH_CATEGORIES = ['appointments', 'labResults', 'queue', 'messages'] as const;
+export const PUSH_CATEGORIES = [
+  'appointments',
+  'labResults',
+  'queue',
+  'messages',
+  'billing',
+  'prescriptions',
+  'followUps',
+] as const;
 export type PushCategory = (typeof PUSH_CATEGORIES)[number];
 
 export interface IMobileDevice extends Document {
@@ -41,6 +49,9 @@ const MobileDeviceSchema = new Schema<IMobileDevice>(
       labResults: { type: Boolean },
       queue: { type: Boolean },
       messages: { type: Boolean },
+      billing: { type: Boolean },
+      prescriptions: { type: Boolean },
+      followUps: { type: Boolean },
     },
     lastSeenAt: { type: Date, default: Date.now },
     revokedAt: { type: Date },

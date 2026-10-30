@@ -38,7 +38,10 @@ to the endpoints below. Staff keep the web app.
     tokens, and retry the request. Refresh tokens are single-use and rotate on every refresh.
   - Only one refresh may be in flight at a time. If two requests both get a `401`, they share one
     refresh call. Sending the same refresh token twice counts as theft (`REFRESH_REUSED`): every
-    token in that chain is revoked and the user must sign in again.
+    token in that chain is revoked and the user must sign in again. **New:** within 60 seconds of
+    its use, a spent token is accepted once more (the app lost the reply and is retrying): the
+    server cancels the successor the app never received and issues a new pair. So when a refresh
+    reply is lost or unreadable, keep the old pair and retry soon.
   - A refresh `401` (`REFRESH_INVALID` / `REFRESH_REUSED`) means: go to sign-in.
   - **New (patients):** a refresh `403 { code: "ACCOUNT_INACTIVE" }` means the clinic deactivated
     the account. Show the server's `error` and go to sign-in; don't retry.
@@ -119,8 +122,21 @@ after linking joins at the patient's next code sign-in.
 | `DELETE /api/patients/me/login-qr` | Revoke the login QR **and sign out every session** (a QR that was already scanned can't be told apart). The caller gets a new `token`, `expiresIn`, `refreshToken`, `refreshExpiresIn`. Optional `{ deviceId }` keeps this device's push |
 | `POST /api/patients/me/devices` | `{ deviceId, platform: "ios"\|"android", pushToken?, appVersion? }`. Call after sign-in, after a password change, and when the Expo token changes. **Changed:** a device or push token belongs to one patient at a time; registering it removes any other patient's registration of the same `deviceId` or `pushToken` |
 | `DELETE /api/patients/me/devices?deviceId=…` | Unregister from push |
-| `GET /api/patients/me/devices/preferences?deviceId=…` | **New.** Which push categories this device gets → `{ appointments, labResults, queue, messages }` (booleans; unset = `true`). `404 DEVICE_NOT_FOUND` until the device is registered |
-| `PATCH /api/patients/me/devices/preferences` | **New.** `{ deviceId, appointments?, labResults?, queue?, messages? }`, only the categories sent change. Returns the full set. A muted category is skipped at send time by its push tag (`appointment-`, `lab-result-`, `queue-`, `message-`); SMS, email and the in-app inbox are unaffected |
+| `GET /api/patients/me/devices/preferences?deviceId=…` | **New.** Which push categories this device gets → `{ appointments, labResults, queue, messages, billing, prescriptions, followUps }` (booleans; unset = `true`). `404 DEVICE_NOT_FOUND` until the device is registered |
+| `PATCH /api/patients/me/devices/preferences` | **New.** `{ deviceId, appointments?, labResults?, queue?, messages?, billing?, prescriptions?, followUps? }`, only the categories sent change. Returns the full set. A muted category is skipped at send time by its push tag (`appointment-`, `lab-result-`, `queue-`, `message-`, `invoice-`, `prescription-`, `followup-`); SMS, email and the in-app inbox are unaffected. Older servers reject the last three with `400` |
+
+**New reminder pushes** (SMS and email still go out as before):
+
+| `data.tag` | Category | Sent |
+|---|---|---|
+| `appointment-reminder-<appointmentId>` | appointments | The day before an appointment |
+| `appointment-waitlist-<appointmentId>` | appointments | A waitlist entry was filled with a cancelled slot (`data.appointmentId`) |
+| `followup-<visitId>` | followUps | Before a follow-up visit; `data.appointmentId` when one is booked |
+| `invoice-<invoiceId>` | billing | Payment reminder |
+| `prescription-refill-<prescriptionId>` | prescriptions | Refill reminder |
+
+Lock-screen text never names the doctor, a medicine, an amount or an invoice number. Medicine-taking
+reminders are scheduled on the phone by the app, not pushed.
 
 ### Records (read-only, paginated, newest first)
 
@@ -142,6 +158,8 @@ after linking joins at the patient's next code sign-in.
 - Lab results no longer return `thirdPartyLab` or `attachments[].url`.
 - An unknown `status` filter on the appointments or invoices list is `400` (it used to match nothing).
 - A clinic-scoped session (`tid`) only ever gets that clinic's records, with or without `tenantId`.
+- **New:** visits no longer return `digitalSignature.signatureData`, `notes`, `feedbackToken`,
+  `feedbackRequested` or the follow-up reminder flags.
 
 Opening a document is an authenticated GET that returns the file itself, so download it with the
 Bearer header (e.g. `expo-file-system` `downloadAsync` with `headers`). Don't hand the URL to a
@@ -155,6 +173,10 @@ browser, because the browser won't send the token. Confidential and deleted docu
 | `GET /api/patients/appointments?date=YYYY-MM-DD&doctorId=…` | Adds `data.availableSlots: ["09:00", …]`: slots inside that doctor's hours AND the clinic's opening hours for the day, stepping by the clinic's usual appointment length (default 30 min; a doctor with no weekly hours follows the opening hours; today's past slots dropped, clinic time). `data.dayOff: true` with an empty list when the doctor doesn't work or the clinic is closed that date, or the date is past the 60-day booking horizon. Each doctor in `data.doctors` carries `hoursSummary` (weekly hours) and `bookableDates` (the dates they can be booked) |
 | `POST /api/patients/appointments` | `{ doctorId, appointmentDate: "YYYY-MM-DD", appointmentTime: "HH:mm", reason?, modality? }`. **New** `modality: "teleconsult"` books a video visit; allowed only when the options `GET` returned `data.teleconsultAvailable: true`, else `403`. `409` = slot taken. **New** `400` codes: `SLOT_PAST` (time already passed), `SLOT_BEYOND_HORIZON` (more than 60 days ahead), `SLOT_NOT_WORKING` (outside the doctor's hours or the clinic's opening hours that day), `SLOT_OFF_GRID` (not on the slot grid) |
 | `DELETE /api/patients/appointments/[id]` | Cancel. Refused for past, completed or no-show appointments |
+| `PATCH /api/patients/appointments/[id]` | **New.** Reschedule: `{ appointmentDate: "YYYY-MM-DD", appointmentTime: "HH:mm" }`. Same doctor, modality, visit type and reason; same `_id` and code. Status goes back to `pending` for the clinic to re-confirm, and reminders go out again for the new time. Asking for the slot it already has is a no-op `200`, so a retry after a lost reply is safe. `400` for closed statuses, walk-ins, an appointment that already started (same cut-off as cancel), an inactive doctor, or the `SLOT_*` codes above. `409` = slot taken, the patient already has an appointment then, or the appointment changed meanwhile. `402 ACTIVATION_REQUIRED` as for booking. Staff (admin, owner, receptionist and the doctor) are notified |
+| `GET /api/patients/me/waitlist` | **New.** `{ entries, maxActive: 3 }`: entries still waiting plus those filled in the last 30 days. Entry: `{ _id, status, lapsed, clinic: { tenantId, name }, doctor, preferredDate, preferredTime, joinedAt, filledAt, appointmentId }`. `lapsed` = more than a week past its date |
+| `POST /api/patients/me/waitlist` | **New.** `{ doctorId, preferredDate? }` → `201 { entry }`. The clinic's auto-fill matches a cancelled slot within ±7 days of the date and **books it outright** (status `scheduled`), then pushes `appointment-waitlist-<appointmentId>` and sends SMS/email. One waiting entry per clinic. `409` codes: `WAITLIST_OFF` (the clinic doesn't run the waitlist), `ALREADY_WAITING`, `WAITLIST_LIMIT`. `402` without eMCR booking access |
+| `DELETE /api/patients/me/waitlist/[id]` | **New.** Leave the waitlist; returns the entry with status `removed` |
 
 **Video visits (new).** Appointments carry `modality` (`"in-person"` or `"teleconsult"`) and
 `teleconsult`, which is `null` for in-person visits or
@@ -164,9 +186,54 @@ completed visits. Open it with `Linking.openURL`; the Jitsi app opens if install
 the browser. The raw room name is never returned.
 
 **E-prescription PDF (new).** `POST /api/patients/me/prescriptions/[id]/pdf-link` returns
-`{ url, expiresAt }`: a 10-minute link to the sealed patient copy (`GET /api/rx/[token]`). Hand
-that URL to the browser. Each open issues a new sealed, numbered copy. Cancelled prescriptions
-return `409`.
+`{ url, expiresAt }`: a 10-minute link to the sealed patient copy (`GET /api/rx/[token]`).
+**Changed:** download it into the app's cache and open the share sheet; don't hand it to the
+browser, where it lands in history and Downloads. Each open issues a new sealed, numbered copy.
+Cancelled prescriptions return `409`.
+
+### Paying invoices (new)
+
+The invoice is paid into the clinic's (or doctor's) own payment account, through the same pay page
+staff send by link. Never the platform's account.
+
+- `GET /api/patients/me/invoices/[id]/pay-link` → `{ offered, code, amount, minimum, methods,
+  pendingClaim, recentCheckoutAt }`. `methods` holds `online` (gateway checkout: GCash, Maya,
+  card, GrabPay, QR Ph) and/or `manual` (the clinic's QR or bank account; the patient submits a
+  reference the clinic confirms). `code` says why it isn't offered: `REFUNDED`, `NOTHING_OWED`,
+  `UNSUPPORTED_CURRENCY`, `NO_PAYMENT_OPTION`, `BELOW_MINIMUM` (only gateway accounts and a balance
+  under the ₱20 online minimum). `pendingClaim` = a reference awaiting confirmation;
+  `recentCheckoutAt` = a checkout started in the last 2 hours whose payment may still be on its way.
+- `POST` on the same path (no body) → `{ url, amount, expiresAt }`. Open `url` in an in-app browser
+  and refetch the invoice when the patient comes back. Same `409` codes. Audited.
+
+### Visits: feedback (new)
+
+- `GET /api/patients/me/feedback/pending` → up to 5 visits from the last 30 days the clinic asked
+  about and that have no answer yet: `[{ visitId, visitDate, visitType, providerName, clinicName,
+  tenantId }]`. The SMS feedback token is never returned.
+- `POST /api/patients/me/visits/[id]/feedback` with `{ overallRating: 1–5, doctorRating?,
+  staffRating?, facilityRating?, waitTimeRating?, comments? (≤ 2000), wouldRecommend? }` →
+  `201 { alreadySubmitted: false }`, or `200 { alreadySubmitted: true }` when already answered (safe
+  to retry). `404` when the visit isn't theirs, wasn't asked about, or is older than 30 days.
+
+### Membership (new)
+
+`GET /api/patients/me/membership` → one item per clinic membership (`[]` when none):
+`{ id, tenantId, clinicName, membershipNumber, tier, tierLabel, status, state, points,
+totalPointsEarned, totalPointsRedeemed, discountPercentage, discountActive, benefits, joinDate,
+expiryDate, history }`. `state` is `active | due | expired | suspended | inactive`; `history` is the
+latest 10 point changes, newest first, with redeemed and expired points as negative numbers.
+
+### Referrals (new)
+
+- `GET /api/patients/me/referrals?page&limit&tenantId` and `GET /api/patients/me/referrals/[id]`
+  (detail needs eMCR `records`): `{ _id, referralCode, direction, status, urgency, specialty, reason,
+  clinic, referredTo: { doctor, clinic }, referredBy: { doctor, clinic }, referredDate, acceptedDate,
+  completedDate, declinedDate, followUpDate, appointment | null, letterAvailable }`. Notes, feedback,
+  the decline reason and clinical fields are never returned.
+- `POST /api/patients/me/referrals/[id]/pdf-link` → `{ url, expiresAt }`, a short-lived link to a
+  sealed patient copy of the letter (`GET /api/referral-letter/[token]`). `409 NO_LETTER` for
+  referrals the clinic received, and cancelled or declined ones. Download it like the e-Rx PDF.
 
 ### Notifications
 
@@ -209,7 +276,11 @@ their linked records) and the devices of family members who manage them (see bel
 | Method & path | Notes |
 |---|---|
 | `GET /api/patients/me/health-summary` | The patient's record across every clinic in the session's scope, merged and tagged with the clinic that recorded each item: `{ generatedAt, patient: { firstName, middleName, lastName, suffix, dateOfBirth, sex }, clinics: [{ tenantId, name, patientCode }], allergies: [{ substance, reaction, severity, clinics[] }], conditions: [{ condition, status, diagnosisDate, notes, clinics[] }], medications: { current: [...], recent: [...] }, immunizations: [{ name, date, batch, notes, clinic }] }` |
-| `POST /api/patients/me/health-summary/pdf-link` | `{ url, expiresAt }`: a 10-minute link to the same summary as a PDF (`GET /api/health-summary/[token]`). Hand it to the browser or share sheet |
+| `POST /api/patients/me/health-summary/pdf-link` | `{ url, expiresAt }`: a 10-minute link to the same summary as a PDF (`GET /api/health-summary/[token]`). Download it into the app's cache and open the share sheet |
+| `GET /api/patients/me/share-links` | **New.** Revocable links for sharing the summary with another doctor: `{ links: [{ id, label, status: "active"\|"expired"\|"revoked", createdAt, expiresAt, revokedAt, accessCount, lastAccessedAt, sharedByFamily }], maxActive: 10 }`. Active links plus those that ended in the last 90 days, newest first, at most 50. The URL is never listed |
+| `POST /api/patients/me/share-links` | **New.** `{ duration: "24h"\|"7d"\|"30d", label? }` → `201 { url, link }`. The URL is shown only this once. `409 SHARE_LINK_LIMIT` at 10 active links; `402` without eMCR `health_summary` |
+| `DELETE /api/patients/me/share-links/[id]` | **New.** Revoke (idempotent). Never gated by activation |
+| `GET /api/share/[token]` | **New, public.** The summary PDF, rendered when opened, so it always shows the current record. `404` unknown token, `410` expired or revoked, `429` rate-limited (20 per 10 minutes per IP). `no-store`, `noindex`, `Referrer-Policy: no-referrer`. Every open is audit-logged with the IP and counted. A link made for a family member ends when the sharer no longer manages them |
 
 - **Merging:** one allergy per substance and one condition per name (case-insensitive); an active
   or chronic record outranks a resolved one. The same vaccine on the same day at two clinics is
@@ -448,8 +519,5 @@ Registration stays on the web (`/medical-representatives/onboard`, which needs p
 
 ## Not built yet
 
-- **Paying invoices in the app** (deferred by decision). Clinics have no payment accounts of their
-  own, and the platform's PayMongo account must not collect clinic money. Invoices are view-only.
-  Show "Pay at the clinic".
 - **Lab-result PDFs.** Lab results come back as structured data. A PDF only exists if the clinic
   uploaded one as a document.

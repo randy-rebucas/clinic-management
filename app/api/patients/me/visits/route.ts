@@ -7,6 +7,7 @@ import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { parsePagination, resolveTenantFilter } from '../_lib/patient-scope';
 import { linkedRecords } from '../_lib/linked-records';
+import { PATIENT_VISIT_EXCLUDE } from '../_lib/visit-fields';
 
 /**
  * GET /api/patients/me/visits
@@ -43,6 +44,7 @@ export async function GET(request: NextRequest) {
 
     const [visits, total] = await Promise.all([
       Visit.find(visitQuery)
+        .select(PATIENT_VISIT_EXCLUDE)
         .populate({ path: 'provider', select: 'name' })
         .sort({ date: -1 })
         .skip(skip)

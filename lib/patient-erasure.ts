@@ -67,9 +67,16 @@ export const PATIENT_MENTIONS: (Link & { array?: boolean; alsoUnset?: string[] }
 
 /**
  * Patient references left alone on purpose: the audit trail is the record of processing the DPA
- * requires the clinic to keep, and the eMCR account is the patient's own, not the clinic's.
+ * requires the clinic to keep, and the eMCR account is the patient's own, not the clinic's. So are
+ * health-summary share links; they render the summary when opened, so an erased clinic's records
+ * drop out of them.
  */
-export const PATIENT_REFS_KEPT = ['AuditLog.dataSubject', 'EmcrAccount.selfPatientId'];
+export const PATIENT_REFS_KEPT = [
+  'AuditLog.dataSubject',
+  'EmcrAccount.selfPatientId',
+  'HealthSummaryShareLink.patient',
+  'HealthSummaryShareLink.sharedBy',
+];
 
 /**
  * Kept in delete mode as well: sales invoices are retained for BIR, with the buyer copied onto

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Visit from '@/models/Visit';
 import logger from '@/lib/logger';
 import { ownedRecordContext, isOwnedRecordError, recordNotFound } from '../../_lib/owned-record';
+import { PATIENT_VISIT_EXCLUDE } from '../../_lib/visit-fields';
 
 /**
  * GET /api/patients/me/visits/[id]
@@ -18,6 +19,7 @@ export async function GET(
     if (isOwnedRecordError(ctx)) return ctx;
 
     const visit = await Visit.findOne(ctx.filter)
+      .select(PATIENT_VISIT_EXCLUDE)
       // `provider` refs User, which stores `name`.
       .populate({ path: 'provider', select: 'name' })
       .lean();

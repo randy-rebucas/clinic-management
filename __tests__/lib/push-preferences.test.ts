@@ -30,6 +30,10 @@ describe('pushCategoryForTag', () => {
     expect(pushCategoryForTag('lab-result-123')).toBe('labResults');
     expect(pushCategoryForTag('queue-123')).toBe('queue');
     expect(pushCategoryForTag('message-123')).toBe('messages');
+    expect(pushCategoryForTag('appointment-reminder-123')).toBe('appointments');
+    expect(pushCategoryForTag('invoice-123')).toBe('billing');
+    expect(pushCategoryForTag('prescription-refill-123')).toBe('prescriptions');
+    expect(pushCategoryForTag('followup-123')).toBe('followUps');
   });
 
   it('has no category for untagged or unknown pushes', () => {

@@ -318,6 +318,7 @@ export function registerAllModels(): void {
   require('./PushSubscription');
   require('./MobileDevice');
   require('./RefreshToken');
+  require('./HealthSummaryShareLink');
 
   console.log('✅ All models registered successfully');
 }
@@ -384,6 +385,7 @@ const models = {
   PushSubscription: require('./PushSubscription').default,
   MobileDevice: require('./MobileDevice').default,
   RefreshToken: require('./RefreshToken').default,
+  HealthSummaryShareLink: require('./HealthSummaryShareLink').default,
 };
 
 export default models;
