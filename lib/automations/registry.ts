@@ -278,6 +278,16 @@ export const automationRegistry: Record<string, AutomationConfig> = {
     priority: 'high',
   },
 
+  'front-desk-catchup': {
+    id: 'front-desk-catchup',
+    name: 'Front Desk Catch-up',
+    description: 'Lists visits since yesterday still needing an invoice, a recorded payment or medicines handed over',
+    enabled: true,
+    schedule: '0 10 * * *', // 10:00 UTC = 18:00 PHT
+    category: 'financial',
+    priority: 'high',
+  },
+
   // Lab result notifications batch
   'lab-notifications': {
     id: 'lab-notifications',

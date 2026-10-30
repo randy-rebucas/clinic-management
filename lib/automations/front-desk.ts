@@ -39,7 +39,8 @@ const patientNameOf = (visit: VisitForNotice) =>
   [visit.patient?.firstName, visit.patient?.lastName].filter(Boolean).join(' ') || 'The patient';
 const visitLabelOf = (visit: VisitForNotice) => (visit.visitCode ? `visit ${visit.visitCode}` : 'their visit');
 
-async function notifyFrontDesk(
+/** A high-priority notice (pushed) to the front desk, or to admins where there's no receptionist. */
+export async function notifyFrontDesk(
   tenantId: Types.ObjectId,
   notice: Pick<NotifyStaffOptions, 'title' | 'message' | 'actionUrl' | 'type' | 'metadata' | 'excludeUserId'>
 ): Promise<number> {

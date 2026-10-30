@@ -213,6 +213,14 @@ export const AUTOMATIONS: Automation[] = [
     defaultOn: true,
     caution: 'An unpaid invoice can bring up to 24 reminders.',
   },
+  {
+    key: 'autoFrontDeskCatchUp',
+    group: 'billing',
+    label: 'End-of-day front desk check',
+    does: 'Makes any invoice that wasn’t made when a visit closed, then sends receptionists (admins if there are none) one list of the visits since yesterday that still need an invoice, a payment recorded or medicines handed over. Nothing is sent when the list is empty.',
+    when: 'Daily at {10:00}.',
+    defaultOn: true,
+  },
 
   // Stock
   {
