@@ -9,7 +9,7 @@ import { getSettings } from '@/lib/settings';
 import { issueSeal, tenantScopedQuery } from '@/lib/document-seal';
 import { loadSigner } from '@/lib/doctor-signature';
 import { generateMedicalCertificateHTML, populateVisitForCertificate } from '@/lib/medical-certificate';
-import { isCertifyingDoctor } from '@/lib/doctor-access';
+import { canIssueMedicalCertificates } from '@/lib/doctor-access';
 import { documentResponse, pdfFilename } from '@/lib/pdf';
 
 // Headroom for a cold Chromium start when ?format=pdf.
@@ -27,9 +27,9 @@ export async function GET(
   if (permissionCheck) {
     return permissionCheck;
   }
-  // Only doctors issue medical certificates.
-  if (!(await isCertifyingDoctor(session))) {
-    return NextResponse.json({ success: false, error: 'Only doctors can issue medical certificates.' }, { status: 403 });
+  // Only doctors and clinic admins issue medical certificates.
+  if (!(await canIssueMedicalCertificates(session))) {
+    return NextResponse.json({ success: false, error: 'Only doctors and clinic admins can issue medical certificates.' }, { status: 403 });
   }
 
   try {

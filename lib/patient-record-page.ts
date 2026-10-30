@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { verifySession } from '@/app/lib/dal';
 import { denyPage, getPermissionChecker } from '@/app/lib/auth-helpers';
 import { STAFF_SENDER_ROLES } from '@/lib/notify';
-import { isCertifyingDoctor } from '@/lib/doctor-access';
+import { canIssueMedicalCertificates } from '@/lib/doctor-access';
 
 /** What the signed-in user may do from a patient's page (the API enforces each one again). */
 export interface PatientRecordPermissions {
@@ -16,7 +16,7 @@ export interface PatientRecordPermissions {
   canInvoice: boolean;
   /** Doctors and admins — send the patient a message in the patient app */
   canMessage: boolean;
-  /** Doctors (role, or a login linked to a doctor profile) with visits:read — issue a medical certificate */
+  /** Doctors and clinic admins with visits:read — issue a medical certificate (lib/doctor-access.ts) */
   canIssueCertificate: boolean;
 }
 
@@ -35,6 +35,6 @@ export async function loadPatientRecordPermissions(): Promise<PatientRecordPermi
     canOrderLab: can('lab-results', 'write'),
     canInvoice: can('invoices', 'write'),
     canMessage: STAFF_SENDER_ROLES.includes(session.role) && !session.imp,
-    canIssueCertificate: can('visits', 'read') && (await isCertifyingDoctor(session)),
+    canIssueCertificate: can('visits', 'read') && (await canIssueMedicalCertificates(session)),
   };
 }

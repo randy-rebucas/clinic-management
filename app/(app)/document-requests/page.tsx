@@ -1,7 +1,7 @@
 import { hasPermission, requirePagePermission } from '@/app/lib/auth-helpers';
 import { verifySession } from '@/app/lib/dal';
 import DocumentRequestsClient from '@/components/patients/DocumentRequestsClient';
-import { isCertifyingDoctor } from '@/lib/doctor-access';
+import { canIssueMedicalCertificates } from '@/lib/doctor-access';
 
 export const metadata = { title: 'Document requests' };
 
@@ -10,7 +10,7 @@ export default async function DocumentRequestsPage() {
   await requirePagePermission('visits', 'read');
   const session = await verifySession();
   const canWrite = await hasPermission(session, 'visits', 'write');
-  // Medical certificates are released by doctors only (the API checks the same).
-  const canCertify = !!session && (await isCertifyingDoctor(session));
+  // Medical certificates are released by doctors and clinic admins only (the API checks the same).
+  const canCertify = !!session && (await canIssueMedicalCertificates(session));
   return <DocumentRequestsClient canWrite={canWrite} canCertify={canCertify} />;
 }

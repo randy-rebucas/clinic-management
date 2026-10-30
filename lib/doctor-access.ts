@@ -12,11 +12,11 @@ export async function myDoctorProfileId(tenantId: string, userId: string): Promi
 }
 
 /**
- * Whether this login may issue medical certificates: doctors, and any other login linked to a
- * doctor profile (an owner who also practises). Callers check visits:read separately.
+ * Whether this login may issue medical certificates: doctors, clinic admins and owners, and any
+ * other login linked to a doctor profile. Callers check visits:read separately.
  */
-export async function isCertifyingDoctor(session: { role?: string; tenantId?: string; userId: string }): Promise<boolean> {
-  if (session.role === 'doctor') return true;
+export async function canIssueMedicalCertificates(session: { role?: string; tenantId?: string; userId: string }): Promise<boolean> {
+  if (session.role === 'doctor' || isAdmin(session)) return true;
   if (!session.tenantId) return false;
   await connectDB();
   return !!(await myDoctorProfileId(session.tenantId, session.userId));

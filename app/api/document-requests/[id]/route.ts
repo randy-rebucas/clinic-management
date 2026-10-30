@@ -12,7 +12,7 @@ import { createAuditLog } from '@/lib/audit';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { availableUntilFrom, DOCUMENT_AVAILABLE_DAYS, KIND_LABELS } from '@/lib/document-requests';
 import { ABSTRACT_LABELS, missingAbstractFields } from '@/lib/clinical-abstract';
-import { isCertifyingDoctor } from '@/lib/doctor-access';
+import { canIssueMedicalCertificates } from '@/lib/doctor-access';
 import logger from '@/lib/logger';
 
 const DecideSchema = z
@@ -72,8 +72,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       const patient = await Patient.exists(patientTenantFilter(ctx.tenantId, { _id: found.patient, active: { $ne: false } }));
       if (!patient) return unavailable('The patient record is no longer active.');
       if (found.kind === 'medical_certificate') {
-        if (!(await isCertifyingDoctor(ctx.session))) {
-          return NextResponse.json({ success: false, error: 'Only doctors can release medical certificates.' }, { status: 403 });
+        if (!(await canIssueMedicalCertificates(ctx.session))) {
+          return NextResponse.json({ success: false, error: 'Only doctors and clinic admins can release medical certificates.' }, { status: 403 });
         }
         const visit = await Visit.exists({ _id: found.visit, tenantId: ctx.tenantObjectId, patient: found.patient, status: { $in: ['open', 'closed'] } });
         if (!visit) return unavailable('The visit was cancelled or is a draft again, so there is nothing to certify. Decline the request instead.');
