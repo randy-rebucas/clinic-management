@@ -82,6 +82,7 @@ export function generatePrescriptionHTML(
       margin: 0 auto;
       padding: 20px;
       line-height: 1.6;
+      color: #333;
     }
     .header {
       border-bottom: 2px solid #333;
@@ -90,7 +91,7 @@ export function generatePrescriptionHTML(
     }
     .header h1 {
       margin: 0;
-      color: #000000;
+      color: #333;
     }
     .info-section {
       margin-bottom: 20px;
@@ -116,11 +117,11 @@ export function generatePrescriptionHTML(
     .medication-name {
       font-size: 18px;
       font-weight: bold;
-      color: #000000;
+      color: #333;
     }
     .medication-details {
       margin-left: 20px;
-      color: #000000;
+      color: #333;
       font-family: monospace;
       font-size: 18px;
       font-style: italic;
@@ -144,7 +145,7 @@ export function generatePrescriptionHTML(
       padding-top: 4px;
       border-top: 1px solid #ddd;
       font-size: 12px;
-      color: #000000;
+      color: #333;
       text-align: center;
     }
     .footer p {
@@ -163,12 +164,12 @@ export function generatePrescriptionHTML(
       <div style="display: flex; justify-content: space-between; align-items: flex-start;">
         <div>
           <h1 style="margin-bottom: 4px;">${e(clinicName)}</h1>
-          <div style="font-size: 14px; color: #000000;">${e(settingInfo?.clinicAddress)}</div>
-          <div style="font-size: 14px; color: #000000;">${settingInfo?.clinicPhone ? 'Tel: ' + e(settingInfo.clinicPhone) : ''}</div>
-          <div style="font-size: 14px; color: #000000;">${settingInfo?.clinicEmail ? 'Email: ' + e(settingInfo.clinicEmail) : ''}</div>
+          <div style="font-size: 14px; color: #333;">${e(settingInfo?.clinicAddress)}</div>
+          <div style="font-size: 14px; color: #333;">${settingInfo?.clinicPhone ? 'Tel: ' + e(settingInfo.clinicPhone) : ''}</div>
+          <div style="font-size: 14px; color: #333;">${settingInfo?.clinicEmail ? 'Email: ' + e(settingInfo.clinicEmail) : ''}</div>
         </div>
         <div style="text-align: right;">
-          <h2 style="margin: 0; color: #000000;">PRESCRIPTION ${isPatientCopy ? '(PATIENT COPY)' : '(CLINIC COPY)'}</h2>
+          <h2 style="margin: 0; color: #333;">PRESCRIPTION ${isPatientCopy ? '(PATIENT COPY)' : '(CLINIC COPY)'}</h2>
           <strong>Code:</strong> ${e(prescription.prescriptionCode)}<br>
           ${patient.patientCode ? `<strong>Patient Code:</strong> ${e(patient.patientCode)}<br>` : ''}
           ${(() => {
@@ -177,7 +178,7 @@ export function generatePrescriptionHTML(
         ? `<div style="font-size: 12px; line-height: 1.3; margin-top: 2px;"><strong>Usual Hours:</strong><br>${hours.map(e).join('<br>')}</div>`
         : '';
     })()}
-          ${!isPatientCopy ? `<small style="color: #000000;">Archived: ${formatInTz(new Date(), 'MM/dd/yyyy h:mm a', tz)}</small>` : ''}
+          ${!isPatientCopy ? `<small style="color: #333;">Archived: ${formatInTz(new Date(), 'MM/dd/yyyy h:mm a', tz)}</small>` : ''}
         </div>
       </div>
     </div>
@@ -309,7 +310,7 @@ export function generatePrescriptionHTML(
         ${settingInfo?.clinicPhone ? 'Tel: ' + e(settingInfo.clinicPhone) : ''}<br>
         ${settingInfo?.clinicEmail ? 'Email: ' + e(settingInfo.clinicEmail) : ''}
       </p>
-      <p style="margin-top: 8px; font-weight: bold; color: #000000;">Powered by: DevCom Digital Marketing Services</p>
+      <p style="margin-top: 8px; font-weight: bold; color: #333;">Powered by: DevCom Digital Marketing Services</p>
     </div>
   </div>
 </body>
