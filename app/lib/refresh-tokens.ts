@@ -7,6 +7,12 @@ import RefreshToken from '@/models/RefreshToken';
 /** Refresh tokens live 60 days; each use rotates to a fresh 60-day token. */
 export const REFRESH_TOKEN_TTL_SECONDS = 60 * 24 * 60 * 60;
 
+/**
+ * A spent token presented again this soon after use is a retry by a client that lost the
+ * reply, not a copy; see `consumeRefreshToken`.
+ */
+export const REFRESH_REUSE_GRACE_MS = 60_000;
+
 export type RefreshSubjectType = 'patient' | 'user';
 
 const TOKEN_FORMAT = /^[A-Za-z0-9_-]{43}$/;
@@ -60,7 +66,8 @@ export type ConsumeResult =
 
 /**
  * Spend a refresh token (single use). A token that was already spent is a sign it was copied:
- * the whole family is revoked and the caller must sign in again. The caller still has to check
+ * the whole family is revoked and the caller must sign in again, unless it is presented again
+ * within `REFRESH_REUSE_GRACE_MS` of its use (a lost reply). The caller still has to check
  * that the subject is active and that `sessionVersion` is current before issuing new tokens.
  */
 export async function consumeRefreshToken(
@@ -78,37 +85,51 @@ export async function consumeRefreshToken(
     { tokenHash, subjectType, usedAt: null, revokedAt: null, expiresAt: { $gt: now } },
     { $set: { usedAt: now } },
     { new: true }
-  ).lean<{
-    subjectId: Types.ObjectId;
-    sessionVersion?: number;
-    family: string;
-    scopeTenantId?: Types.ObjectId;
-    scopeAccountId?: Types.ObjectId;
-    scopeRel?: 'guardian';
-  } | null>();
+  ).lean<RefreshTokenRow | null>();
 
-  if (row) {
-    return {
-      ok: true,
-      value: {
-        subjectId: row.subjectId.toString(),
-        sessionVersion: row.sessionVersion ?? 0,
-        family: row.family,
-        ...(row.scopeTenantId ? { tid: row.scopeTenantId.toString() } : {}),
-        ...(row.scopeAccountId ? { acc: row.scopeAccountId.toString() } : {}),
-        ...(row.scopeAccountId && row.scopeRel === 'guardian' ? { rel: 'guardian' as const } : {}),
-      },
-    };
-  }
+  if (row) return { ok: true, value: consumedValue(row) };
 
   const spent = await RefreshToken.findOne({ tokenHash, subjectType, usedAt: { $ne: null } })
-    .select('family')
-    .lean<{ family: string } | null>();
+    .select('family usedAt revokedAt expiresAt subjectId sessionVersion scopeTenantId scopeAccountId scopeRel')
+    .lean<(RefreshTokenRow & { usedAt?: Date; revokedAt?: Date; expiresAt?: Date }) | null>();
   if (spent) {
+    // The app lost the reply to its last refresh (dropped connection, app killed before it
+    // saved) and is retrying with the token it still holds. Within the grace period that isn't
+    // theft: cancel the successor it never received and let it rotate again.
+    const withinGrace =
+      !spent.revokedAt &&
+      spent.usedAt instanceof Date &&
+      now.getTime() - spent.usedAt.getTime() < REFRESH_REUSE_GRACE_MS &&
+      spent.expiresAt instanceof Date &&
+      spent.expiresAt > now;
+    if (withinGrace) {
+      await RefreshToken.updateMany({ family: spent.family, usedAt: null, revokedAt: null }, { $set: { revokedAt: now } });
+      return { ok: true, value: consumedValue(spent) };
+    }
     await revokeRefreshFamily(spent.family);
     return { ok: false, code: 'REFRESH_REUSED' };
   }
   return { ok: false, code: 'REFRESH_INVALID' };
+}
+
+type RefreshTokenRow = {
+  subjectId: Types.ObjectId;
+  sessionVersion?: number;
+  family: string;
+  scopeTenantId?: Types.ObjectId;
+  scopeAccountId?: Types.ObjectId;
+  scopeRel?: 'guardian';
+};
+
+function consumedValue(row: RefreshTokenRow): ConsumedRefreshToken {
+  return {
+    subjectId: row.subjectId.toString(),
+    sessionVersion: row.sessionVersion ?? 0,
+    family: row.family,
+    ...(row.scopeTenantId ? { tid: row.scopeTenantId.toString() } : {}),
+    ...(row.scopeAccountId ? { acc: row.scopeAccountId.toString() } : {}),
+    ...(row.scopeAccountId && row.scopeRel === 'guardian' ? { rel: 'guardian' as const } : {}),
+  };
 }
 
 export async function revokeRefreshFamily(family: string): Promise<void> {

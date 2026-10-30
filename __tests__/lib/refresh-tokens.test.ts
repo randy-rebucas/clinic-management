@@ -17,6 +17,7 @@ import {
   issueRefreshToken,
   revokeRefreshToken,
   readRefreshTokenFromBody,
+  REFRESH_REUSE_GRACE_MS,
 } from '@/app/lib/refresh-tokens';
 
 const SUBJECT = '507f1f77bcf86cd799439033';
@@ -72,6 +73,42 @@ describe('refresh tokens', () => {
       { family: 'fam-9', revokedAt: null },
       { $set: { revokedAt: expect.any(Date) } }
     );
+  });
+
+  it('lets a spent token rotate again within the grace period, cancelling the unused successor', async () => {
+    vi.mocked(RefreshToken.findOneAndUpdate).mockReturnValue(lean(null) as any);
+    vi.mocked(RefreshToken.findOne).mockReturnValue(
+      selectLean({
+        family: 'fam-7',
+        subjectId: SUBJECT,
+        sessionVersion: 4,
+        usedAt: new Date(Date.now() - 5_000),
+        expiresAt: new Date(Date.now() + 86_400_000),
+      }) as any
+    );
+    const result = await consumeRefreshToken('d'.repeat(43), 'patient');
+    expect(result).toEqual({ ok: true, value: { subjectId: SUBJECT, sessionVersion: 4, family: 'fam-7' } });
+    expect(RefreshToken.updateMany).toHaveBeenCalledWith(
+      { family: 'fam-7', usedAt: null, revokedAt: null },
+      { $set: { revokedAt: expect.any(Date) } }
+    );
+  });
+
+  it('treats a replay after the grace period, or of a revoked token, as reuse', async () => {
+    vi.mocked(RefreshToken.findOneAndUpdate).mockReturnValue(lean(null) as any);
+    const base = { family: 'fam-8', subjectId: SUBJECT, expiresAt: new Date(Date.now() + 86_400_000) };
+    for (const spent of [
+      { ...base, usedAt: new Date(Date.now() - REFRESH_REUSE_GRACE_MS - 1_000) },
+      { ...base, usedAt: new Date(Date.now() - 1_000), revokedAt: new Date() },
+    ]) {
+      vi.mocked(RefreshToken.updateMany).mockClear();
+      vi.mocked(RefreshToken.findOne).mockReturnValue(selectLean(spent) as any);
+      expect(await consumeRefreshToken('e'.repeat(43), 'patient')).toEqual({ ok: false, code: 'REFRESH_REUSED' });
+      expect(RefreshToken.updateMany).toHaveBeenCalledWith(
+        { family: 'fam-8', revokedAt: null },
+        { $set: { revokedAt: expect.any(Date) } }
+      );
+    }
   });
 
   it('reports unknown or expired tokens as invalid without revoking anything', async () => {
