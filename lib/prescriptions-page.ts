@@ -15,6 +15,8 @@ export interface PrescriptionsPageContext {
 export interface PrescriptionDetailPermissions {
   /** Record a dispense, cancel or close (prescriptions:update). */
   canUpdate: boolean;
+  /** Record a dispense only (prescriptions:update or prescriptions:dispense). */
+  canDispense: boolean;
   canSeePatient: boolean;
   canSeeVisit: boolean;
 }
@@ -26,7 +28,8 @@ export async function loadPrescriptionDetailPermissions(): Promise<PrescriptionD
   const can = await getPermissionChecker(session);
   if (!can('prescriptions', 'read')) await denyPage(session, 'prescriptions', 'read', '/dashboard?error=access_denied');
 
-  return { canUpdate: can('prescriptions', 'update'), canSeePatient: can('patients', 'read'), canSeeVisit: can('visits', 'read') };
+  const canUpdate = can('prescriptions', 'update');
+  return { canUpdate, canDispense: canUpdate || can('prescriptions', 'dispense'), canSeePatient: can('patients', 'read'), canSeeVisit: can('visits', 'read') };
 }
 
 export async function loadPrescriptionsPageContext(): Promise<PrescriptionsPageContext> {
