@@ -217,7 +217,7 @@ export const AUTOMATIONS: Automation[] = [
     key: 'autoFrontDeskCatchUp',
     group: 'billing',
     label: 'End-of-day front desk check',
-    does: 'Makes any invoice that wasn’t made when a visit closed, then sends receptionists (admins if there are none) one list of the visits since yesterday that still need an invoice, a payment recorded or medicines handed over. Nothing is sent when the list is empty.',
+    does: 'Makes any invoice that wasn’t made when a visit closed, then sends receptionists (admins if there are none) one list of the visits since yesterday that still need an invoice, a payment recorded or medicines handed over, and the patients whose first payment reminder goes out tomorrow (so a payment nobody recorded can be put in first). Nothing is sent when the list is empty.',
     when: 'Daily at {10:00}.',
     defaultOn: true,
   },
