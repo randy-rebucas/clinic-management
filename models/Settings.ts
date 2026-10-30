@@ -113,6 +113,7 @@ export interface ISettings extends Document {
     autoPrescriptionExpiryWarnings: boolean;
     autoDocumentExpiryTracking: boolean;
     autoCancellationPolicies: boolean;
+    autoFrontDeskCatchUp: boolean;
   };
 
   // Display Settings
@@ -275,6 +276,7 @@ const SettingsSchema = new Schema<ISettings>(
       autoPrescriptionExpiryWarnings: { type: Boolean, default: true },
       autoDocumentExpiryTracking: { type: Boolean, default: true },
       autoCancellationPolicies: { type: Boolean, default: true },
+      autoFrontDeskCatchUp: { type: Boolean, default: true },
     },
 
     displaySettings: {
