@@ -31,12 +31,13 @@ export interface PaymentReminderOptions {
 }
 
 /** Reminder schedule in days since the invoice: 7, 14, 30, then weekly until MAX_REMINDER_DAYS. */
+export const FIRST_REMINDER_DAYS = 7;
 const MAX_REMINDER_DAYS = 180;
 
 /** The latest schedule level reached after `daysSinceInvoice` days, or null before the first. */
 function dueReminderLevel(daysSinceInvoice: number): number | null {
-  if (daysSinceInvoice < 7) return null;
-  if (daysSinceInvoice < 14) return 7;
+  if (daysSinceInvoice < FIRST_REMINDER_DAYS) return null;
+  if (daysSinceInvoice < 14) return FIRST_REMINDER_DAYS;
   if (daysSinceInvoice < 30) return 14;
   if (daysSinceInvoice > MAX_REMINDER_DAYS) return null;
   return 30 + Math.floor((daysSinceInvoice - 30) / 7) * 7;
@@ -157,7 +158,7 @@ async function processTenant(tenant: AutomationTenant): Promise<PaymentReminders
     status: { $in: ['unpaid', 'partial'] },
     outstandingBalance: { $gt: 0 },
     createdAt: {
-      $lte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
+      $lte: new Date(now.getTime() - FIRST_REMINDER_DAYS * 24 * 60 * 60 * 1000),
       $gte: new Date(now.getTime() - (MAX_REMINDER_DAYS + 1) * 24 * 60 * 60 * 1000),
     },
   })
