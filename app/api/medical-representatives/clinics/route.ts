@@ -77,6 +77,8 @@ export async function GET(request: NextRequest) {
         city: a.city ?? null,
         linked,
         canBook,
+        // Whether it stays bookable if the rep leaves its list.
+        openToAllReps: settings.openToAllReps,
         access: linked ? 'linked' : settings.openToAllReps ? 'open' : requested.has(id) ? 'requested' : 'none',
         // A clinic that hasn't accepted the rep keeps its hours and instructions to itself.
         hours: canBook ? describeWindows(settings.windows) : [],
