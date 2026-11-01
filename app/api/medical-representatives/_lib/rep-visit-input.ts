@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { Types } from 'mongoose';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
 import Product from '@/models/Product';
+import { getClinicForReps, repMayBook } from '@/lib/rep-visits';
 import { repProfileFilter, type RepSession } from './rep-session';
 
 /** Most products one visit can carry. */
@@ -44,4 +45,20 @@ export async function resolveVisitProducts(rep: RepSession, raw: unknown): Promi
   const owned = await Product.countDocuments({ ...rep.ownerFilter, _id: { $in: ids }, status: 'active' });
   if (owned !== ids.length) return visitError(400, 'Only your own active products can be added to a visit.', 'INVALID_PRODUCTS');
   return ids;
+}
+
+export type LinkedClinic = { id: Types.ObjectId; name: string; location: string };
+
+/**
+ * `linkedClinicId` on an own log entry: a clinic in the rep's directory (one they could book),
+ * whose name and location then replace the typed ones. Undefined when the body leaves it out,
+ * null to unlink, a NextResponse (404) for a clinic the rep can't reach.
+ */
+export async function resolveLinkedClinic(rep: RepSession, raw: unknown): Promise<LinkedClinic | null | undefined | NextResponse> {
+  if (raw === undefined) return undefined;
+  if (raw === null || raw === '') return null;
+  if (typeof raw !== 'string' || !Types.ObjectId.isValid(raw)) return visitError(404, 'Clinic not found');
+  const [profile, clinic] = await Promise.all([loadRepProfileForVisits(rep), getClinicForReps(raw)]);
+  if (!profile || !clinic || !repMayBook(clinic, profile.tenantIds).allowed) return visitError(404, 'Clinic not found');
+  return { id: new Types.ObjectId(clinic.id), name: clinic.name, location: clinic.location };
 }

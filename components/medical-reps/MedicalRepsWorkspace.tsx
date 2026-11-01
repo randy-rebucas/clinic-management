@@ -4,18 +4,28 @@ import { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { FOCUS_RING } from '../appointments/shared';
 import MedicalRepsManagementClient from '../MedicalRepsManagementClient';
+import RepDeliveriesPanel from './RepDeliveriesPanel';
 import RepVisitsPanel from './RepVisitsPanel';
 import RepVisitHoursPanel from './RepVisitHoursPanel';
 
-export type RepsTab = 'visits' | 'reps' | 'hours';
+export type RepsTab = 'visits' | 'deliveries' | 'reps' | 'hours';
 const TABS: { key: RepsTab; label: string }[] = [
   { key: 'visits', label: 'Visit requests' },
+  { key: 'deliveries', label: 'Deliveries' },
   { key: 'reps', label: 'Representatives' },
   { key: 'hours', label: 'Visiting hours' },
 ];
 
-/** /medical-reps: rep visit requests, the clinic's reps, and the hours reps can book. */
-export default function MedicalRepsWorkspace({ initialTab, focusVisitId }: { initialTab: RepsTab; focusVisitId?: string }) {
+/** /medical-reps: rep visit requests, what reps delivered, the clinic's reps, and the hours reps can book. */
+export default function MedicalRepsWorkspace({
+  initialTab,
+  focusVisitId,
+  focusDeliveryId,
+}: {
+  initialTab: RepsTab;
+  focusVisitId?: string;
+  focusDeliveryId?: string;
+}) {
   const [tab, setTab] = useState<RepsTab>(initialTab);
   const router = useRouter();
   const pathname = usePathname();
@@ -31,7 +41,7 @@ export default function MedicalRepsWorkspace({ initialTab, focusVisitId }: { ini
         <header>
           <h1 className="text-2xl font-extrabold tracking-tight text-gray-900 sm:text-3xl">Medical representatives</h1>
           <p className="mt-1 text-sm text-gray-600 sm:text-base">
-            Reps book visits in your visiting hours from the MyClinicSoft app. You approve each one and check them in when they arrive.
+            Reps book visits in your visiting hours from the MyClinicSoft app. You approve each one, check them in when they arrive, and confirm what they deliver.
           </p>
         </header>
 
@@ -53,6 +63,7 @@ export default function MedicalRepsWorkspace({ initialTab, focusVisitId }: { ini
 
         <div role="tabpanel">
           {tab === 'visits' && <RepVisitsPanel focusVisitId={focusVisitId} />}
+          {tab === 'deliveries' && <RepDeliveriesPanel focusDeliveryId={focusDeliveryId} />}
           {tab === 'reps' && <MedicalRepsManagementClient embedded />}
           {tab === 'hours' && <RepVisitHoursPanel />}
         </div>

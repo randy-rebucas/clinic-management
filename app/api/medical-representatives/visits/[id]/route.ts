@@ -7,7 +7,7 @@ import { parseBody, isValidationError } from '@/lib/api/validate';
 import { getClinicForReps, slotRemaining, notifyClinicOfVisit } from '@/lib/rep-visits';
 import { ACTIVE_CLINIC_STATUSES, parseVisitDay, type RepVisitStatus } from '@/lib/rep-visit-rules';
 import { requireRepSession, isRepSessionError, type RepSession } from '../../_lib/rep-session';
-import { loadRepProfileForVisits, resolveVisitProducts, repDisplayName, visitError } from '../../_lib/rep-visit-input';
+import { loadRepProfileForVisits, resolveLinkedClinic, resolveVisitProducts, repDisplayName, visitError } from '../../_lib/rep-visit-input';
 
 const updateVisitSchema = z.object({
   clinicName: z.string().trim().min(1).max(200),
@@ -19,6 +19,8 @@ const updateVisitSchema = z.object({
   status: z.enum(['scheduled', 'completed', 'cancelled']).optional(),
   notes: z.preprocess((v) => (v === null ? undefined : v), z.string().trim().max(2000).optional()),
   productIds: z.unknown().optional(),
+  /** A clinic in the rep's directory, or null to unlink; left out keeps the link as it is. */
+  linkedClinicId: z.union([z.string(), z.null()]).optional(),
 });
 
 /**
@@ -95,6 +97,8 @@ export async function PUT(
 
     const productIds = await resolveVisitProducts(rep, body.productIds);
     if (productIds instanceof NextResponse) return productIds;
+    const linkedClinic = await resolveLinkedClinic(rep, body.linkedClinicId);
+    if (linkedClinic instanceof NextResponse) return linkedClinic;
 
     // A moved visit gets a fresh day-before reminder.
     const rescheduled =
@@ -103,10 +107,13 @@ export async function PUT(
     const updatedVisit = await MedicalRepresentativeVisit.findOneAndUpdate(
       { ...rep.ownerFilter, _id: visitId },
       {
-        ...(rescheduled ? { $unset: { reminderSentAt: 1 } } : {}),
+        ...(rescheduled || linkedClinic === null
+          ? { $unset: { ...(rescheduled ? { reminderSentAt: 1 } : {}), ...(linkedClinic === null ? { linkedClinicId: 1 } : {}) } }
+          : {}),
         $set: {
-          clinicName: body.clinicName,
-          clinicLocation: body.clinicLocation,
+          clinicName: linkedClinic ? linkedClinic.name : body.clinicName,
+          clinicLocation: linkedClinic ? linkedClinic.location : body.clinicLocation,
+          ...(linkedClinic ? { linkedClinicId: linkedClinic.id } : {}),
           purpose: body.purpose,
           date: body.date,
           time: body.time,

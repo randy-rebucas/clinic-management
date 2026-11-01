@@ -13,6 +13,7 @@ import {
   repDisplayName,
   visitError,
   type RepProfileForVisits,
+  resolveLinkedClinic,
 } from '../_lib/rep-visit-input';
 
 /**
@@ -115,7 +116,8 @@ export async function POST(request: NextRequest) {
 
     if (clinicId && !isValidId(clinicId)) return notFound('Clinic');
 
-    if ((!clinicId && (!clinicName || !clinicLocation)) || !purpose || !date || !time) {
+    const linkedRaw = clinicId ? undefined : body.linkedClinicId;
+    if ((!clinicId && !linkedRaw && (!clinicName || !clinicLocation)) || !purpose || !date || !time) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields' },
         { status: 400 }
@@ -176,6 +178,14 @@ export async function POST(request: NextRequest) {
       parsedDate = new Date(date);
       if (isNaN(parsedDate.getTime())) {
         return NextResponse.json({ success: false, error: 'Invalid date.' }, { status: 400 });
+      }
+      // Linked to a clinic on MyClinicSoft: still the rep's own entry, named as the clinic is.
+      const linkedClinic = await resolveLinkedClinic(rep, linkedRaw);
+      if (linkedClinic instanceof NextResponse) return linkedClinic;
+      if (linkedClinic) {
+        linked.linkedClinicId = linkedClinic.id;
+        clinicName = linkedClinic.name;
+        clinicLocation = linkedClinic.location;
       }
     }
 
