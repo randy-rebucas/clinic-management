@@ -8,16 +8,17 @@ export const metadata = {
 
 const TABS: RepsTab[] = ['visits', 'deliveries', 'reps', 'hours'];
 
-export default async function MedicalRepsPage({ searchParams }: { searchParams: Promise<{ tab?: string; visit?: string; delivery?: string }> }) {
+export default async function MedicalRepsPage({ searchParams }: { searchParams: Promise<{ tab?: string; visit?: string; delivery?: string; request?: string }> }) {
   // Require admin access
   await requireAdmin();
-  const { tab, visit, delivery } = await searchParams;
+  const { tab, visit, delivery, request } = await searchParams;
 
   return (
     <MedicalRepsWorkspace
       initialTab={TABS.includes(tab as RepsTab) ? (tab as RepsTab) : 'visits'}
       focusVisitId={typeof visit === 'string' ? visit : undefined}
       focusDeliveryId={typeof delivery === 'string' ? delivery : undefined}
+      focusRequestId={typeof request === 'string' ? request : undefined}
     />
   );
 }

@@ -210,8 +210,8 @@ export default function MedicalRepsManagementClient({ embedded = false }: { embe
       const data = await response.json();
 
       if (data.success) {
-        setSuccess(editingRep ? 'Medical representative updated successfully' : 'Medical representative created successfully');
-        setTimeout(() => setSuccess(null), 3000);
+        setSuccess(editingRep ? 'Medical representative updated successfully' : data.message || 'Medical representative created successfully');
+        setTimeout(() => setSuccess(null), data.linked ? 6000 : 3000);
         handleCloseModal();
         fetchReps();
       } else {

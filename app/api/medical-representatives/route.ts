@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import { MedicalRepresentative, User } from '@/models';
+import RepAccessRequest from '@/models/RepAccessRequest';
+import { notifyRepAddedByClinic } from '@/lib/rep-access';
 import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { sanitizeSearch } from '@/lib/utils';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
@@ -108,9 +110,30 @@ export async function POST(request: NextRequest) {
     if (isValidationError(parsed)) return parsed;
     const { firstName, lastName, email, phone, company, territory, products, notes } = parsed.data;
 
-    const existingRep = await MedicalRepresentative.findOne({ email });
+    // A rep who already has an account (another clinic added them, or they signed up) is linked to
+    // this clinic instead of refused. Their profile is theirs: the typed details don't replace it.
+    const existingRep = await MedicalRepresentative.findOne({ email }).select('_id tenantIds').lean<{ _id: unknown; tenantIds?: unknown[] } | null>();
     if (existingRep) {
-      return NextResponse.json({ success: false, error: 'Medical representative with this email already exists' }, { status: 400 });
+      if ((existingRep.tenantIds ?? []).some((t) => String(t) === String(tenantObjectId))) {
+        return NextResponse.json({ success: false, error: 'This representative is already on your list.' }, { status: 400 });
+      }
+      const linked = await MedicalRepresentative.findOneAndUpdate(
+        { _id: existingRep._id },
+        { $addToSet: { tenantIds: tenantObjectId } },
+        { new: true }
+      ).populate('userId', 'name email status');
+      // Any access request they had pending with this clinic is answered by this.
+      await RepAccessRequest.updateMany(
+        { tenantId: tenantObjectId, medicalRepresentativeId: existingRep._id, status: 'pending' },
+        { $set: { status: 'approved', respondedAt: new Date(), respondedBy: session.userId } }
+      );
+      await notifyRepAddedByClinic(existingRep._id, tenantObjectId);
+      return NextResponse.json({
+        success: true,
+        linked: true,
+        data: linked,
+        message: 'This rep already has a MyClinicSoft account, so they were added to your list. They’ve been told.',
+      });
     }
 
     // The model's post-save hook links any existing User with this email; refuse rather than

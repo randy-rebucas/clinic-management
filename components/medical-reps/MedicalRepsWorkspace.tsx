@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { FOCUS_RING } from '../appointments/shared';
 import MedicalRepsManagementClient from '../MedicalRepsManagementClient';
+import RepAccessRequestsPanel from './RepAccessRequestsPanel';
 import RepDeliveriesPanel from './RepDeliveriesPanel';
 import RepVisitsPanel from './RepVisitsPanel';
 import RepVisitHoursPanel from './RepVisitHoursPanel';
@@ -21,12 +22,16 @@ export default function MedicalRepsWorkspace({
   initialTab,
   focusVisitId,
   focusDeliveryId,
+  focusRequestId,
 }: {
   initialTab: RepsTab;
   focusVisitId?: string;
   focusDeliveryId?: string;
+  focusRequestId?: string;
 }) {
   const [tab, setTab] = useState<RepsTab>(initialTab);
+  // Remounts the list after an access request is approved, so the new rep shows.
+  const [repsKey, setRepsKey] = useState(0);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -64,7 +69,12 @@ export default function MedicalRepsWorkspace({
         <div role="tabpanel">
           {tab === 'visits' && <RepVisitsPanel focusVisitId={focusVisitId} />}
           {tab === 'deliveries' && <RepDeliveriesPanel focusDeliveryId={focusDeliveryId} />}
-          {tab === 'reps' && <MedicalRepsManagementClient embedded />}
+          {tab === 'reps' && (
+            <>
+              <RepAccessRequestsPanel focusRequestId={focusRequestId} onApproved={() => setRepsKey((k) => k + 1)} />
+              <MedicalRepsManagementClient key={repsKey} embedded />
+            </>
+          )}
           {tab === 'hours' && <RepVisitHoursPanel />}
         </div>
       </div>

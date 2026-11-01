@@ -560,13 +560,15 @@ Delivery confirmed, Delivery not confirmed.
 
 ### Booking visits with clinics (**new**)
 
-Clinics on MyClinicSoft set visiting hours for reps (days, times, slot length, reps per slot). A
+Clinics on MyClinicSoft set visiting hours for reps (days, times, slot length, reps per slot). A clinic that adds a rep who already has an account (Medical reps → Representatives → Add) links them; the rep gets a push "New clinic" with `data: { screen: "clinics" }`. A
 rep finds a clinic, picks an open slot and sends a request. The clinic approves or declines it,
 checks the rep in on arrival and marks the visit completed or a no-show.
 
 | Method & path | Notes |
 |---|---|
-| `GET /api/medical-representatives/clinics` | Clinics the rep can book: they take rep visits and either added this rep or are open to all reps. Query: `search?` (name or city), `page`, `limit`. Items: `{ id, name, location, city, linked, hours: ["Tue 15:00–17:00"], slotMinutes, maxAdvanceDays, instructions }` |
+| `GET /api/medical-representatives/clinics` | Clinics the rep can book: they take rep visits and either added this rep or are open to all reps. Query: `search?` (name or city), `page`, `limit`, **new** `scope=all` (also clinics taking rep visits that haven't added the rep, to request access; those come with empty `hours` and no `instructions`). Items: `{ id, name, location, city, linked, canBook, access: "linked" \| "open" \| "requested" \| "none", hours: ["Tue 15:00–17:00"], slotMinutes, maxAdvanceDays, instructions }` (**new:** `canBook`, `access`) |
+| `POST /api/medical-representatives/clinics/[id]/access` **new** | `{ message? }` (up to 500). Asks a clinic that isn't open to all reps to add the rep; its admins are told and answer on the web (Medical reps → Representatives). Errors: `404` (not taking rep visits), `409 ALREADY_LINKED`, `OPEN_CLINIC` (book directly), `ALREADY_REQUESTED`, `RECENTLY_DECLINED` (declined in the last 30 days). The answer comes as a push with `data: { screen: "clinics" }` (Access granted / Access not granted) |
+| `DELETE /api/medical-representatives/clinics/[id]/access` **new** | Withdraws the rep's waiting request. `404` if there is none |
 | `GET /api/medical-representatives/clinics/[id]/slots?date=YYYY-MM-DD` | `{ clinicId, date, timezone, slotMinutes, slots: [{ time: "HH:mm", remaining }] }`. Times are the clinic's local time. Slots already started (today) and days past `maxAdvanceDays` have none. `remaining: 0` = full |
 | `POST /api/medical-representatives/visits` with `clinicId` | `{ clinicId, purpose, date: "YYYY-MM-DD", time: "HH:mm", notes?, productIds? }`. Creates a visit with `status: "requested"`; the clinic's name, location and slot length are filled in. Errors: `402 SUBSCRIPTION_REQUIRED`, `400 SLOT_UNAVAILABLE` (not a slot the clinic offers), `409 SLOT_FULL`, `409 DUPLICATE_REQUEST` (already booked with that clinic that day), `400 INVALID_PRODUCTS`, `404` for a clinic the rep can't book |
 | `PUT /api/medical-representatives/visits/[id]` on a clinic booking | Takes `purpose?, date?, time?, status?, notes?, productIds?`; `clinicName`, `clinicLocation` and `duration` are ignored. A new `date`/`time` moves it (slot rules as above) and sends it back to `requested`. `status: "cancelled"` cancels it; any other status change is `400 STATUS_SET_BY_CLINIC`. On a closed visit only `notes` can change (`409 VISIT_CLOSED`). `409 VISIT_CHANGED` if the clinic answered at the same moment |
