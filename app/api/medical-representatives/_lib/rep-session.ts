@@ -65,4 +65,4 @@ export function repProfileFilter(rep: RepSession): Record<string, unknown> {
 
 /** Fields never returned to the rep from their own MedicalRepresentative profile. */
 export const REP_PRIVATE_FIELDS =
-  '-internalNotes -paymentStatus -paymentDate -paymentAmount -paymentMethod -paymentReference -password';
+  '-internalNotes -paymentStatus -paymentDate -paymentAmount -paymentMethod -paymentReference -password -subscription.paymentHistory';

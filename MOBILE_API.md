@@ -512,27 +512,88 @@ Refusal codes on sign-in: `PASSWORD_SETUP_REQUIRED` (invite not accepted), `USER
   "profile": { "firstName", "lastName", "company", "title", "territory", "profileImage", … },
   "stats": {
     "totalVisits", "visitsThisMonth", "completedThisMonth", "upcomingVisits",
-    "activeProducts", "expiringProducts", "openSupportRequests"
+    "pendingRequests", "activeProducts", "expiringProducts", "openSupportRequests"
   },
   "nextVisits": [ /* up to 5 scheduled visits from today on, soonest first */ ]
 }
 ```
 
-"This month" is the UTC calendar month. `expiringProducts` counts active products that expire
-within 30 days.
+"This month" is the UTC calendar month. `visitsThisMonth` leaves out cancelled and declined
+visits. `pendingRequests` (**new**) counts clinic bookings from today on that the clinic hasn't
+answered. `nextVisits` items now include `clinicId` and `checkedInAt`. `expiringProducts` counts
+active products that expire within 30 days.
 
 ### Visits, products, support
 
 | Method & path | Notes |
 |---|---|
-| `GET /api/medical-representatives/visits` | **Changed:** now paginated (default 50, max 100). Filters: `status`, `from`, `to` |
-| `POST /api/medical-representatives/visits` | `{ clinicName, clinicLocation, purpose, date, time: "HH:mm", duration?, status?, notes? }` |
-| `GET /api/medical-representatives/visits/[id]` **new** · `PUT` · `DELETE` | `PUT` takes the full object |
+| `GET /api/medical-representatives/visits` | **Changed:** now paginated (default 50, max 100). Filters: `status`, `clinicId` (**new**), `from`, `to` |
+| `POST /api/medical-representatives/visits` | Own log entry: `{ clinicName, clinicLocation, purpose, date, time: "HH:mm", duration?, status?, notes?, productIds? }`. For a clinic booking see below |
+| `GET /api/medical-representatives/visits/[id]` **new** · `PUT` · `DELETE` | `PUT` takes the full object. Clinic bookings follow the rules below |
 | `GET /api/medical-representatives/products` | **Changed:** now paginated (default 50, max 100). Filter: `status` |
 | `POST /api/medical-representatives/products` | `{ name, category, manufacturer, description, packaging, expiryDate, dosage?, strength?, status? }` |
 | `GET /api/medical-representatives/products/[id]` **new** · `PUT` · `DELETE` | `PUT` takes the full object |
 | `GET /api/medical-representatives/support` **new** | Own requests with `reference: "SR-…"` and `status` |
 | `POST /api/medical-representatives/support` | `{ subject, message, category?, email? }`. **Changed:** `email` defaults to the account email |
+
+### Booking visits with clinics (**new**)
+
+Clinics on MyClinicSoft set visiting hours for reps (days, times, slot length, reps per slot). A
+rep finds a clinic, picks an open slot and sends a request. The clinic approves or declines it,
+checks the rep in on arrival and marks the visit completed or a no-show.
+
+| Method & path | Notes |
+|---|---|
+| `GET /api/medical-representatives/clinics` | Clinics the rep can book: they take rep visits and either added this rep or are open to all reps. Query: `search?` (name or city), `page`, `limit`. Items: `{ id, name, location, city, linked, hours: ["Tue 15:00–17:00"], slotMinutes, maxAdvanceDays, instructions }` |
+| `GET /api/medical-representatives/clinics/[id]/slots?date=YYYY-MM-DD` | `{ clinicId, date, timezone, slotMinutes, slots: [{ time: "HH:mm", remaining }] }`. Times are the clinic's local time. Slots already started (today) and days past `maxAdvanceDays` have none. `remaining: 0` = full |
+| `POST /api/medical-representatives/visits` with `clinicId` | `{ clinicId, purpose, date: "YYYY-MM-DD", time: "HH:mm", notes?, productIds? }`. Creates a visit with `status: "requested"`; the clinic's name, location and slot length are filled in. Errors: `402 SUBSCRIPTION_REQUIRED`, `400 SLOT_UNAVAILABLE` (not a slot the clinic offers), `409 SLOT_FULL`, `409 DUPLICATE_REQUEST` (already booked with that clinic that day), `400 INVALID_PRODUCTS`, `404` for a clinic the rep can't book |
+| `PUT /api/medical-representatives/visits/[id]` on a clinic booking | Takes `purpose?, date?, time?, status?, notes?, productIds?`; `clinicName`, `clinicLocation` and `duration` are ignored. A new `date`/`time` moves it (slot rules as above) and sends it back to `requested`. `status: "cancelled"` cancels it; any other status change is `400 STATUS_SET_BY_CLINIC`. On a closed visit only `notes` can change (`409 VISIT_CLOSED`). `409 VISIT_CHANGED` if the clinic answered at the same moment |
+| `DELETE /api/medical-representatives/visits/[id]` | A `requested` or `scheduled` clinic booking gets `409 VISIT_ACTIVE` (cancel it first so the clinic knows). Closed ones can be deleted |
+
+Visit fields for clinic bookings:
+
+- `clinicId`: the clinic. Unset on the rep's own log entries.
+- `status`: `requested`, then `scheduled` (approved) or `declined`, then `completed`, `no-show` or
+  `cancelled` (with `cancelledBy: "rep" | "clinic"`). Own log entries keep `scheduled` / `completed` / `cancelled`.
+- `checkedInAt`: set when the clinic checks the rep in.
+- `clinicNote`: the clinic's note to the rep (a reason, or instructions with an approval).
+- `productIds`: up to 10 of the rep's own active products. The clinic sees their product sheets.
+- `purpose` is shown to the clinic. `notes` stay private to the rep, and are hidden from team managers too.
+
+Each clinic answer sends a push with `data: { screen: "visits", id }`. Titles: Visit approved,
+Visit declined, Visit cancelled, Checked in, Visit completed, Visit missed.
+
+### Subscription (**new**)
+
+Logging their own visits and products is always free. Booking with clinics needs one of: an
+active rep subscription, a seat on a team plan, or booking being free (the platform's rep fee is
+₱0, which is the default). Clinics never pay for rep visits.
+
+| Method & path | Notes |
+|---|---|
+| `GET /api/medical-representatives/subscription` | `{ canBookClinics, coveredBy: "free" \| "individual" \| "team" \| null, prices: { monthly, yearly, seatMonthly, seatYearly, currency }, free, payable, individual: { billingCycle, expiresAt, active } \| null, team: { active, seats, members, expiresAt } \| null }` |
+| `POST /api/medical-representatives/subscription/checkout` | `{ billingCycle?: "monthly" \| "yearly" }` returns `{ checkoutUrl }`. Open it in the browser. PayMongo returns to `/medical-representatives/paid`; the subscription applies when PayMongo confirms the payment. A new payment adds a period after any time already paid for. Errors: `409 SUBSCRIPTION_FREE`, `503 PAYMENT_UNAVAILABLE` |
+
+### Company teams (**new**)
+
+A rep starts a team for their company and becomes its manager. Other reps join by accepting an
+invite. Managers see every member's visits (without private notes) and visit counts, and can buy
+a team plan that covers members' bookings.
+
+| Method & path | Notes |
+|---|---|
+| `GET /api/medical-representatives/team` | `{ invite: { teamId, teamName, invitedBy, invitedAt } \| null, team: null \| { id, name, role: "manager" \| "member", managers, memberCount, subscription } }`. Managers also get `members: [{ id, name, email, territory, role, stats: { visitsThisMonth, completedThisMonth, upcoming, pendingRequests, lastVisitAt } }]` and `pendingInvites` |
+| `POST /api/medical-representatives/team` | `{ name }`: start a team. `409 ALREADY_ON_TEAM` |
+| `PUT /api/medical-representatives/team` | `{ name }`: rename (manager) |
+| `DELETE /api/medical-representatives/team` | Leave. The only manager can leave once everyone else has (`409 TEAM_HAS_MEMBERS`); the team then closes |
+| `POST /api/medical-representatives/team/invites` | `{ email }` (manager). Same reply whether or not the email has a rep account. The invitee gets a push with `data: { screen: "team" }` |
+| `DELETE /api/medical-representatives/team/invites/[repId]` | Withdraw an invite (manager) |
+| `POST /api/medical-representatives/team/invite` | `{ accept: boolean }`: answer your own invite. `409 TEAM_FULL` when a paid team has no free seat |
+| `DELETE /api/medical-representatives/team/members/[repId]` | Remove a member (manager) |
+| `GET /api/medical-representatives/team/visits` | Members' visits (manager). Query: `memberId?`, `status?`, `from?`, `to?`, `page`, `limit`. Each item has `member: { id, name }` |
+| `POST /api/medical-representatives/team/checkout` | `{ seats, billingCycle? }` (manager) returns `{ checkoutUrl }`. Seats must cover every member (`400 TOO_FEW_SEATS`). `409 TEAM_PLAN_UNAVAILABLE` when team plans aren't sold online |
+
+Other error codes: `NO_TEAM`, `NOT_TEAM_MANAGER`, `NO_INVITE`, `INVITE_CHANGED`, `USE_LEAVE`, `IS_MANAGER`.
 
 ### Push
 

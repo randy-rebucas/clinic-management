@@ -77,7 +77,8 @@ const initialFormData: FormData = {
   status: 'active',
 };
 
-export default function MedicalRepsManagementClient() {
+/** `embedded`: shown as a tab of /medical-reps, which has the page title and padding. */
+export default function MedicalRepsManagementClient({ embedded = false }: { embedded?: boolean } = {}) {
   const [reps, setReps] = useState<MedicalRep[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -286,7 +287,7 @@ export default function MedicalRepsManagementClient() {
 
   if (loading) {
     return (
-      <section className="py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
+      <section className={embedded ? '' : 'py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen'}>
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center gap-4 min-h-[50vh] justify-center">
             <div className="relative">
@@ -300,7 +301,7 @@ export default function MedicalRepsManagementClient() {
   }
 
   return (
-    <section className="py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen">
+    <section className={embedded ? '' : 'py-6 sm:py-8 px-4 sm:px-6 lg:px-8 bg-gray-50 min-h-screen'}>
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-6">
           {/* Error/Success Messages */}
@@ -330,6 +331,16 @@ export default function MedicalRepsManagementClient() {
           )}
 
           {/* Header */}
+          {embedded ? (
+            <div className="flex justify-end">
+              <button
+                onClick={() => handleOpenModal()}
+                className="px-4 py-2 bg-brand-teal-dark text-white rounded-md hover:bg-brand-teal-deep transition-colors inline-flex items-center gap-2 text-sm font-semibold"
+              >
+                Add representative
+              </button>
+            </div>
+          ) : (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sm:p-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div className="flex items-center gap-3">
@@ -354,6 +365,7 @@ export default function MedicalRepsManagementClient() {
               </button>
             </div>
           </div>
+          )}
 
           {/* Quick Stats */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">

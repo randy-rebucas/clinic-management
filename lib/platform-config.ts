@@ -74,7 +74,13 @@ export async function getPlanPricing(): Promise<PlanPricing> {
 
 // ── Fees ─────────────────────────────────────────────────────────────────────
 
-export const DEFAULT_FEES: PlatformFees = { medrepActivationFee: 0, voucherFaceValue: 80, voucherWholesalePrice: 60 };
+export const DEFAULT_FEES: PlatformFees = {
+  medrepActivationFee: 0,
+  medrepMonthlyFee: 0,
+  medrepSeatMonthlyFee: 0,
+  voucherFaceValue: 80,
+  voucherWholesalePrice: 60,
+};
 
 export async function getPlatformFees(): Promise<PlatformFees> {
   const parsed = feesSchema.safeParse((await readSection('fees'))?.data);

@@ -146,6 +146,9 @@ export interface ISettings extends Document {
     serialEnd: number;
   };
 
+  // Medical-rep visiting hours (lib/rep-visit-rules.ts; read through normalizeRepVisitSettings)
+  repVisitSettings?: unknown;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -308,6 +311,9 @@ const SettingsSchema = new Schema<ISettings>(
       serialStart: { type: Number, default: 1, min: 1 },
       serialEnd: { type: Number, default: 0, min: 0 },
     },
+
+    // Validated by repVisitSettingsSchema when saved.
+    repVisitSettings: { type: Schema.Types.Mixed },
   },
   {
     timestamps: true,

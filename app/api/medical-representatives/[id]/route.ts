@@ -7,7 +7,7 @@ import { revokeUserSessions } from '@/app/lib/dal';
 import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zEmail } from '@/lib/api/validate';
 
-const HIDDEN_REP_FIELDS = '-internalNotes -paymentDate -paymentAmount -paymentMethod -paymentReference -password';
+const HIDDEN_REP_FIELDS = '-internalNotes -paymentDate -paymentAmount -paymentMethod -paymentReference -password -subscription -teamInvite';
 
 const companyField = z.union([
   z.string().trim().max(200),
@@ -163,6 +163,8 @@ export async function PUT(
     delete result.paymentMethod;
     delete result.paymentReference;
     delete result.password;
+    delete result.subscription;
+    delete result.teamInvite;
 
     return NextResponse.json({
       success: true,
