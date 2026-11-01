@@ -531,7 +531,7 @@ active products that expire within 30 days.
 | `POST /api/medical-representatives/visits` | Own log entry: `{ clinicName, clinicLocation, purpose, date, time: "HH:mm", duration?, status?, notes?, productIds?, linkedClinicId? }`. For a clinic booking see below. **New:** `linkedClinicId` links the entry to a clinic in the rep's directory (`GET /clinics`); the clinic's name and location replace the typed ones (which may then be left out). It stays the rep's own entry (no `clinicId`, the clinic isn't asked) but lets deliveries reach that clinic. `PUT` takes it too: a clinic id links, `null` unlinks, leaving it out keeps the link. `404` for a clinic the rep can't reach |
 | `GET /api/medical-representatives/visits/[id]` **new** · `PUT` · `DELETE` | `PUT` takes the full object. Clinic bookings follow the rules below |
 | `GET /api/medical-representatives/products` | **Changed:** now paginated (default 50, max 100). Filter: `status` |
-| `POST /api/medical-representatives/products` | `{ name, category, manufacturer, description, packaging, expiryDate, dosage?, strength?, status? }` |
+| `POST /api/medical-representatives/products` | `{ name, category, manufacturer, description, packaging, expiryDate, dosage?, strength?, status?, packSize? }`. **New:** `packSize: { count, unit }` is what one pack holds in the unit clinics dispense (`{ count: 30, unit: "tablets" }`, count 1–10000); clinics use it as the default conversion when receiving a delivery into stock. `PUT` takes it too (`null` clears it, left out keeps it); so does each import row (`400 Invalid pack size.`) |
 | `GET /api/medical-representatives/products/[id]` **new** · `PUT` · `DELETE` | `PUT` takes the full object |
 | `POST /api/medical-representatives/products/import` **new** | `{ products: [ …same fields as POST… ] }`, 1–200 rows (the app parses the spreadsheet). All or nothing: any bad row → `400 INVALID_ROWS` with `rows: [{ row, error }]` (`row` = index in `products`) and nothing saved. A row with the same name and strength (case and spacing ignored) as one of the rep's products or an earlier row is skipped. Answer: `data: { created, skipped: [{ row, name }] }`. An empty `status` means `active`, here and on `POST` |
 | `GET /api/medical-representatives/support` **new** | Own requests with `reference: "SR-…"` and `status` |
@@ -550,9 +550,11 @@ rep's company, or rejects it.
 | `POST /api/medical-representatives/deliveries` | `{ visitId, kind: "sample" \| "delivery", lines: [{ productId, quantity, unit, lotNumber?, expiryDate?: "YYYY-MM-DD" }], note? }`, 1–20 lines of the rep's own active products, quantity 1–100000. A line without `expiryDate` takes the product's. Errors: `409 VISIT_CANT_DELIVER` (a request, declined, cancelled or no-show booking, or an unlinked own log), `400 INVALID_PRODUCTS` |
 | `DELETE /api/medical-representatives/deliveries/[id]` | Cancels a `pending` delivery (a mistake). `409 DELIVERY_CLOSED` once the clinic answered |
 
-A delivery: `{ _id, visitId, clinicId, clinicName, kind, status: "pending" | "received" | "rejected" | "cancelled", lines: [{ productId, productName, strength?, quantity, unit, lotNumber?, expiryDate?, receivedQuantity?, inventoryItemId? }], note?, clinicNote?, respondedAt?, repName, repCompany?, createdAt }`.
+A delivery: `{ _id, visitId, clinicId, clinicName, kind, status: "pending" | "received" | "rejected" | "cancelled", lines: [{ productId, productName, strength?, quantity, unit, lotNumber?, expiryDate?, packSize?, receivedQuantity?, unitsPerPack?, stockQuantity?, inventoryItemId? }], note?, clinicNote?, respondedAt?, repName, repCompany?, createdAt }`.
 Product name and strength are as they were when delivered. `receivedQuantity` is what the clinic
-counted (it can differ from `quantity`); `inventoryItemId` is set when the line went into stock.
+counted (it can differ from `quantity`); `inventoryItemId` is set when the line went into stock,
+with `unitsPerPack` (the clinic's conversion, e.g. 30 tablets per box) and `stockQuantity` (units
+added: `receivedQuantity × unitsPerPack`). `packSize` is the product's when delivered.
 The clinic's answer sends a push with `data: { screen: "visits", id: <visitId> }`. Titles:
 Delivery confirmed, Delivery not confirmed.
 
