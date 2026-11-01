@@ -533,6 +533,7 @@ active products that expire within 30 days.
 | `GET /api/medical-representatives/products` | **Changed:** now paginated (default 50, max 100). Filter: `status` |
 | `POST /api/medical-representatives/products` | `{ name, category, manufacturer, description, packaging, expiryDate, dosage?, strength?, status? }` |
 | `GET /api/medical-representatives/products/[id]` **new** · `PUT` · `DELETE` | `PUT` takes the full object |
+| `POST /api/medical-representatives/products/import` **new** | `{ products: [ …same fields as POST… ] }`, 1–200 rows (the app parses the spreadsheet). All or nothing: any bad row → `400 INVALID_ROWS` with `rows: [{ row, error }]` (`row` = index in `products`) and nothing saved. A row with the same name and strength (case and spacing ignored) as one of the rep's products or an earlier row is skipped. Answer: `data: { created, skipped: [{ row, name }] }`. An empty `status` means `active`, here and on `POST` |
 | `GET /api/medical-representatives/support` **new** | Own requests with `reference: "SR-…"` and `status` |
 | `POST /api/medical-representatives/support` | `{ subject, message, category?, email? }`. **Changed:** `email` defaults to the account email |
 
