@@ -128,6 +128,9 @@ export type { IAccountant } from './Accountant';
 export { default as MedicalRepresentative } from './MedicalRepresentative';
 export type { IMedicalRepresentative } from './MedicalRepresentative';
 
+export { default as RepTeam } from './RepTeam';
+export type { IRepTeam } from './RepTeam';
+
 export { default as MedicalTechnologist } from './MedicalTechnologist';
 export type { IMedicalTechnologist } from './MedicalTechnologist';
 
@@ -262,6 +265,7 @@ export function registerAllModels(): void {
   require('./Accountant');
    
   require('./MedicalRepresentative');
+  require('./RepTeam');
    
   require('./MedicalTechnologist');
    
@@ -347,6 +351,7 @@ const models = {
   Receptionist: require('./Receptionist').default,
   Accountant: require('./Accountant').default,
   MedicalRepresentative: require('./MedicalRepresentative').default,
+  RepTeam: require('./RepTeam').default,
   MedicalTechnologist: require('./MedicalTechnologist').default,
   Staff: require('./Staff').default,
   

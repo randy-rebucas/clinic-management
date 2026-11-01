@@ -73,6 +73,19 @@ export interface IMedicalRepresentative extends Document {
   paymentMethod?: string; // Payment method used (credit card, bank transfer, etc.)
   paymentReference?: string; // Payment transaction reference or receipt number
 
+  // Rep subscription for booking with clinics (lib/rep-billing.ts)
+  subscription?: {
+    billingCycle: 'monthly' | 'yearly';
+    expiresAt?: Date;
+    lastPaymentId?: string;
+    paymentHistory?: Array<{ paymentId: string; amount: number; billingCycle: 'monthly' | 'yearly'; paidAt: Date }>;
+  };
+
+  // Company team (models/RepTeam.ts)
+  teamId?: Types.ObjectId;
+  /** A pending invite to a team, until the rep accepts or declines it. */
+  teamInvite?: { teamId: Types.ObjectId; invitedBy: Types.ObjectId; invitedAt: Date };
+
   lastLogin?: Date;
   profileImage?: string | null; // base64 data URI, ≤ 2 MB
   notificationsEnabled?: boolean; // push to the mobile app
@@ -199,6 +212,26 @@ const MedicalRepresentativeSchema: Schema = new Schema(
     paymentReference: {
       type: String,
       trim: true,
+    },
+    subscription: {
+      billingCycle: { type: String, enum: ['monthly', 'yearly'], default: 'monthly' },
+      expiresAt: Date,
+      lastPaymentId: String,
+      paymentHistory: [
+        {
+          paymentId: { type: String, required: true },
+          amount: { type: Number, required: true },
+          billingCycle: { type: String, enum: ['monthly', 'yearly'], required: true },
+          paidAt: { type: Date, default: Date.now },
+          _id: false,
+        },
+      ],
+    },
+    teamId: { type: Schema.Types.ObjectId, ref: 'RepTeam', index: true },
+    teamInvite: {
+      teamId: { type: Schema.Types.ObjectId, ref: 'RepTeam' },
+      invitedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+      invitedAt: Date,
     },
     lastLogin: { type: Date },
     // Set from the rep's own profile/settings in the mobile app. These were assigned by the

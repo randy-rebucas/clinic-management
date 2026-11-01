@@ -29,7 +29,7 @@ async function auth(secretKey?: string) {
 /** Pesos to centavos, the unit PayMongo's API takes. */
 export const toCentavos = (pesos: number) => Math.round(pesos * 100);
 
-export type CheckoutPurpose = 'subscription' | 'invoice' | 'medrep';
+export type CheckoutPurpose = 'subscription' | 'invoice' | 'medrep' | 'medrep-subscription' | 'medrep-team';
 
 export interface CheckoutSession {
   id: string;

@@ -64,6 +64,10 @@ export const feesSchema = z
   .object({
     /** 0 = reps are activated by hand, no online fee. */
     medrepActivationFee: peso.refine((v) => v === 0 || v >= 20, 'Use 0 (no online fee) or at least ₱20'),
+    /** A rep's monthly subscription for booking visits with clinics. 0 = booking is free. */
+    medrepMonthlyFee: peso.refine((v) => v === 0 || v >= 20, 'Use 0 (free) or at least ₱20').default(0),
+    /** Per rep seat per month on a company team plan. 0 = team plans aren't sold online. */
+    medrepSeatMonthlyFee: peso.refine((v) => v === 0 || v >= 20, 'Use 0 (not sold) or at least ₱20').default(0),
     voucherFaceValue: peso,
     voucherWholesalePrice: peso,
   })

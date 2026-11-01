@@ -10,7 +10,7 @@ import { parseBody, isValidationError, zEmail } from '@/lib/api/validate';
 const REP_STATUSES = ['active', 'inactive', 'on-leave'] as const;
 
 // Payment/activation details belong to the rep's own account and are not shown to clinics.
-const HIDDEN_REP_FIELDS = '-internalNotes -paymentDate -paymentAmount -paymentMethod -paymentReference -password';
+const HIDDEN_REP_FIELDS = '-internalNotes -paymentDate -paymentAmount -paymentMethod -paymentReference -password -subscription -teamInvite';
 
 // The UI may send company as { name } and territory as a list; both are stored as strings.
 const companyField = z.union([

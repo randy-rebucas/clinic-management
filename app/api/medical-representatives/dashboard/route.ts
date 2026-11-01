@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
       visitsThisMonth,
       completedThisMonth,
       upcomingVisits,
+      pendingRequests,
       nextVisits,
       activeProducts,
       expiringProducts,
@@ -44,11 +45,12 @@ export async function GET(request: NextRequest) {
         .select('firstName lastName company title territory isActivated status')
         .lean(),
       MedicalRepresentativeVisit.countDocuments(owner),
-      MedicalRepresentativeVisit.countDocuments({ ...owner, date: thisMonth, status: { $ne: 'cancelled' } }),
+      MedicalRepresentativeVisit.countDocuments({ ...owner, date: thisMonth, status: { $nin: ['cancelled', 'declined'] } }),
       MedicalRepresentativeVisit.countDocuments({ ...owner, date: thisMonth, status: 'completed' }),
       MedicalRepresentativeVisit.countDocuments({ ...owner, date: { $gte: todayStart }, status: 'scheduled' }),
+      MedicalRepresentativeVisit.countDocuments({ ...owner, date: { $gte: todayStart }, status: 'requested' }),
       MedicalRepresentativeVisit.find({ ...owner, date: { $gte: todayStart }, status: 'scheduled' })
-        .select('clinicName clinicLocation purpose date time duration status')
+        .select('clinicId clinicName clinicLocation purpose date time duration status checkedInAt')
         .sort({ date: 1, time: 1 })
         .limit(5)
         .lean(),
@@ -70,6 +72,7 @@ export async function GET(request: NextRequest) {
           visitsThisMonth,
           completedThisMonth,
           upcomingVisits,
+          pendingRequests,
           activeProducts,
           expiringProducts,
           openSupportRequests,
