@@ -64,3 +64,23 @@ export async function notifyClinicOfAccessRequest(
     console.error('[rep-access] clinic notification failed:', error);
   }
 }
+
+/** Tell the clinic's admins a rep took themselves off its representatives. */
+export async function notifyClinicRepLeft(tenantId: string | Types.ObjectId, rep: { name: string; company?: string }) {
+  const who = rep.company ? `${rep.name} (${rep.company})` : rep.name;
+  try {
+    await notifyStaff({
+      tenantId: String(tenantId),
+      audience: { roles: CLINIC_AUDIENCE_ROLES },
+      type: 'visit',
+      priority: 'low',
+      title: 'Rep left your list',
+      message: `${who} took themselves off your representatives.`,
+      actionUrl: '/medical-reps?tab=reps',
+      sender: { kind: 'system', name: who },
+      metadata: { repLeft: true },
+    });
+  } catch (error) {
+    console.error('[rep-access] clinic notification failed:', error);
+  }
+}

@@ -25,7 +25,9 @@ vi.mock('@/lib/rep-access', () => ({
   notifyClinicOfAccessRequest: vi.fn(),
   notifyRepOfAccessAnswer: vi.fn(),
   notifyRepAddedByClinic: vi.fn(),
+  notifyClinicRepLeft: vi.fn(),
 }));
+vi.mock('@/models/MedicalRepresentativeVisit', () => ({ default: { countDocuments: vi.fn() } }));
 vi.mock('@/models/RepAccessRequest', async (orig) => ({
   ...(await orig<typeof import('@/models/RepAccessRequest')>()),
   default: { exists: vi.fn(), create: vi.fn(), findOneAndUpdate: vi.fn(), updateMany: vi.fn() },
@@ -38,13 +40,14 @@ import { requireRepSession } from '@/app/api/medical-representatives/_lib/rep-se
 import { loadRepProfileForVisits } from '@/app/api/medical-representatives/_lib/rep-visit-input';
 import { requireTenantSession } from '@/lib/api/tenant-session';
 import { getClinicForReps } from '@/lib/rep-visits';
-import { notifyClinicOfAccessRequest, notifyRepAddedByClinic, notifyRepOfAccessAnswer } from '@/lib/rep-access';
+import { notifyClinicOfAccessRequest, notifyClinicRepLeft, notifyRepAddedByClinic, notifyRepOfAccessAnswer } from '@/lib/rep-access';
 import RepAccessRequest from '@/models/RepAccessRequest';
 import MedicalRepresentativeModel from '@/models/MedicalRepresentative';
 import { MedicalRepresentative, User } from '@/models';
 import { POST as requestAccess, DELETE as withdraw } from '@/app/api/medical-representatives/clinics/[id]/access/route';
 import { PATCH as answer } from '@/app/api/rep-access-requests/[id]/route';
 import { POST as addRep } from '@/app/api/medical-representatives/route';
+import { DELETE as leave } from '@/app/api/medical-representatives/clinics/[id]/route';
 
 const USER = new Types.ObjectId('507f1f77bcf86cd7994390aa');
 const CLINIC = '507f1f77bcf86cd7994390cc';
@@ -165,5 +168,44 @@ describe('POST /api/medical-representatives (clinic adds a rep)', () => {
     vi.mocked(User.findOne).mockReturnValueOnce(lean({ _id: 'u' }) as any);
     expect((await addRep(req('POST', BODY))).status).toBe(400);
     expect(MedicalRepresentative.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('DELETE /api/medical-representatives/clinics/[id] (rep leaves)', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.mocked(requireRepSession).mockResolvedValue({ userObjectId: USER, ownerFilter: { userId: USER } } as any);
+    vi.mocked(loadRepProfileForVisits).mockResolvedValue({ _id: REP, firstName: 'Ana', lastName: 'Cruz', company: 'Acme Pharma', tenantIds: [new Types.ObjectId(CLINIC)] } as any);
+    vi.mocked(getClinicForReps).mockResolvedValue({ id: CLINIC, settings: { enabled: true, openToAllReps: false } } as any);
+    const visits = (await import('@/models/MedicalRepresentativeVisit')).default as any;
+    visits.countDocuments.mockResolvedValue(0);
+  });
+
+  it('takes the clinic off the rep’s list only and tells the clinic', async () => {
+    const res = await leave(req('DELETE'), ctx(CLINIC));
+    expect(res.status).toBe(200);
+    expect(vi.mocked(MedicalRepresentativeModel.updateOne).mock.calls[0]).toEqual([{ _id: REP }, { $pull: { tenantIds: new Types.ObjectId(CLINIC) } }]);
+    expect(notifyClinicRepLeft).toHaveBeenCalledWith(CLINIC, { name: 'Ana Cruz', company: 'Acme Pharma' });
+    expect((await res.json()).data.canBook).toBe(false);
+  });
+
+  it('won’t strand upcoming visits at a clinic that takes only its own reps', async () => {
+    const visits = (await import('@/models/MedicalRepresentativeVisit')).default as any;
+    visits.countDocuments.mockResolvedValueOnce(2);
+    const res = await leave(req('DELETE'), ctx(CLINIC));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: 'ACTIVE_VISITS', count: 2 });
+    expect(MedicalRepresentativeModel.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('an open clinic can be left with visits, and stays bookable', async () => {
+    vi.mocked(getClinicForReps).mockResolvedValueOnce({ id: CLINIC, settings: { enabled: true, openToAllReps: true } } as any);
+    const res = await leave(req('DELETE'), ctx(CLINIC));
+    expect((await res.json()).data.canBook).toBe(true);
+  });
+
+  it('404 when not on the clinic’s list', async () => {
+    vi.mocked(loadRepProfileForVisits).mockResolvedValueOnce({ _id: REP, firstName: 'A', lastName: 'C', tenantIds: [] } as any);
+    expect((await leave(req('DELETE'), ctx(CLINIC))).status).toBe(404);
   });
 });
