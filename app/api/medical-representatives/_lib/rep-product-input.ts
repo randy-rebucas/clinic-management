@@ -16,9 +16,24 @@ export type RepProductInput = {
   packaging: string;
   expiryDate: Date;
   status: ProductStatus;
+  packSize?: { count: number; unit: string };
 };
 
 const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+
+/**
+ * `packSize: { count, unit }` ("30 tablets"): undefined when left out or null, false when it is
+ * there but not a whole count of 1–10000 with a unit of up to 50 characters.
+ */
+export function readPackSize(raw: unknown): { count: number; unit: string } | undefined | false {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== 'object') return false;
+  const { count, unit } = raw as Record<string, unknown>;
+  const n = typeof count === 'number' ? count : Number(count);
+  const u = str(unit);
+  if (!Number.isInteger(n) || n < 1 || n > 10000 || !u || u.length > 50) return false;
+  return { count: n, unit: u };
+}
 
 /**
  * A new product from a request body (POST /products, and each row of POST /products/import):
@@ -54,6 +69,9 @@ export function readProductInput(body: Record<string, unknown>): { ok: true; val
     return { ok: false, error: 'Invalid expiry date.' };
   }
 
+  const packSize = readPackSize(body.packSize);
+  if (packSize === false) return { ok: false, error: 'Invalid pack size.' };
+
   return {
     ok: true,
     value: {
@@ -66,6 +84,7 @@ export function readProductInput(body: Record<string, unknown>): { ok: true; val
       packaging,
       expiryDate: parsedExpiry,
       status: status as ProductStatus,
+      ...(packSize ? { packSize } : {}),
     },
   };
 }

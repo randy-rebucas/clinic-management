@@ -1,9 +1,7 @@
 import 'server-only';
 import { Types } from 'mongoose';
-import InventoryItem from '@/models/Inventory';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
 import type { IRepDelivery } from '@/models/RepDelivery';
-import { recordMovement } from '@/lib/inventory-movements';
 import { notifyStaff } from '@/lib/notify';
 import { sendPushToUserDevices } from '@/lib/push-notifications';
 
@@ -80,75 +78,3 @@ export async function notifyRepOfDelivery(
 }
 
 export const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-/** Where one received line goes: nowhere, a new stock item, or an existing one (its id). */
-export type StockTarget = 'none' | 'new' | string;
-
-/**
- * Put a received line into the clinic's stock as a restock, with the rep's company as supplier
- * and the delivery as reference, through the same ledger as a manual restock. Returns the stock
- * item's id, or null when the target item wasn't found.
- */
-export async function receiveLineIntoStock(opts: {
-  tenantId: Types.ObjectId;
-  deliveryId: unknown;
-  line: { productName: string; strength?: string; unit: string; expiryDate?: Date; lotNumber?: string };
-  quantity: number;
-  target: Exclude<StockTarget, 'none'>;
-  supplier: string;
-  userId: string;
-}): Promise<Types.ObjectId | null> {
-  const { tenantId, line, quantity, target, supplier, userId } = opts;
-  const now = new Date();
-  const reference = `Rep delivery ${String(opts.deliveryId)}${line.lotNumber ? ` · lot ${line.lotNumber}` : ''}`;
-
-  let itemId: Types.ObjectId;
-  let quantityAfter: number;
-  if (target === 'new') {
-    const item = await InventoryItem.create({
-      tenantId,
-      name: [line.productName, line.strength].filter(Boolean).join(' '),
-      category: 'medicine',
-      quantity,
-      unit: line.unit,
-      supplier,
-      ...(line.expiryDate ? { expiryDate: line.expiryDate } : {}),
-      lastRestocked: now,
-      lastRestockedBy: userId,
-    });
-    itemId = item._id;
-    quantityAfter = item.quantity;
-  } else {
-    if (!Types.ObjectId.isValid(target)) return null;
-    const current = await InventoryItem.findOne({ _id: target, tenantId }).select('quantity expiryDate').lean<{ quantity: number; expiryDate?: Date } | null>();
-    if (!current) return null;
-    // One expiry per item, as on a manual restock: the new batch's date replaces an expired or
-    // empty batch's; otherwise the earlier date stands.
-    const expired = current.expiryDate && current.expiryDate < now;
-    const keepOld = current.expiryDate && !expired && current.quantity > 0 && line.expiryDate && current.expiryDate < line.expiryDate;
-    const item = await InventoryItem.findOneAndUpdate(
-      { _id: target, tenantId },
-      {
-        $inc: { quantity },
-        $set: { lastRestocked: now, lastRestockedBy: userId, ...(line.expiryDate && !keepOld ? { expiryDate: line.expiryDate } : {}) },
-      },
-      { new: true, runValidators: true }
-    );
-    if (!item) return null;
-    itemId = item._id;
-    quantityAfter = item.quantity;
-  }
-
-  await recordMovement({
-    tenantId,
-    item: itemId,
-    type: 'restock',
-    change: quantity,
-    quantityAfter,
-    supplier,
-    reference,
-    batchExpiry: line.expiryDate,
-    performedBy: userId,
-  });
-  return itemId;
-}

@@ -16,8 +16,14 @@ export interface IRepDeliveryLine {
   lotNumber?: string;
   /** The batch's expiry, for tracing a recall or an expiring batch to the clinics that have it. */
   expiryDate?: Date;
+  /** The product's pack size when delivered ("30 tablets"), to suggest the clinic's conversion. */
+  packSize?: { count: number; unit: string };
   /** What the clinic counted on receipt (defaults to `quantity`). */
   receivedQuantity?: number;
+  /** The clinic's conversion: stock units per delivered unit (30 tablets per box). */
+  unitsPerPack?: number;
+  /** Stock units added: receivedQuantity × unitsPerPack. */
+  stockQuantity?: number;
   /** The clinic's stock item the received units went into, if any. */
   inventoryItemId?: Types.ObjectId;
 }
@@ -57,7 +63,13 @@ const LineSchema = new Schema<IRepDeliveryLine>(
     unit: { type: String, required: true },
     lotNumber: String,
     expiryDate: Date,
+    packSize: {
+      type: new Schema({ count: { type: Number, min: 1 }, unit: String }, { _id: false }),
+      default: undefined,
+    },
     receivedQuantity: { type: Number, min: 0 },
+    unitsPerPack: { type: Number, min: 1 },
+    stockQuantity: { type: Number, min: 0 },
     inventoryItemId: { type: Schema.Types.ObjectId, ref: 'InventoryItem' },
   },
   { _id: false }

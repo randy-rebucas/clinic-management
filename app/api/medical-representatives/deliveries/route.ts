@@ -116,8 +116,8 @@ export async function POST(request: NextRequest) {
 
     const ids = [...new Set(body.lines.map((l) => l.productId))].map((id) => new Types.ObjectId(id));
     const products = await Product.find({ ...rep.ownerFilter, _id: { $in: ids }, status: 'active' })
-      .select('name strength expiryDate')
-      .lean<{ _id: Types.ObjectId; name: string; strength?: string; expiryDate?: Date }[]>();
+      .select('name strength expiryDate packSize')
+      .lean<{ _id: Types.ObjectId; name: string; strength?: string; expiryDate?: Date; packSize?: { count: number; unit: string } }[]>();
     const byId = new Map(products.map((p) => [String(p._id), p]));
     if (byId.size !== ids.length) return visitError(400, 'Products must be your own active products.', 'INVALID_PRODUCTS');
 
@@ -144,6 +144,7 @@ export async function POST(request: NextRequest) {
           unit: l.unit,
           lotNumber: l.lotNumber,
           expiryDate: l.expiryDate ? new Date(`${l.expiryDate}T00:00:00.000Z`) : p.expiryDate,
+          ...(p.packSize?.count ? { packSize: p.packSize } : {}),
         };
       }),
     });

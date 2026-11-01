@@ -8,10 +8,10 @@ import { requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, escapeRegex } from '@/lib/api/validate';
 import InventoryMovement from '@/models/InventoryMovement';
-import { recordMovement, USAGE_MATCH } from '@/lib/inventory-movements';
+import { USAGE_MATCH } from '@/lib/inventory-movements';
 import { expiryRange, isExpiryKey, type InventorySort } from '@/lib/inventory';
 import { INVENTORY_CATEGORIES, INVENTORY_STATUSES, inventoryCreateSchema, medicinePopulate } from './schema';
-import { logInventoryChange, stockWords } from './_lib/inventory-audit';
+import { createInventoryItem } from './_lib/create-item';
 
 function ensureModels() {
   if (!mongoose.models.Medicine) void Medicine;
@@ -144,33 +144,9 @@ export async function POST(request: NextRequest) {
     await connectDB();
     ensureModels();
 
-    if (body.medicineId) {
-      const medicine = await Medicine.findOne(tenantFilter(ctx.tenantId, { _id: body.medicineId })).select('_id').lean();
-      if (!medicine) {
-        return NextResponse.json(
-          { success: false, error: 'Invalid medicine selected. Please select a medicine from this clinic.' },
-          { status: 400 }
-        );
-      }
-    }
-
-    const item = await InventoryItem.create({ ...body, tenantId: ctx.tenantObjectId });
-    // The opening stock is the first line of the item's history.
-    await recordMovement({
-      tenantId: ctx.tenantObjectId,
-      item: item._id,
-      type: 'opening',
-      change: item.quantity,
-      quantityAfter: item.quantity,
-      performedBy: ctx.session.userId,
-    });
-
-    await logInventoryChange(ctx, request, {
-      action: 'create',
-      itemId: item._id,
-      description: `Added ${item.name} to inventory with ${stockWords(item.quantity, item.unit)} on hand`,
-      metadata: { category: item.category, quantity: item.quantity, unit: item.unit, unitCost: item.unitCost, sku: item.sku },
-    });
+    const created = await createInventoryItem(ctx, request, body);
+    if (!created.ok) return NextResponse.json({ success: false, error: created.error }, { status: created.status });
+    const item = created.item;
 
     await item.populate(medicinePopulate(tenantFilter(ctx.tenantId)));
     await item.populate('lastRestockedBy', 'name');

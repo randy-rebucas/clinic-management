@@ -3,26 +3,15 @@
 import { useEffect, useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { FIELD, FOCUS_RING, ICON, Svg, dayLabel, timeLabel } from '../appointments/shared';
+import { ReceiveDeliveryLine, choiceProblem, choiceToBody, initialChoice, type LineChoice, type ReceivableLine } from './ReceiveDeliveryLine';
 
 type DeliveryStatus = 'pending' | 'received' | 'rejected' | 'cancelled';
 
-interface StockMatch {
-  _id: string;
-  name: string;
-  quantity: number;
-  unit: string;
-}
-
-interface DeliveryLine {
-  productName: string;
-  strength?: string;
-  quantity: number;
-  unit: string;
-  lotNumber?: string;
-  expiryDate?: string;
+interface DeliveryLine extends ReceivableLine {
   receivedQuantity?: number;
+  unitsPerPack?: number;
+  stockQuantity?: number;
   inventoryItemId?: string;
-  stockMatches?: StockMatch[];
 }
 
 interface Delivery {
@@ -61,13 +50,6 @@ const dayOf = (iso: string) => iso.slice(0, 10);
 const productLabel = (l: Pick<DeliveryLine, 'productName' | 'strength'>) => [l.productName, l.strength].filter(Boolean).join(' ');
 const repLabel = (d: Delivery) => (d.repCompany ? `${d.repName} · ${d.repCompany}` : d.repName);
 
-type LineChoice = { receivedQuantity: string; stock: string };
-
-/** Samples go to doctors, not the shelf, so they start outside stock; deliveries go to the closest match or a new item. */
-const defaultChoice = (d: Delivery, l: DeliveryLine): LineChoice => ({
-  receivedQuantity: String(l.quantity),
-  stock: d.kind === 'sample' ? 'none' : l.stockMatches?.[0]?._id ?? 'new',
-});
 
 /**
  * Samples and deliveries reps recorded for this clinic: confirm what arrived (optionally into
@@ -80,7 +62,7 @@ export default function RepDeliveriesPanel({ focusDeliveryId }: { focusDeliveryI
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [receiving, setReceiving] = useState<{ delivery: Delivery; lines: LineChoice[]; note: string } | null>(null);
+  const [receiving, setReceiving] = useState<{ delivery: Delivery; lines: LineChoice[]; note: string; attempted: boolean } | null>(null);
   const [rejecting, setRejecting] = useState<{ delivery: Delivery; note: string } | null>(null);
   const [reloadCount, setReloadCount] = useState(0);
   const [settledKey, setSettledKey] = useState<string | null>(null);
@@ -259,7 +241,11 @@ export default function RepDeliveriesPanel({ focusDeliveryId }: { focusDeliveryI
                           </td>
                           <td className="py-1.5 text-gray-600">
                             {[l.lotNumber && `Lot ${l.lotNumber}`, l.expiryDate && `exp. ${dayOf(l.expiryDate)}`].filter(Boolean).join(' · ')}
-                            {l.inventoryItemId && <span className="ml-2 text-xs font-semibold text-brand-teal-deep">In stock</span>}
+                            {l.inventoryItemId && (
+                              <span className="ml-2 text-xs font-semibold text-brand-teal-deep">
+                                {l.stockQuantity ? <><span className="font-mono">{l.stockQuantity}</span> in stock</> : 'In stock'}
+                              </span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -274,7 +260,7 @@ export default function RepDeliveriesPanel({ focusDeliveryId }: { focusDeliveryI
                       type="button"
                       disabled={busy}
                       className={PRIMARY}
-                      onClick={() => setReceiving({ delivery: d, lines: d.lines.map((l) => defaultChoice(d, l)), note: '' })}
+                      onClick={() => setReceiving({ delivery: d, lines: d.lines.map((l) => initialChoice(d.kind, l)), note: '', attempted: false })}
                     >
                       Confirm receipt
                     </button>
@@ -289,20 +275,20 @@ export default function RepDeliveriesPanel({ focusDeliveryId }: { focusDeliveryI
         )}
       </div>
 
-      <Modal open={!!receiving} onOpenChange={(o) => !o && setReceiving(null)}>
+      <Modal open={!!receiving} onOpenChange={(o) => !o && setReceiving(null)} className="max-w-2xl" closeOnBackdrop={false}>
         {receiving && (
           <form
             className="p-6"
             onSubmit={(e) => {
               e.preventDefault();
               const { delivery, lines, note } = receiving;
+              if (lines.some((l) => choiceProblem(l))) {
+                setReceiving({ ...receiving, attempted: true });
+                return;
+              }
               void send(
                 delivery,
-                {
-                  action: 'receive',
-                  note: note.trim() || undefined,
-                  lines: lines.map((l) => ({ receivedQuantity: Math.max(0, Math.floor(Number(l.receivedQuantity) || 0)), stock: l.stock })),
-                },
+                { action: 'receive', note: note.trim() || undefined, lines: lines.map(choiceToBody) },
                 'Delivery received. The rep has been told.'
               );
             }}
@@ -310,48 +296,24 @@ export default function RepDeliveriesPanel({ focusDeliveryId }: { focusDeliveryI
             <h2 className="text-lg font-bold text-gray-900">Confirm what arrived from {receiving.delivery.repName}</h2>
             <p className="mt-1 text-sm text-gray-600">
               Correct any quantity you counted differently. Lines you add to stock are recorded as a restock from{' '}
-              {receiving.delivery.repCompany || receiving.delivery.repName}.
+              {receiving.delivery.repCompany || receiving.delivery.repName}, in the unit you dispense; expired units on hand are taken off first.
             </p>
             <div className="mt-4 flex flex-col gap-4">
               {receiving.delivery.lines.map((l, i) => {
-                const choice = receiving.lines[i];
-                const update = (patch: Partial<LineChoice>) =>
-                  setReceiving({ ...receiving, lines: receiving.lines.map((c, j) => (j === i ? { ...c, ...patch } : c)) });
+                const problem = receiving.attempted ? choiceProblem(receiving.lines[i]) : null;
                 return (
-                  <fieldset key={i} className="rounded-md border border-gray-200 p-3">
-                    <legend className="px-1 text-sm font-semibold text-gray-900">{productLabel(l)}</legend>
-                    <div className="grid gap-3 sm:grid-cols-[8rem_1fr]">
-                      <label className="text-sm font-medium text-gray-700">
-                        Received ({l.unit})
-                        <input
-                          type="number"
-                          min={0}
-                          max={100000}
-                          inputMode="numeric"
-                          value={choice.receivedQuantity}
-                          onChange={(e) => update({ receivedQuantity: e.target.value })}
-                          className={`${FIELD} mt-1 font-mono`}
-                        />
-                      </label>
-                      <label className="text-sm font-medium text-gray-700">
-                        Stock
-                        <select value={choice.stock} onChange={(e) => update({ stock: e.target.value })} className={`${FIELD} mt-1`}>
-                          <option value="none">Don’t add to stock</option>
-                          {(l.stockMatches ?? []).map((m) => (
-                            <option key={m._id} value={m._id}>
-                              Add to {m.name} ({m.quantity} {m.unit} now)
-                            </option>
-                          ))}
-                          <option value="new">New stock item: {productLabel(l)}</option>
-                        </select>
-                      </label>
-                    </div>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Recorded: {l.quantity} {l.unit}
-                      {l.lotNumber ? ` · lot ${l.lotNumber}` : ''}
-                      {l.expiryDate ? ` · expires ${dayOf(l.expiryDate)}` : ''}
-                    </p>
-                  </fieldset>
+                  <div key={i}>
+                    <ReceiveDeliveryLine
+                      line={l}
+                      value={receiving.lines[i]}
+                      onChange={(c) => setReceiving({ ...receiving, lines: receiving.lines.map((x, j) => (j === i ? c : x)) })}
+                    />
+                    {problem && (
+                      <p role="alert" className="mt-1 text-sm font-medium text-red-700">
+                        {problem}
+                      </p>
+                    )}
+                  </div>
                 );
               })}
             </div>

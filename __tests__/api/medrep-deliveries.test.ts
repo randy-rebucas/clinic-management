@@ -31,8 +31,11 @@ vi.mock('@/lib/rep-deliveries', async (orig) => ({
   ...(await orig<typeof import('@/lib/rep-deliveries')>()),
   notifyClinicOfDelivery: vi.fn(),
   notifyRepOfDelivery: vi.fn(),
-  receiveLineIntoStock: vi.fn(),
 }));
+vi.mock('@/lib/inventory-stock', () => ({ applyStockChange: vi.fn() }));
+vi.mock('@/app/api/inventory/_lib/create-item', () => ({ createInventoryItem: vi.fn() }));
+vi.mock('@/models/Inventory', () => ({ default: { findOne: vi.fn() } }));
+vi.mock('@/models/RepStockLink', () => ({ default: { updateOne: vi.fn() } }));
 
 import { Types } from 'mongoose';
 import { requireRepSession } from '@/app/api/medical-representatives/_lib/rep-session';
@@ -42,7 +45,11 @@ import { requirePermission } from '@/app/lib/auth-helpers';
 import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
 import Product from '@/models/Product';
 import RepDelivery from '@/models/RepDelivery';
-import { deliveryClinicOf, notifyClinicOfDelivery, notifyRepOfDelivery, receiveLineIntoStock } from '@/lib/rep-deliveries';
+import InventoryItem from '@/models/Inventory';
+import RepStockLink from '@/models/RepStockLink';
+import { deliveryClinicOf, notifyClinicOfDelivery, notifyRepOfDelivery } from '@/lib/rep-deliveries';
+import { applyStockChange } from '@/lib/inventory-stock';
+import { createInventoryItem } from '@/app/api/inventory/_lib/create-item';
 import { POST as record } from '@/app/api/medical-representatives/deliveries/route';
 import { DELETE as cancel } from '@/app/api/medical-representatives/deliveries/[id]/route';
 import { PATCH as answer } from '@/app/api/rep-deliveries/[id]/route';
@@ -52,6 +59,7 @@ const CLINIC = new Types.ObjectId('507f1f77bcf86cd7994390cc');
 const VISIT = '507f1f77bcf86cd7994390dd';
 const PRODUCT = '507f1f77bcf86cd7994390ee';
 const DELIVERY = '507f1f77bcf86cd7994390ff';
+const ADMIN = '507f1f77bcf86cd799439011';
 const BODY = { visitId: VISIT, kind: 'sample', lines: [{ productId: PRODUCT, quantity: 20, unit: 'boxes', lotNumber: 'L42' }] };
 
 const lean = <T,>(value: T) => ({ select: () => ({ lean: async () => value }), lean: async () => value });
@@ -80,7 +88,9 @@ describe('POST /api/medical-representatives/deliveries', () => {
       lean({ _id: new Types.ObjectId(VISIT), clinicId: CLINIC, clinicName: 'Sunrise Clinic', status: 'completed' }) as any
     );
     vi.mocked(Product.find).mockReturnValue(
-      lean([{ _id: new Types.ObjectId(PRODUCT), name: 'Amlodipine', strength: '5 mg', expiryDate: new Date('2027-03-31') }]) as any
+      lean([
+        { _id: new Types.ObjectId(PRODUCT), name: 'Amlodipine', strength: '5 mg', expiryDate: new Date('2027-03-31'), packSize: { count: 30, unit: 'tablets' } },
+      ]) as any
     );
     vi.mocked(loadRepProfileForVisits).mockResolvedValue({ _id: new Types.ObjectId(), firstName: 'Ana', lastName: 'Cruz', company: 'Acme Pharma' } as any);
     vi.mocked(RepDelivery.create).mockImplementation(async (doc: any) => ({ _id: DELIVERY, ...doc, toObject: () => ({ _id: DELIVERY, ...doc }) }));
@@ -91,7 +101,7 @@ describe('POST /api/medical-representatives/deliveries', () => {
     expect(res.status).toBe(200);
     const doc = vi.mocked(RepDelivery.create).mock.calls[0][0] as any;
     expect(doc).toMatchObject({ userId: USER, clinicId: CLINIC, clinicName: 'Sunrise Clinic', repName: 'Ana Cruz', repCompany: 'Acme Pharma', kind: 'sample' });
-    expect(doc.lines[0]).toMatchObject({ productName: 'Amlodipine', strength: '5 mg', quantity: 20, unit: 'boxes', lotNumber: 'L42' });
+    expect(doc.lines[0]).toMatchObject({ productName: 'Amlodipine', strength: '5 mg', quantity: 20, unit: 'boxes', lotNumber: 'L42', packSize: { count: 30, unit: 'tablets' } });
     // No expiry on the line: the product's.
     expect(doc.lines[0].expiryDate).toEqual(new Date('2027-03-31'));
     expect(notifyClinicOfDelivery).toHaveBeenCalledOnce();
@@ -135,40 +145,96 @@ describe('DELETE /api/medical-representatives/deliveries/[id]', () => {
 });
 
 describe('PATCH /api/rep-deliveries/[id]', () => {
+  const ITEM = '507f1f77bcf86cd799439099';
   const LINES = [
-    { productName: 'Amlodipine', strength: '5 mg', quantity: 20, unit: 'boxes' },
-    { productName: 'Losartan', quantity: 10, unit: 'boxes' },
+    { productId: new Types.ObjectId(PRODUCT), productName: 'Amlodipine', strength: '5 mg', quantity: 20, unit: 'Boxes', lotNumber: 'L42', expiryDate: new Date('2027-03-31') },
+    { productId: new Types.ObjectId(), productName: 'Losartan', quantity: 10, unit: 'boxes' },
   ];
   const patch = (body: unknown) => answer(json('http://x/api/rep-deliveries/' + DELIVERY, 'PATCH', body), ctx(DELIVERY));
+  const restockCall = () => vi.mocked(applyStockChange).mock.calls[0][0];
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(requireTenantSession).mockResolvedValue({ session: { userId: '507f1f77bcf86cd799439011' }, tenantObjectId: CLINIC, tenantId: String(CLINIC) } as any);
+    vi.mocked(requireTenantSession).mockResolvedValue({ session: { userId: ADMIN }, tenantObjectId: CLINIC, tenantId: String(CLINIC) } as any);
     vi.mocked(RepDelivery.findOne).mockReturnValue(lean({ status: 'pending', lines: LINES }) as any);
     vi.mocked(RepDelivery.findOneAndUpdate).mockReturnValue(
       lean({ _id: DELIVERY, userId: USER, clinicName: 'Sunrise Clinic', repName: 'Ana Cruz', repCompany: 'Acme Pharma', kind: 'delivery', lines: LINES }) as any
     );
-    vi.mocked(receiveLineIntoStock).mockResolvedValue(new Types.ObjectId());
+    vi.mocked(InventoryItem.findOne).mockReturnValue(lean({ quantity: 12 }) as any);
+    vi.mocked(applyStockChange).mockResolvedValue({ ok: true, item: {}, restocking: true, discarding: false });
+    vi.mocked(createInventoryItem).mockResolvedValue({ ok: true, item: { _id: new Types.ObjectId(ITEM) } });
   });
 
-  it('receives with counted quantities, puts lines into stock and tells the rep', async () => {
-    const res = await patch({ action: 'receive', lines: [{ receivedQuantity: 18, stock: 'new' }, { receivedQuantity: 10, stock: 'none' }] });
+  it('receives into an existing item, converting boxes to tablets, and remembers the choice', async () => {
+    const res = await patch({
+      action: 'receive',
+      lines: [
+        { receivedQuantity: 18, unitsPerPack: 30, stock: { itemId: ITEM } },
+        { receivedQuantity: 10, stock: 'none' },
+      ],
+    });
     expect(res.status).toBe(200);
     const [filter, update] = vi.mocked(RepDelivery.findOneAndUpdate).mock.calls[0] as any;
     expect(filter).toMatchObject({ status: 'pending', clinicId: CLINIC });
     expect(update.$set).toMatchObject({ status: 'received', 'lines.0.receivedQuantity': 18, 'lines.1.receivedQuantity': 10 });
-    expect(receiveLineIntoStock).toHaveBeenCalledOnce();
-    expect(vi.mocked(receiveLineIntoStock).mock.calls[0][0]).toMatchObject({ quantity: 18, target: 'new', supplier: 'Acme Pharma' });
-    expect(RepDelivery.updateOne).toHaveBeenCalledOnce();
+
+    expect(applyStockChange).toHaveBeenCalledOnce();
+    expect(restockCall().current).toEqual({ quantity: 12 });
+    expect(restockCall().input).toMatchObject({
+      delta: 540,
+      kind: 'restock',
+      discardExpired: true,
+      batchExpiry: new Date('2027-03-31'),
+      ledger: { supplier: 'Acme Pharma' },
+      reference: `Rep delivery ${DELIVERY} · lot L42`,
+    });
+    // The item's own supplier and cost are left alone.
+    expect(restockCall().input.fields).toEqual({});
+
+    expect(vi.mocked(RepStockLink.updateOne).mock.calls[0]).toEqual([
+      { tenantId: CLINIC, productId: LINES[0].productId, deliveryUnit: 'boxes' },
+      { $set: { inventoryItemId: new Types.ObjectId(ITEM), unitsPerPack: 30, updatedBy: ADMIN } },
+      { upsert: true },
+    ]);
+    expect((vi.mocked(RepDelivery.updateOne).mock.calls[0] as unknown[])[1]).toEqual({
+      $set: { 'lines.0.inventoryItemId': new Types.ObjectId(ITEM), 'lines.0.unitsPerPack': 30, 'lines.0.stockQuantity': 540 },
+    });
     expect(requirePermission).toHaveBeenCalledWith(expect.anything(), 'inventory', 'write');
     expect(notifyRepOfDelivery).toHaveBeenCalledWith(expect.anything(), 'received', undefined);
+  });
+
+  it('adds a new item the way /inventory/new does, then restocks it', async () => {
+    await patch({
+      action: 'receive',
+      lines: [
+        { receivedQuantity: 20, unitsPerPack: 30, stock: { create: { name: 'Amlodipine 5 mg tablet', unit: 'tablets', medicineId: ITEM, reorderLevel: 60 } } },
+        { receivedQuantity: 10, stock: 'none' },
+      ],
+    });
+    expect(vi.mocked(createInventoryItem).mock.calls[0][2]).toEqual({
+      name: 'Amlodipine 5 mg tablet',
+      unit: 'tablets',
+      medicineId: ITEM,
+      reorderLevel: 60,
+      category: 'medicine',
+      quantity: 0,
+    });
+    expect(restockCall().current).toEqual({ quantity: 0 });
+    expect(restockCall().input.delta).toBe(600);
+  });
+
+  it('reads the stock again once when it moved meanwhile', async () => {
+    vi.mocked(applyStockChange).mockResolvedValueOnce({ ok: false, reason: 'changed' });
+    const res = await patch({ action: 'receive', lines: [{ receivedQuantity: 1, stock: { itemId: ITEM } }, { receivedQuantity: 1, stock: 'none' }] });
+    expect(applyStockChange).toHaveBeenCalledTimes(2);
+    expect((await res.json()).stockProblems).toBeUndefined();
   });
 
   it('receives as recorded without touching stock when lines are left out', async () => {
     await patch({ action: 'receive' });
     const update = vi.mocked(RepDelivery.findOneAndUpdate).mock.calls[0][1] as any;
     expect(update.$set).toMatchObject({ 'lines.0.receivedQuantity': 20, 'lines.1.receivedQuantity': 10 });
-    expect(receiveLineIntoStock).not.toHaveBeenCalled();
+    expect(applyStockChange).not.toHaveBeenCalled();
     expect(requirePermission).not.toHaveBeenCalled();
   });
 
@@ -183,19 +249,31 @@ describe('PATCH /api/rep-deliveries/[id]', () => {
     expect((await (await patch({ action: 'receive' })).json()).code).toBe('DELIVERY_CLOSED');
     vi.mocked(RepDelivery.findOneAndUpdate).mockReturnValueOnce(lean(null) as any);
     expect((await (await patch({ action: 'receive' })).json()).code).toBe('DELIVERY_CLOSED');
-    expect(receiveLineIntoStock).not.toHaveBeenCalled();
+    expect(applyStockChange).not.toHaveBeenCalled();
   });
 
-  it('needs one entry per line, and inventory write to touch stock', async () => {
+  it('needs one entry per line, a whole conversion, and inventory write to touch stock', async () => {
     expect((await patch({ action: 'receive', lines: [{ receivedQuantity: 1, stock: 'none' }] })).status).toBe(400);
+    expect((await patch({ action: 'receive', lines: [{ receivedQuantity: 1, unitsPerPack: 0 }, { receivedQuantity: 1 }] })).status).toBe(400);
     vi.mocked(requirePermission).mockResolvedValueOnce(new Response(null, { status: 403 }) as any);
-    expect((await patch({ action: 'receive', lines: [{ receivedQuantity: 1, stock: 'new' }, { receivedQuantity: 1, stock: 'none' }] })).status).toBe(403);
+    expect((await patch({ action: 'receive', lines: [{ receivedQuantity: 1, stock: { itemId: ITEM } }, { receivedQuantity: 1 }] })).status).toBe(403);
   });
 
-  it('lists a stock line that failed without undoing the receipt', async () => {
-    vi.mocked(receiveLineIntoStock).mockResolvedValueOnce(null);
-    const res = await patch({ action: 'receive', lines: [{ receivedQuantity: 20, stock: '507f1f77bcf86cd799439099' }, { receivedQuantity: 10, stock: 'none' }] });
+  it('lists lines that couldn’t go into stock without undoing the receipt', async () => {
+    vi.mocked(InventoryItem.findOne).mockReturnValueOnce(lean(null) as any);
+    vi.mocked(createInventoryItem).mockResolvedValueOnce({ ok: false, status: 400, error: 'Invalid medicine selected. Please select a medicine from this clinic.' });
+    const res = await patch({
+      action: 'receive',
+      lines: [
+        { receivedQuantity: 20, stock: { itemId: ITEM } },
+        { receivedQuantity: 10, stock: { create: { name: 'Losartan', unit: 'boxes', medicineId: ITEM } } },
+      ],
+    });
     expect(res.status).toBe(200);
-    expect((await res.json()).stockProblems).toEqual([{ line: 0, error: 'That stock item no longer exists.' }]);
+    expect((await res.json()).stockProblems).toEqual([
+      { line: 0, error: 'That stock item no longer exists.' },
+      { line: 1, error: 'Invalid medicine selected. Please select a medicine from this clinic.' },
+    ]);
+    expect(RepStockLink.updateOne).not.toHaveBeenCalled();
   });
 });

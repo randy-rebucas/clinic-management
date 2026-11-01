@@ -103,3 +103,22 @@ describe('POST /api/medical-representatives/products after sharing the row rules
     expect(await bad.json()).toMatchObject({ error: 'Invalid status value.' });
   });
 });
+
+describe('product pack size', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(requireRepSession).mockResolvedValue({ userObjectId: USER, ownerFilter: { userId: USER } } as any);
+    vi.mocked(Product.create).mockImplementation(async (doc: any) => doc);
+    existing([]);
+    vi.mocked(Product.insertMany).mockResolvedValue([] as any);
+  });
+
+  it('keeps a whole pack size and refuses a broken one', async () => {
+    await createOne(req('http://x/api/medical-representatives/products', { ...ROW, packSize: { count: 30, unit: ' tablets ' } }));
+    expect(vi.mocked(Product.create).mock.calls[0][0]).toMatchObject({ packSize: { count: 30, unit: 'tablets' } });
+    const bad = await createOne(req('http://x/api/medical-representatives/products', { ...ROW, packSize: { count: 2.5, unit: 'tablets' } }));
+    expect(await bad.json()).toMatchObject({ error: 'Invalid pack size.' });
+    const rows = await post({ products: [{ ...ROW, packSize: { count: 0, unit: 'x' } }] });
+    expect((await rows.json()).rows).toEqual([{ row: 0, error: 'Invalid pack size.' }]);
+  });
+});

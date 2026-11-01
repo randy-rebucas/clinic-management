@@ -21,6 +21,8 @@ const updateProductSchema = z.object({
   packaging: z.string().trim().min(1).max(200),
   expiryDate: z.coerce.date(),
   status: z.enum(['active', 'discontinued', 'inactive']).optional(),
+  /** What one pack holds ("30 tablets"); null clears it, left out keeps it. */
+  packSize: z.object({ count: z.number().int().min(1).max(10000), unit: z.string().trim().min(1).max(50) }).nullable().optional(),
 });
 
 /**
@@ -84,8 +86,11 @@ export async function PUT(
     const updatedProduct = await Product.findOneAndUpdate(
       { ...rep.ownerFilter, _id: productId },
       {
-        ...(expiryChanged ? { $unset: { expiryAlertSentAt: 1 } } : {}),
+        ...(expiryChanged || body.packSize === null
+          ? { $unset: { ...(expiryChanged ? { expiryAlertSentAt: 1 } : {}), ...(body.packSize === null ? { packSize: 1 } : {}) } }
+          : {}),
         $set: {
+          ...(body.packSize ? { packSize: body.packSize } : {}),
           name: body.name,
           category: body.category,
           manufacturer: body.manufacturer,
