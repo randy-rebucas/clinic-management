@@ -980,7 +980,7 @@ function QueueSection({ form, set, displayPath, canUpload }: { form: ClinicSetti
           label="Let a waiting-room screen show the queue without signing in"
           hint={
             <>
-              Queue numbers and initials only, on the clinic’s own address. Open{' '}
+              Shows queue numbers with each patient’s first name and last-name initial (Juan D.), on the clinic’s own address. Open{' '}
               <a href={displayPath} target="_blank" rel="noreferrer" className={`rounded font-mono text-xs font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
                 {displayPath}
               </a>{' '}

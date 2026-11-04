@@ -11,21 +11,23 @@ vi.mock('@/lib/settings', () => ({ getSettings: vi.fn() }));
 
 import { getSettings } from '@/lib/settings';
 import { verifySession } from '@/app/lib/dal';
-import { canViewQueueDisplay, initials, NEXT_UP_MAX, NOW_SERVING_MAX, shapeQueueDisplay } from '@/lib/queue-display';
+import { canViewQueueDisplay, NEXT_UP_MAX, NOW_SERVING_MAX, shapeQueueDisplay, shortName } from '@/lib/queue-display';
 import { shortQueueNumber } from '@/lib/queue-order';
 
 const entry = (n: number, status: string, extra: Record<string, unknown> = {}) => ({
   queueNumber: `W20261104-${String(n).padStart(3, '0')}`,
+  patient: { firstName: 'Juan', lastName: 'Dela Cruz' },
   patientName: 'Juan Dela Cruz',
   status,
   ...extra,
 });
 
 describe('shapeQueueDisplay', () => {
-  it('never carries a full name onto the board', () => {
+  it('never carries a surname onto the board', () => {
     const data = shapeQueueDisplay([entry(1, 'in-progress'), entry(2, 'waiting')]);
-    expect(JSON.stringify(data)).not.toContain('Juan');
-    expect(data.nowServing[0].initials).toBe('J. D. C.');
+    expect(JSON.stringify(data)).not.toMatch(/Dela|Cruz/);
+    expect(data.nowServing[0].name).toBe('Juan D.');
+    expect(data.nextUp[0].name).toBe('Juan D.');
   });
 
   it('keeps everyone in progress on the board however long the line is', () => {
@@ -66,10 +68,26 @@ describe('shapeQueueDisplay', () => {
   });
 });
 
-describe('initials', () => {
-  it('copes with spacing and a missing name', () => {
-    expect(initials('  ana   maria ')).toBe('A. M.');
-    expect(initials(undefined)).toBe('');
+describe('shortName', () => {
+  it('keeps a two-word first name and takes the surname from its first word', () => {
+    expect(shortName({ firstName: 'Maria Clara', lastName: 'Santos' })).toBe('Maria Clara S.');
+    expect(shortName({ firstName: 'Juan', lastName: 'dela Cruz' })).toBe('Juan D.');
+  });
+
+  it('prefers the patient record over the cached name', () => {
+    expect(shortName({ firstName: 'Ana', lastName: 'Lim' }, 'Old Name')).toBe('Ana L.');
+  });
+
+  it('falls back to the cached name when the record is missing', () => {
+    expect(shortName(null, 'Pedro Reyes')).toBe('Pedro R.');
+    expect(shortName(null, 'Maria Clara Santos')).toBe('Maria S.');
+  });
+
+  it('copes with spacing, a single name and no name at all', () => {
+    expect(shortName(null, '  ana   lim ')).toBe('ana L.');
+    expect(shortName(null, 'Cher')).toBe('Cher');
+    expect(shortName({ firstName: 'Cher', lastName: ' ' })).toBe('Cher');
+    expect(shortName(null, undefined)).toBe('');
   });
 });
 

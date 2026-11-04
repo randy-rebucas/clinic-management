@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import connectDB from '@/lib/mongodb';
 import Queue from '@/models/Queue';
 import '@/models/Doctor';
+import '@/models/Patient';
 import '@/models/Room';
 import { verifySession } from '@/app/lib/dal';
 import { checkInQr } from '@/lib/clinic-checkin';
@@ -16,11 +17,12 @@ export const NEXT_UP_MAX = 4;
 /** A guard on the read only: no clinic has this many people checked in at once. */
 const ACTIVE_MAX = 200;
 
-/** One patient as the waiting room sees them: a number and initials, never a name. */
+/** One patient as the waiting room sees them: a number and a short name, never a surname. */
 export interface DisplayEntry {
   id: string;
   number: string;
-  initials: string;
+  /** First name and last-name initial, e.g. "Juan D." */
+  name: string;
   doctor: string | null;
   room: string | null;
 }
@@ -38,6 +40,7 @@ export interface QueueDisplayData {
 
 interface ActiveEntry {
   queueNumber: string;
+  patient?: { firstName?: string | null; lastName?: string | null } | null;
   patientName?: string | null;
   status: string;
   startedAt?: Date | string | null;
@@ -45,20 +48,25 @@ interface ActiveEntry {
   room?: { name?: string | null; roomNumber?: string | null } | null;
 }
 
-/** "Juan Dela Cruz" -> "J. D. C." so the public screen never shows full names. */
-export function initials(name: unknown): string {
-  return String(name || '')
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((w) => `${w[0].toUpperCase()}.`)
-    .join(' ');
+const words = (text: unknown) => String(text || '').split(/\s+/).filter(Boolean);
+
+/**
+ * "Juan" + "Dela Cruz" -> "Juan D.", so the public screen never shows a surname. The patient
+ * record comes first: the cached full name can't say where a two-word first name ends, so it
+ * is only the fallback, taking its first and last words.
+ */
+export function shortName(patient: ActiveEntry['patient'], cachedName?: string | null): string {
+  const cached = words(cachedName);
+  const first = words(patient?.firstName).join(' ') || cached[0] || '';
+  const last = words(patient?.lastName)[0] ?? (cached.length > 1 ? cached[cached.length - 1] : '');
+  return last ? `${first} ${last[0].toUpperCase()}.`.trim() : first;
 }
 
 function toDisplay(entry: ActiveEntry): DisplayEntry {
   return {
     id: entry.queueNumber,
     number: shortQueueNumber(entry.queueNumber),
-    initials: initials(entry.patientName),
+    name: shortName(entry.patient, entry.patientName),
     doctor: entry.doctor?.lastName ? `Dr. ${entry.doctor.lastName}` : null,
     room: entry.room?.name || entry.room?.roomNumber || null,
   };
@@ -104,7 +112,8 @@ export async function loadQueueDisplay(
 
   const [entries, settings] = await Promise.all([
     Queue.find(query)
-      .select('queueNumber patientName doctor room status startedAt')
+      .select('queueNumber patient patientName doctor room status startedAt')
+      .populate({ path: 'patient', select: 'firstName lastName', match: { tenantIds: tenantObjectId } })
       .populate({ path: 'doctor', select: 'lastName', match: { tenantId: tenantObjectId } })
       .populate({ path: 'room', select: 'name roomNumber', match: { tenantId: tenantObjectId } })
       .sort(QUEUE_SORT)

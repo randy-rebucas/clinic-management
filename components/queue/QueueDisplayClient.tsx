@@ -137,7 +137,7 @@ export default function QueueDisplayClient({
                   >
                     <span className="shrink-0 font-mono text-[max(1.5rem,5.5vmin)] font-semibold leading-none">{e.number}</span>
                     <span className="min-w-0 text-[max(0.875rem,2.3vmin)] leading-snug">
-                      <span className="block truncate">{e.initials}</span>
+                      <span className="block truncate">{e.name}</span>
                       {placeOf(e) && <span className="block truncate font-semibold">{placeOf(e)}</span>}
                     </span>
                   </li>
@@ -157,7 +157,7 @@ export default function QueueDisplayClient({
                 {data.nextUp.slice(0, COMPACT_NEXT).map((e) => (
                   <li key={e.id} className="flex items-center gap-[2.5vmin] py-[0.7vmin]">
                     <span className="shrink-0 font-mono text-[max(1.125rem,3.6vmin)] font-semibold">{e.number}</span>
-                    <span className="min-w-0 flex-1 truncate text-[max(0.875rem,2.4vmin)]">{e.initials}</span>
+                    <span className="min-w-0 flex-1 truncate text-[max(0.875rem,2.4vmin)]">{e.name}</span>
                     <span className="min-w-0 truncate text-[max(0.875rem,2.2vmin)] text-gray-300">{e.doctor}</span>
                   </li>
                 ))}
@@ -199,7 +199,7 @@ export default function QueueDisplayClient({
                 {data.nextUp.map((e) => (
                   <li key={e.id} className="flex items-center gap-[3vmin] py-[1.5vmin]">
                     <span className="w-[16vmin] min-w-20 shrink-0 font-mono text-[max(1.25rem,4vmin)] font-semibold">{e.number}</span>
-                    <span className="min-w-0 flex-1 truncate text-[max(1rem,2.8vmin)]">{e.initials}</span>
+                    <span className="min-w-0 flex-1 truncate text-[max(1rem,2.8vmin)]">{e.name}</span>
                     <span className="shrink-0 truncate text-[max(0.875rem,2.4vmin)] text-gray-300">{e.doctor}</span>
                   </li>
                 ))}
@@ -231,7 +231,10 @@ function CheckInCard({ image }: { image: string }) {
   );
 }
 
-/** The player stays mounted under the ads, so a video isn't restarted each time one shows. */
+/**
+ * The player stays mounted under the ads, so a video isn't restarted each time one shows. YouTube
+ * letterboxes inside its frame, so the frame is sized to cover the slot at 16:9 and the slot trims it.
+ */
 function MediaSlot({ videos, ads }: { videos: string[]; ads: string[] }) {
   const [tick, setTick] = useState(0);
   const hasAds = ads.length > 0;
@@ -243,7 +246,7 @@ function MediaSlot({ videos, ads }: { videos: string[]; ads: string[] }) {
   const showing = adAtTick(tick, ads.length, videos.length > 0);
 
   return (
-    <div className="relative aspect-video overflow-hidden rounded-lg bg-black lg:aspect-auto lg:min-h-0 lg:flex-1 lg:portrait:aspect-video lg:portrait:flex-none">
+    <div className="relative aspect-video overflow-hidden rounded-lg bg-black [container-type:size] lg:aspect-auto lg:min-h-0 lg:flex-1 lg:portrait:aspect-video lg:portrait:flex-none">
       {videos.length > 0 && (
         <iframe
           src={youtubeEmbedUrl(videos)}
@@ -251,7 +254,7 @@ function MediaSlot({ videos, ads }: { videos: string[]; ads: string[] }) {
           allow="autoplay; encrypted-media"
           referrerPolicy="strict-origin-when-cross-origin"
           tabIndex={-1}
-          className="pointer-events-none absolute inset-0 h-full w-full border-0"
+          className="pointer-events-none absolute left-1/2 top-1/2 h-[max(100cqh,calc(100cqw*9/16))] w-[max(100cqw,calc(100cqh*16/9))] -translate-x-1/2 -translate-y-1/2 border-0"
         />
       )}
       {ads.map((url, i) => (
@@ -274,7 +277,7 @@ function ServingCard({ entry, isNew, size }: { entry: DisplayEntry; isNew: boole
   return (
     <li className={`flex min-w-0 flex-col justify-center rounded-lg bg-brand-teal-dark p-[3vmin] ${isNew ? 'ring-[0.8vmin] ring-amber-300 motion-safe:animate-pulse' : ''}`}>
       <p className={`font-mono font-semibold leading-none ${number}`}>{entry.number}</p>
-      <p className={`mt-[1.5vmin] truncate ${detail}`}>{entry.initials}</p>
+      <p className={`mt-[1.5vmin] truncate ${detail}`}>{entry.name}</p>
       {place && <p className={`mt-[0.5vmin] truncate font-semibold ${detail}`}>{place}</p>}
     </li>
   );

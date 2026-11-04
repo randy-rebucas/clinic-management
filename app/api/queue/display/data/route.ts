@@ -4,7 +4,7 @@ import { canViewQueueDisplay, loadQueueDisplay } from '@/lib/queue-display';
 
 /**
  * What the waiting-room screen (/queue/display) refreshes from. Clinic subdomain only, under the
- * same rule as the screen itself; numbers and initials only.
+ * same rule as the screen itself; numbers and short names only.
  */
 export async function GET(request: NextRequest) {
   try {
