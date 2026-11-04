@@ -67,6 +67,12 @@ export interface ISettings extends Document {
     displayVideos: string[];
     /** Ad image addresses the waiting-room screen shows. */
     displayAds: string[];
+    /** How much of a patient's name the waiting-room screen shows. */
+    displayNames: 'first-initial' | 'initials' | 'number';
+    /** Group the waiting-room screen by doctor. */
+    displayByDoctor: boolean;
+    /** A message scrolling along the bottom of the waiting-room screen. */
+    displayTicker: string;
   };
 
   // General Settings
@@ -237,6 +243,9 @@ const SettingsSchema = new Schema<ISettings>(
       patientSelfCheckIn: { type: Boolean, default: false },
       displayVideos: { type: [String], default: [] },
       displayAds: { type: [String], default: [] },
+      displayNames: { type: String, enum: ['first-initial', 'initials', 'number'], default: 'first-initial' },
+      displayByDoctor: { type: Boolean, default: false },
+      displayTicker: { type: String, default: '' },
     },
 
     generalSettings: {

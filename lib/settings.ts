@@ -151,6 +151,9 @@ export function getDefaultSettings() {
       patientSelfCheckIn: false,
       displayVideos: [] as string[],
       displayAds: [] as string[],
+      displayNames: 'first-initial' as const,
+      displayByDoctor: false,
+      displayTicker: '',
     },
     generalSettings: {
       timezone: 'Asia/Manila',

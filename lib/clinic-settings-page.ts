@@ -16,6 +16,7 @@ import { isSMSConfigured } from '@/lib/sms';
 import { isCloudinaryConfigured } from '@/lib/cloudinary';
 import { AUTOMATIONS } from '@/lib/clinic-automations';
 import { birSettingsOf } from '@/lib/bir';
+import { DISPLAY_NAME_STYLES } from '@/lib/queue-media';
 import { philhealthSettingsOf } from '@/lib/philhealth';
 import { CURRENCIES, WEEKDAYS, settingsAreasOf, type ClinicSettingsPageData, type DayHours } from '@/lib/clinic-settings';
 
@@ -108,6 +109,9 @@ export async function loadClinicSettingsPage(tenantIdInput: string): Promise<Cli
       patientSelfCheckIn: s.queueSettings?.patientSelfCheckIn === true,
       displayVideos: Array.from<string>(s.queueSettings?.displayVideos ?? []),
       displayAds: Array.from<string>(s.queueSettings?.displayAds ?? []),
+      displayNames: DISPLAY_NAME_STYLES.includes(s.queueSettings?.displayNames) ? s.queueSettings.displayNames : 'first-initial',
+      displayByDoctor: s.queueSettings?.displayByDoctor === true,
+      displayTicker: String(s.queueSettings?.displayTicker ?? ''),
       prescriptionPaperSize: s.prescriptionPaperSize === 'A5' ? 'A5' : 'A4',
       prescriptionDigitalSignatureEnabled: s.prescriptionDigitalSignatureEnabled !== false,
       sidebarCollapsed: s.displaySettings?.sidebarCollapsed === true,

@@ -13,6 +13,7 @@ import { getSettings } from '@/lib/settings';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { createQueueEntry } from '@/lib/queue-entry';
 import { QUEUE_SORT } from '@/lib/queue-order';
+import { consultMinutesByDoctor, estimateWaits } from '@/lib/queue-wait';
 import { dayRangeInTz } from '@/lib/tz';
 
 const QUEUE_STATUSES = ['waiting', 'in-progress', 'completed', 'cancelled', 'no-show'];
@@ -68,33 +69,13 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .lean();
 
-    // Each doctor runs their own line (unassigned patients share one). Position counts the
-    // waiting patients ahead in that line; the estimate uses the doctor's average consultation
-    // today, else the clinic's default appointment length.
-    const [consults, settings] = await Promise.all([
-      Queue.aggregate([
-        { $match: { tenantId: tenantObjectId, status: 'completed', startedAt: { $gte: todayStart }, completedAt: { $ne: null } } },
-        { $group: { _id: '$doctor', avg: { $avg: { $divide: [{ $subtract: ['$completedAt', '$startedAt'] }, 60_000] } }, n: { $sum: 1 } } },
-      ]),
+    const [avgByDoctor, settings] = await Promise.all([
+      consultMinutesByDoctor(tenantObjectId, todayStart),
       getSettings(tenantId).catch(() => null),
     ]);
     const fallback = (settings as { appointmentSettings?: { defaultDuration?: number } } | null)?.appointmentSettings?.defaultDuration || 15;
-    const avgByDoctor = new Map<string, number>(
-      consults.filter((c: { n: number }) => c.n >= 2).map((c: { _id: unknown; avg: number }) => [String(c._id ?? 'none'), Math.max(5, c.avg)])
-    );
-    const lineKey = (q: any) => String(q.doctor?._id ?? 'none');
-    const busy = new Set(queues.filter((q: any) => q.status === 'in-progress').map(lineKey));
-    const seen = new Map<string, number>();
-
-    const data = queues.map((queue: any) => {
-      if (queue.status !== 'waiting') return queue;
-      const key = lineKey(queue);
-      const ahead = seen.get(key) ?? 0;
-      seen.set(key, ahead + 1);
-      const avg = avgByDoctor.get(key) ?? fallback;
-      const minutes = ahead * avg + (busy.has(key) ? avg / 2 : 0);
-      return { ...queue, position: ahead + 1, estimatedWaitTime: Math.round(minutes / 5) * 5, consultMinutes: Math.round(avg) };
-    });
+    const estimates = estimateWaits(queues as any[], avgByDoctor, fallback);
+    const data = queues.map((queue: any) => ({ ...queue, ...estimates.get(queue) }));
 
     return NextResponse.json({ success: true, data });
   } catch (error: any) {

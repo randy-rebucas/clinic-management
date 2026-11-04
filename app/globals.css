@@ -180,3 +180,23 @@ html {
   }
   .motion-cd-mark { animation-delay: 0s !important; }
 }
+
+/* Waiting-room screen: the scrolling line. Reduced motion gets the message standing still. */
+@keyframes queue-ticker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+.queue-ticker {
+  display: inline-block;
+  padding-left: 100%;
+  white-space: nowrap;
+  animation: queue-ticker 18s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .queue-ticker {
+    display: block;
+    padding: 0 3vmin;
+    white-space: normal;
+    animation: none;
+  }
+}

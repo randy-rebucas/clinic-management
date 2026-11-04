@@ -17,7 +17,7 @@ import { BRANCH_CODE, SERIAL_PREFIX, birSettingsOf, birSetupProblems } from '@/l
 import { philhealthSettingsOf } from '@/lib/philhealth';
 import { AUTOMATIONS } from '@/lib/clinic-automations';
 import { clearTenantCache } from '@/lib/tenant';
-import { AD_IMAGE_URL, MAX_DISPLAY_ADS, MAX_DISPLAY_VIDEOS, YOUTUBE_ID } from '@/lib/queue-media';
+import { AD_IMAGE_URL, DISPLAY_NAME_STYLES, MAX_DISPLAY_ADS, MAX_DISPLAY_TICKER, MAX_DISPLAY_VIDEOS, YOUTUBE_ID } from '@/lib/queue-media';
 
 const AUTOMATION_KEYS = new Set(AUTOMATIONS.map((a) => a.key));
 
@@ -106,6 +106,9 @@ const settingsUpdateSchema = z.object({
       patientSelfCheckIn: z.boolean(),
       displayVideos: z.array(z.string().regex(YOUTUBE_ID)).max(MAX_DISPLAY_VIDEOS),
       displayAds: z.array(z.string().max(500).regex(AD_IMAGE_URL)).max(MAX_DISPLAY_ADS),
+      displayNames: z.enum(DISPLAY_NAME_STYLES),
+      displayByDoctor: z.boolean(),
+      displayTicker: z.string().trim().max(MAX_DISPLAY_TICKER),
     })
     .partial()
     .optional(),

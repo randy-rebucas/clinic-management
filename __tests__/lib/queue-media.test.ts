@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AD_EVERY, AD_IMAGE_URL, adAtTick, youtubeEmbedUrl, youtubeId } from '@/lib/queue-media';
+import { AD_EVERY, AD_IMAGE_URL, adAtTick, youtubeEmbedUrl, youtubeId, spokenCall, waitText } from '@/lib/queue-media';
 
 const ID = 'dQw4w9WgXcQ';
 
@@ -63,5 +63,23 @@ describe('adAtTick', () => {
     const ticks = Array.from({ length: AD_EVERY * 3 }, (_, t) => adAtTick(t, 2, true));
     expect(ticks.filter((a) => a !== null)).toEqual([0, 1, 0]);
     expect(ticks.slice(0, AD_EVERY - 1).every((a) => a === null)).toBe(true);
+  });
+});
+
+describe('spokenCall', () => {
+  it('reads the number out and never a name', () => {
+    expect(spokenCall({ number: 'W-052', room: null })).toBe('Now serving W 0 5 2');
+  });
+
+  it('says where to go, adding "room" to a bare number', () => {
+    expect(spokenCall({ number: 'A-007', room: 'Room 2' })).toBe('Now serving A 0 0 7, please go to Room 2');
+    expect(spokenCall({ number: 'A-007', room: '7' })).toBe('Now serving A 0 0 7, please go to room 7');
+  });
+});
+
+describe('waitText', () => {
+  it('says next instead of zero minutes', () => {
+    expect(waitText(0)).toBe('Next');
+    expect(waitText(15)).toBe('~15 min');
   });
 });

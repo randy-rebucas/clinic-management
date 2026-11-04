@@ -6,6 +6,7 @@
 
 import type { BirSettings } from './bir';
 import type { PhilhealthSettings } from './philhealth';
+import type { DisplayNameStyle } from './queue-media';
 
 export const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 export type Weekday = (typeof WEEKDAYS)[number];
@@ -77,6 +78,12 @@ export interface ClinicSettingsForm {
   displayVideos: string[];
   /** Ad image addresses for the waiting-room screen. */
   displayAds: string[];
+  /** How much of a patient's name the waiting-room screen shows. */
+  displayNames: DisplayNameStyle;
+  /** Group the waiting-room screen by doctor. */
+  displayByDoctor: boolean;
+  /** A message scrolling along the bottom of the waiting-room screen. */
+  displayTicker: string;
   prescriptionPaperSize: 'A4' | 'A5';
   prescriptionDigitalSignatureEnabled: boolean;
   sidebarCollapsed: boolean;

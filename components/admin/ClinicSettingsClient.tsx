@@ -23,7 +23,7 @@ import {
 } from '@/lib/clinic-settings';
 import { BRANCH_CODE, SERIAL_PREFIX, VAT_CLASS_LABEL, formatSerial, formatTin, type BirSettings } from '@/lib/bir';
 import { VAT_CLASSES } from '@/lib/invoice-totals';
-import { MAX_DISPLAY_ADS, MAX_DISPLAY_VIDEOS, youtubeId } from '@/lib/queue-media';
+import { DISPLAY_NAME_LABELS, DISPLAY_NAME_STYLES, MAX_DISPLAY_ADS, MAX_DISPLAY_TICKER, MAX_DISPLAY_VIDEOS, youtubeId, type DisplayNameStyle } from '@/lib/queue-media';
 
 const PRIMARY = `inline-flex items-center justify-center gap-1.5 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`;
 const GHOST = `rounded-md px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-60 ${FOCUS_RING}`;
@@ -39,7 +39,7 @@ const SECTIONS = [
   { id: 'billing', title: 'Billing', keys: ['currency', 'taxRate', 'invoicePrefix', 'allowPartialPayments'] },
   { id: 'bir', title: 'BIR invoicing', keys: ['bir'] },
   { id: 'philhealth', title: 'PhilHealth', keys: ['philhealth'] },
-  { id: 'queue', title: 'Queue', keys: ['autoAssignRooms', 'displayQueuePublicly', 'patientSelfCheckIn', 'displayVideos', 'displayAds'] },
+  { id: 'queue', title: 'Queue', keys: ['autoAssignRooms', 'displayQueuePublicly', 'patientSelfCheckIn', 'displayNames', 'displayByDoctor', 'displayTicker', 'displayVideos', 'displayAds'] },
   { id: 'prescriptions', title: 'Prescriptions', keys: ['prescriptionPaperSize', 'prescriptionDigitalSignatureEnabled'] },
   { id: 'screens', title: 'Staff screens', keys: ['sidebarCollapsed'] },
   { id: 'automations', title: 'Automations', keys: ['automations'] },
@@ -107,6 +107,9 @@ function changesBody(f: ClinicSettingsForm, base: ClinicSettingsForm) {
   if (changed('patientSelfCheckIn')) queue.patientSelfCheckIn = f.patientSelfCheckIn;
   if (changed('displayVideos')) queue.displayVideos = f.displayVideos;
   if (changed('displayAds')) queue.displayAds = f.displayAds;
+  if (changed('displayNames')) queue.displayNames = f.displayNames;
+  if (changed('displayByDoctor')) queue.displayByDoctor = f.displayByDoctor;
+  if (changed('displayTicker')) queue.displayTicker = f.displayTicker.trim();
   if (Object.keys(queue).length) body.queueSettings = queue;
   if (changed('prescriptionPaperSize')) body.prescriptionPaperSize = f.prescriptionPaperSize;
   if (changed('prescriptionDigitalSignatureEnabled')) body.prescriptionDigitalSignatureEnabled = f.prescriptionDigitalSignatureEnabled;
@@ -123,6 +126,7 @@ function asStored(f: ClinicSettingsForm): ClinicSettingsForm {
   const out = { ...f };
   for (const k of ['clinicName', 'clinicAddress', 'clinicPhone', 'clinicEmail', 'clinicWebsite', 'taxId', 'licenseNumber', 'ptr'] as const) out[k] = f[k].trim();
   out.invoicePrefix = f.invoicePrefix.trim();
+  out.displayTicker = f.displayTicker.trim();
   out.locationCode = f.locationCode.trim().toLowerCase();
   out.philhealth = { ...f.philhealth, hciAccreditationNo: f.philhealth.hciAccreditationNo.trim() };
   out.bir = { ...f.bir, registeredName: f.bir.registeredName.trim(), permitNumber: f.bir.permitNumber.trim(), serialPrefix: f.bir.serialPrefix.trim().toUpperCase() };
@@ -980,7 +984,7 @@ function QueueSection({ form, set, displayPath, canUpload }: { form: ClinicSetti
           label="Let a waiting-room screen show the queue without signing in"
           hint={
             <>
-              Shows queue numbers with each patient’s first name and last-name initial (Juan D.), on the clinic’s own address. Open{' '}
+              Shows queue numbers and patient names as chosen below, on the clinic’s own address. Outside opening hours, with nobody in line, it says the clinic is closed. Open{' '}
               <a href={displayPath} target="_blank" rel="noreferrer" className={`rounded font-mono text-xs font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
                 {displayPath}
               </a>{' '}
@@ -1005,6 +1009,44 @@ function QueueSection({ form, set, displayPath, canUpload }: { form: ClinicSetti
           on={form.patientSelfCheckIn}
           onChange={(v) => set('patientSelfCheckIn', v)}
         />
+        <div className="px-5 py-4">
+          <label htmlFor="set-displayNames" className="text-sm font-semibold text-gray-900">
+            Patient names on the waiting-room screen
+          </label>
+          <p className="text-sm text-gray-500">Anyone in the room can read this. Calls spoken aloud only ever say the number and room.</p>
+          <select
+            id="set-displayNames"
+            value={form.displayNames}
+            onChange={(e) => set('displayNames', e.target.value as DisplayNameStyle)}
+            className={`${FIELD} mt-2 sm:max-w-sm`}
+          >
+            {DISPLAY_NAME_STYLES.map((style) => (
+              <option key={style} value={style}>
+                {DISPLAY_NAME_LABELS[style]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <SwitchRow
+          id="set-displayByDoctor"
+          label="Group the waiting-room screen by doctor"
+          hint="Each doctor gets their own card with who they’re seeing and who’s next, up to six doctors (five beside videos). A screen set to one doctor or room stays a single line."
+          on={form.displayByDoctor}
+          onChange={(v) => set('displayByDoctor', v)}
+        />
+        <div className="px-5 py-4">
+          <label htmlFor="set-displayTicker" className="text-sm font-semibold text-gray-900">
+            Scrolling message
+          </label>
+          <p className="text-sm text-gray-500">Runs along the bottom of the screen, like “Flu vaccines available at the front desk”. Leave empty for none.</p>
+          <input
+            id="set-displayTicker"
+            value={form.displayTicker}
+            onChange={(e) => set('displayTicker', e.target.value)}
+            maxLength={MAX_DISPLAY_TICKER}
+            className={`${FIELD} mt-2`}
+          />
+        </div>
         <DisplayVideos videos={form.displayVideos} onChange={(v) => set('displayVideos', v)} />
         <DisplayAds ads={form.displayAds} canUpload={canUpload} onChange={(v) => set('displayAds', v)} />
       </div>

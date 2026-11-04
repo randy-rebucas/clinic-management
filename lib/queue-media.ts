@@ -5,6 +5,26 @@
 
 export const MAX_DISPLAY_VIDEOS = 20;
 export const MAX_DISPLAY_ADS = 10;
+export const MAX_DISPLAY_TICKER = 200;
+
+/** How much of a patient's name the public screen shows. */
+export const DISPLAY_NAME_STYLES = ['first-initial', 'initials', 'number'] as const;
+export type DisplayNameStyle = (typeof DISPLAY_NAME_STYLES)[number];
+export const DISPLAY_NAME_LABELS: Record<DisplayNameStyle, string> = {
+  'first-initial': 'First name and last initial (Juan D.)',
+  initials: 'Initials (J. D.)',
+  number: 'Queue number only',
+};
+
+/** Spelled out so a voice reads "W 0 5 2", not "W minus fifty-two". Never says a name: a room hears this. */
+export function spokenCall({ number, room }: { number: string; room: string | null }): string {
+  const said = number.replace(/[^a-z0-9]/gi, '').split('').join(' ');
+  const place = room ? `, please go to ${/^\d/.test(room) ? `room ${room}` : room}` : '';
+  return `Now serving ${said}${place}`;
+}
+
+/** The wait beside a patient's number. A rough guide, so it never reads as a promise. */
+export const waitText = (minutes: number) => (minutes <= 0 ? 'Next' : `~${minutes} min`);
 
 export const YOUTUBE_ID = /^[\w-]{11}$/;
 /** Ads are only ever images we uploaded: the screen's CSP allows nothing else. */
