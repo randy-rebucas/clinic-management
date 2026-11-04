@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import type { DisplayEntry, DoctorLine, QueueDisplayData } from '@/lib/queue-display';
-import { AD_MS, adAtTick, spokenCall, waitText, youtubeEmbedUrl } from '@/lib/queue-media';
+import { AD_MS, adAtTick, spokenCall, waitText, YOUTUBE_ORIGIN, youtubeEmbedUrl } from '@/lib/queue-media';
 
 /** A called number reaches the room within this, plus the server's few seconds of shared read. */
 const POLL_MS = 20_000;
@@ -13,6 +13,8 @@ const CALL_MS = 9_000;
 /** Lets the chime finish before the voice starts. */
 const SPEAK_AFTER_MS = 700;
 const CALL_CARDS_MAX = 4;
+/** The player ignores commands until it has loaded, so the sound state is repeated, not sent once. */
+const PLAYER_SYNC_MS = 2_000;
 
 const SOUND_KEY = 'queue-display-sound';
 const RELOAD_KEY = 'queue-display-reloaded-for';
@@ -85,8 +87,8 @@ function say(text: string) {
 }
 
 /**
- * Browsers keep a page silent until someone interacts with it, so staff switch sound on once.
- * The choice is remembered: a screen that reloads itself turns sound back on where the browser lets it.
+ * Browsers keep a page silent until someone interacts with it, so staff switch sound on once,
+ * for the calls and the videos alike. The choice is remembered: a screen that reloads itself turns sound back on where the browser lets it.
  */
 function useCallSound(calling: DisplayEntry[]) {
   const [on, setOn] = useState(false);
@@ -272,7 +274,7 @@ export default function QueueDisplayClient({
       ) : hasMedia ? (
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-[3vmin] lg:grid-cols-[3fr_2fr] lg:portrait:grid-cols-1">
           <div className="flex min-h-0 flex-col gap-[2vmin]">
-            <MediaSlot videos={data.media.videos} ads={data.media.ads} />
+            <MediaSlot videos={data.media.videos} ads={data.media.ads} muted={!sound.on || calling.length > 0} />
             {data.checkInImage && <CheckInCard image={data.checkInImage} />}
           </div>
           <div className="flex min-h-0 flex-col gap-[2vmin] overflow-hidden lg:portrait:order-first">
@@ -474,20 +476,36 @@ function CheckInCard({ image }: { image: string }) {
  * The player stays mounted under the ads, so a video isn't restarted each time one shows. YouTube
  * letterboxes inside its frame, so the frame is sized to cover the slot at 16:9 and the slot trims it.
  */
-function MediaSlot({ videos, ads }: { videos: string[]; ads: string[] }) {
+function MediaSlot({ videos, ads, muted }: { videos: string[]; ads: string[]; muted: boolean }) {
   const [tick, setTick] = useState(0);
+  const player = useRef<HTMLIFrameElement>(null);
   const hasAds = ads.length > 0;
+  const hasVideos = videos.length > 0;
+
+  // Quiet for as long as a call is being read out, which can outlast the call on screen.
+  useEffect(() => {
+    if (!hasVideos) return;
+    const sync = () => {
+      const quiet = muted || ('speechSynthesis' in window && window.speechSynthesis.speaking);
+      player.current?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: quiet ? 'mute' : 'unMute', args: [] }), YOUTUBE_ORIGIN);
+    };
+    sync();
+    const id = window.setInterval(sync, PLAYER_SYNC_MS);
+    return () => window.clearInterval(id);
+  }, [muted, hasVideos]);
+
   useEffect(() => {
     if (!hasAds) return;
     const id = window.setInterval(() => setTick((t) => t + 1), AD_MS);
     return () => window.clearInterval(id);
   }, [hasAds]);
-  const showing = adAtTick(tick, ads.length, videos.length > 0);
+  const showing = adAtTick(tick, ads.length, hasVideos);
 
   return (
     <div className="relative aspect-video overflow-hidden rounded-lg bg-black [container-type:size] lg:aspect-auto lg:min-h-0 lg:flex-1 lg:portrait:aspect-video lg:portrait:flex-none">
-      {videos.length > 0 && (
+      {hasVideos && (
         <iframe
+          ref={player}
           src={youtubeEmbedUrl(videos)}
           title="Clinic videos"
           allow="autoplay; encrypted-media"

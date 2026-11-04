@@ -39,6 +39,10 @@ describe('youtubeEmbedUrl', () => {
     expect(url.searchParams.get('autoplay')).toBe('1');
     expect(url.searchParams.get('loop')).toBe('1');
   });
+
+  it('lets the screen control the sound', () => {
+    expect(new URL(youtubeEmbedUrl([ID])).searchParams.get('enablejsapi')).toBe('1');
+  });
 });
 
 describe('AD_IMAGE_URL', () => {

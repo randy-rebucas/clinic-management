@@ -54,10 +54,15 @@ export function youtubeId(input: string): string | null {
  * One looping player for the whole list. Muted, because browsers refuse to autoplay sound, and
  * from the no-cookie host so a public screen sets no YouTube cookies until a video is played.
  */
+/** Where the player runs, and so where the screen sends it mute and unmute. */
+export const YOUTUBE_ORIGIN = 'https://www.youtube-nocookie.com';
+
+/** Starts muted because browsers refuse to autoplay with sound; the screen unmutes it after a tap. */
 export function youtubeEmbedUrl(ids: string[]): string {
   const params = new URLSearchParams({
     autoplay: '1',
     mute: '1',
+    enablejsapi: '1',
     loop: '1',
     playlist: ids.join(','),
     controls: '0',

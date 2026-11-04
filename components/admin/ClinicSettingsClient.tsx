@@ -1073,7 +1073,7 @@ function DisplayVideos({ videos, onChange }: { videos: string[]; onChange: (v: s
         Videos on the waiting-room screen
       </label>
       <p className="text-sm text-gray-500">
-        Paste YouTube links. They play in order and start over, with no sound. YouTube may show its own ads, and a video whose owner blocks embedding won’t play.
+        Paste YouTube links. They play in order and start over. Tap “Turn on sound” on the screen once for sound; videos go quiet while a number is called. YouTube may show its own ads, and a video whose owner blocks embedding won’t play.
       </p>
       <div className="mt-2 flex gap-2">
         <input
