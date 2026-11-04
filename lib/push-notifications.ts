@@ -3,9 +3,13 @@ import { Expo, ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
 import connectDB from '@/lib/mongodb';
 import PushSubscription from '@/models/PushSubscription';
 import MobileDevice, { PushCategory } from '@/models/MobileDevice';
+import User from '@/models/User';
 import { Types } from 'mongoose';
 
 const expo = new Expo();
+
+/** How long a mobile session lasts without the app opening: REFRESH_TOKEN_TTL_SECONDS (60 days). */
+const MOBILE_SESSION_IDLE_MS = 60 * 24 * 60 * 60 * 1000;
 
 let vapidConfigured = false;
 
@@ -125,13 +129,20 @@ export async function sendPushToPatientDevices(
 
 /**
  * Send a push notification to a staff user's registered mobile devices (today: medical
- * representatives signed in to the mobile app). Same Expo delivery as patients.
+ * representatives signed in to the mobile app). Same Expo delivery as patients. A deactivated or
+ * suspended account gets nothing: its phones may still be registered. Nor does a phone that
+ * hasn't opened the app (which registers again on every launch) for as long as a refresh token
+ * lives: its session has ended even if the sign-out never reached the server.
  */
 export async function sendPushToUserDevices(
   userId: string,
   payload: PushPayload
 ): Promise<{ sent: boolean }> {
-  return sendToMobileDevices({ userId: new Types.ObjectId(userId) }, payload);
+  await connectDB();
+  const id = new Types.ObjectId(userId);
+  if (!(await User.exists({ _id: id, status: 'active' }))) return { sent: false };
+  const seenSince = new Date(Date.now() - MOBILE_SESSION_IDLE_MS);
+  return sendToMobileDevices({ userId: id, lastSeenAt: { $gte: seenSince } }, payload);
 }
 
 /**
@@ -151,7 +162,9 @@ export function pushCategoryForTag(tag: string | undefined): PushCategory | null
 }
 
 async function sendToMobileDevices(
-  owner: { patientId: { $in: Types.ObjectId[] }; $or?: Record<string, unknown>[] } | { userId: Types.ObjectId },
+  owner:
+    | { patientId: { $in: Types.ObjectId[] }; $or?: Record<string, unknown>[] }
+    | { userId: Types.ObjectId; lastSeenAt?: { $gte: Date } },
   payload: PushPayload
 ): Promise<{ sent: boolean }> {
   await connectDB();

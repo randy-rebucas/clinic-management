@@ -8,6 +8,8 @@ import RepDelivery, { REP_DELIVERY_KINDS, REP_DELIVERY_STATUSES } from '@/models
 import { isValidId, notFound } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { deliveryClinicOf, MAX_DELIVERY_LINES, notifyClinicOfDelivery } from '@/lib/rep-deliveries';
+import { getClinicForReps, repMayBook } from '@/lib/rep-visits';
+import { repBookingAccess } from '@/lib/rep-billing';
 import { requireRepSession, isRepSessionError } from '../_lib/rep-session';
 import { loadRepProfileForVisits, repDisplayName, visitError } from '../_lib/rep-visit-input';
 
@@ -87,9 +89,10 @@ const createSchema = z.object({
  * POST /api/medical-representatives/deliveries
  * { visitId, kind: "sample" | "delivery", lines: [{ productId, quantity, unit, lotNumber?, expiryDate? }], note? }
  * Records what the rep left at the visit's clinic. The visit must be an approved or completed
- * booking, or an own log entry linked to a clinic (409 VISIT_CANT_DELIVER otherwise). Products
- * are the rep's own active ones; a line without an expiry takes the product's. The clinic is
- * told and confirms receipt.
+ * booking, or an own log entry linked to a clinic the rep may still use (409 VISIT_CANT_DELIVER
+ * otherwise), by a rep with an active subscription (402 SUBSCRIPTION_REQUIRED). Products are the
+ * rep's own active ones; a line without an expiry takes the
+ * product's. The clinic is told and confirms receipt.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -123,6 +126,15 @@ export async function POST(request: NextRequest) {
 
     const profile = await loadRepProfileForVisits(rep);
     if (!profile) return notFound('Representative');
+    // The visit may predate the clinic dropping the rep (or the rep leaving its list).
+    const clinic = await getClinicForReps(clinicId);
+    if (!clinic || !repMayBook(clinic, profile.tenantIds).allowed) {
+      return visitError(409, 'This clinic no longer takes deliveries from you.', 'VISIT_CANT_DELIVER');
+    }
+    // Deliveries are part of the paid rep plan, like booking (free while the plan costs nothing).
+    if (!(await repBookingAccess(profile)).ok) {
+      return visitError(402, 'Recording deliveries needs an active rep subscription.', 'SUBSCRIPTION_REQUIRED');
+    }
 
     const delivery = await RepDelivery.create({
       ...rep.ownerFilter,

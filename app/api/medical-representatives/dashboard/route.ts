@@ -4,14 +4,22 @@ import MedicalRepresentative from '@/models/MedicalRepresentative';
 import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
 import Product from '@/models/Product';
 import SupportRequestModel from '@/models/SupportRequest';
+import { localNow, parseVisitDay } from '@/lib/rep-visit-rules';
 import { requireRepSession, isRepSessionError, repProfileFilter } from '../_lib/rep-session';
 
 const EXPIRY_WINDOW_DAYS = 30;
+/** The rep app's calendar: visit days are clinic days, and the clinics are in the Philippines. */
+const REP_TIME_ZONE = 'Asia/Manila';
+/** Most of today's stops returned for the route (Google Maps takes 9 in between plus the end). */
+const TODAY_LIMIT = 20;
+const VISIT_FIELDS = 'clinicId clinicName clinicLocation purpose date time duration status checkedInAt';
 
 /**
  * GET /api/medical-representatives/dashboard
  * Home-screen summary for the mobile app: profile header, visit/product/support counts and the
- * next few scheduled visits. Month boundaries are UTC (reps are not tied to one clinic's timezone).
+ * next few scheduled visits, plus every scheduled visit today (`todayVisits`, for the route).
+ * "Today" and "this month" are Manila days, as the app shows them; visits are stored at UTC
+ * midnight of their day, so the bounds are UTC midnights of those days.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -21,9 +29,9 @@ export async function GET(request: NextRequest) {
     await connectDB();
 
     const now = new Date();
-    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const nextMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const todayStart = parseVisitDay(localNow(REP_TIME_ZONE, now).day)!;
+    const monthStart = new Date(Date.UTC(todayStart.getUTCFullYear(), todayStart.getUTCMonth(), 1));
+    const nextMonthStart = new Date(Date.UTC(todayStart.getUTCFullYear(), todayStart.getUTCMonth() + 1, 1));
     const expiryCutoff = new Date(now.getTime() + EXPIRY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
     const owner = rep.ownerFilter;
     const thisMonth = { $gte: monthStart, $lt: nextMonthStart };
@@ -36,6 +44,7 @@ export async function GET(request: NextRequest) {
       upcomingVisits,
       pendingRequests,
       nextVisits,
+      todayVisits,
       activeProducts,
       expiringProducts,
       openSupportRequests,
@@ -50,9 +59,14 @@ export async function GET(request: NextRequest) {
       MedicalRepresentativeVisit.countDocuments({ ...owner, date: { $gte: todayStart }, status: 'scheduled' }),
       MedicalRepresentativeVisit.countDocuments({ ...owner, date: { $gte: todayStart }, status: 'requested' }),
       MedicalRepresentativeVisit.find({ ...owner, date: { $gte: todayStart }, status: 'scheduled' })
-        .select('clinicId clinicName clinicLocation purpose date time duration status checkedInAt')
+        .select(VISIT_FIELDS)
         .sort({ date: 1, time: 1 })
         .limit(5)
+        .lean(),
+      MedicalRepresentativeVisit.find({ ...owner, date: todayStart, status: 'scheduled' })
+        .select(VISIT_FIELDS)
+        .sort({ time: 1 })
+        .limit(TODAY_LIMIT)
         .lean(),
       Product.countDocuments({ ...owner, status: 'active' }),
       Product.countDocuments({ ...owner, status: 'active', expiryDate: { $gte: now, $lte: expiryCutoff } }),
@@ -78,6 +92,7 @@ export async function GET(request: NextRequest) {
           openSupportRequests,
         },
         nextVisits,
+        todayVisits,
       },
     });
   } catch (error: any) {

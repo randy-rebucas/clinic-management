@@ -4,7 +4,7 @@ import connectDB from '@/lib/mongodb';
 import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
 import { isValidId, notFound } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
-import { getClinicForReps, slotRemaining, notifyClinicOfVisit } from '@/lib/rep-visits';
+import { getClinicForReps, repMayBook, slotRemaining, notifyClinicOfVisit } from '@/lib/rep-visits';
 import { ACTIVE_CLINIC_STATUSES, parseVisitDay, type RepVisitStatus } from '@/lib/rep-visit-rules';
 import { requireRepSession, isRepSessionError, type RepSession } from '../../_lib/rep-session';
 import { loadRepProfileForVisits, resolveLinkedClinic, resolveVisitProducts, repDisplayName, visitError } from '../../_lib/rep-visit-input';
@@ -36,6 +36,15 @@ const updateClinicVisitSchema = z.object({
   notes: z.preprocess((v) => (v === null ? undefined : v), z.string().trim().max(2000).optional()),
   productIds: z.unknown().optional(),
 });
+
+type CurrentVisit = {
+  clinicId?: unknown;
+  linkedClinicId?: unknown;
+  productIds?: unknown[];
+  date?: Date;
+  time?: string;
+  status: RepVisitStatus;
+};
 
 /**
  * GET /api/medical-representatives/visits/[id]
@@ -85,8 +94,8 @@ export async function PUT(
     await connectDB();
 
     const current = await MedicalRepresentativeVisit.findOne({ ...rep.ownerFilter, _id: visitId })
-      .select('clinicId date time status')
-      .lean<{ clinicId?: unknown; date?: Date; time?: string; status: RepVisitStatus } | null>();
+      .select('clinicId linkedClinicId productIds date time status')
+      .lean<CurrentVisit | null>();
     if (!current) return notFound('Visit');
 
     if (current.clinicId) return updateClinicVisit(request, rep, visitId, current);
@@ -95,9 +104,9 @@ export async function PUT(
     if (isValidationError(parsed)) return parsed;
     const body = parsed.data;
 
-    const productIds = await resolveVisitProducts(rep, body.productIds);
+    const productIds = await resolveVisitProducts(rep, body.productIds, current.productIds);
     if (productIds instanceof NextResponse) return productIds;
-    const linkedClinic = await resolveLinkedClinic(rep, body.linkedClinicId);
+    const linkedClinic = await resolveLinkedClinic(rep, body.linkedClinicId, current.linkedClinicId);
     if (linkedClinic instanceof NextResponse) return linkedClinic;
 
     // A moved visit gets a fresh day-before reminder.
@@ -146,7 +155,7 @@ async function updateClinicVisit(
   request: NextRequest,
   rep: RepSession,
   visitId: string,
-  current: { clinicId?: unknown; date?: Date; time?: string; status: RepVisitStatus }
+  current: CurrentVisit
 ) {
   const parsed = await parseBody(request, updateClinicVisitSchema);
   if (isValidationError(parsed)) return parsed;
@@ -167,7 +176,7 @@ async function updateClinicVisit(
   }
 
   if (body.purpose) set.purpose = body.purpose;
-  const productIds = await resolveVisitProducts(rep, body.productIds);
+  const productIds = await resolveVisitProducts(rep, body.productIds, current.productIds);
   if (productIds instanceof NextResponse) return productIds;
   if (productIds) set.productIds = productIds;
 
@@ -179,14 +188,25 @@ async function updateClinicVisit(
   const moved = !cancelling && (newDate.getTime() !== current.date?.getTime() || time !== current.time);
 
   if (moved) {
-    const clinic = await getClinicForReps(String(current.clinicId));
-    if (!clinic) return visitError(409, 'This clinic no longer takes rep visits.', 'SLOT_UNAVAILABLE');
+    const [clinic, profile] = await Promise.all([getClinicForReps(String(current.clinicId)), loadRepProfileForVisits(rep)]);
+    if (!clinic || !profile || !repMayBook(clinic, profile.tenantIds).allowed) {
+      return visitError(409, 'This clinic no longer takes rep visits.', 'SLOT_UNAVAILABLE');
+    }
     const remaining = await slotRemaining(clinic, day, newDate, time, visitId);
     if (remaining === null) return visitError(400, 'The clinic does not take rep visits at that time.', 'SLOT_UNAVAILABLE');
     if (remaining <= 0) return visitError(409, 'That slot is full. Pick another time.', 'SLOT_FULL');
-    // The clinic answers again for the new time.
+    // Same rule as booking: one open visit per clinic per day.
+    const duplicate = await MedicalRepresentativeVisit.exists({
+      ...rep.ownerFilter,
+      _id: { $ne: visitId },
+      clinicId: current.clinicId,
+      date: newDate,
+      status: { $in: ACTIVE_CLINIC_STATUSES },
+    });
+    if (duplicate) return visitError(409, 'You already have a visit with this clinic that day.', 'DUPLICATE_REQUEST');
+    // The clinic answers again for the new time, and checks the rep in again on the day.
     Object.assign(set, { date: newDate, time, status: 'requested' });
-    Object.assign(unset, { reminderSentAt: 1, respondedAt: 1, respondedBy: 1, clinicNote: 1 });
+    Object.assign(unset, { reminderSentAt: 1, respondedAt: 1, respondedBy: 1, clinicNote: 1, checkedInAt: 1, checkedInBy: 1 });
   }
   if (cancelling) Object.assign(set, { status: 'cancelled', cancelledBy: 'rep' });
 

@@ -18,10 +18,11 @@ import {
 
 /**
  * GET /api/medical-representatives/visits
- * The rep's visits, newest first.
+ * The rep's visits, newest first (`sort=asc`: soonest first).
  * Query params: page (default 1), limit (default 50, max 100),
- *   status? (requested | scheduled | declined | completed | cancelled | no-show),
- *   clinicId? (visits booked with that clinic), from? / to? (ISO dates, inclusive)
+ *   status? (requested | scheduled | declined | completed | cancelled | no-show; several
+ *   comma-separated), clinicId? (visits booked with that clinic), from? / to? (ISO dates, inclusive),
+ *   sort? (desc | asc)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -35,11 +36,18 @@ export async function GET(request: NextRequest) {
     const query: Record<string, unknown> = { ...rep.ownerFilter };
     const status = searchParams.get('status');
     if (status) {
-      if (!(REP_VISIT_STATUSES as readonly string[]).includes(status)) {
+      const statuses = [...new Set(status.split(',').map((s) => s.trim()))];
+      if (statuses.some((s) => !(REP_VISIT_STATUSES as readonly string[]).includes(s))) {
         return NextResponse.json({ success: false, error: 'Invalid status value.' }, { status: 400 });
       }
-      query.status = status;
+      query.status = statuses.length === 1 ? statuses[0] : { $in: statuses };
     }
+    const sortParam = searchParams.get('sort') ?? 'desc';
+    if (sortParam !== 'asc' && sortParam !== 'desc') {
+      return NextResponse.json({ success: false, error: 'Invalid sort value.' }, { status: 400 });
+    }
+    const sort: Record<string, 1 | -1> =
+      sortParam === 'asc' ? { date: 1, time: 1, createdAt: 1 } : { date: -1, createdAt: -1 };
     const clinicId = searchParams.get('clinicId');
     if (clinicId) {
       if (!isValidId(clinicId)) return NextResponse.json({ success: false, error: 'Invalid clinicId.' }, { status: 400 });
@@ -61,7 +69,7 @@ export async function GET(request: NextRequest) {
 
     const [visits, total] = await Promise.all([
       MedicalRepresentativeVisit.find(query)
-        .sort({ date: -1, createdAt: -1 })
+        .sort(sort)
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),

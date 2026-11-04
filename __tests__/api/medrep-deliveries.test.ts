@@ -32,6 +32,11 @@ vi.mock('@/lib/rep-deliveries', async (orig) => ({
   notifyClinicOfDelivery: vi.fn(),
   notifyRepOfDelivery: vi.fn(),
 }));
+vi.mock('@/lib/rep-visits', async (orig) => ({
+  ...(await orig<typeof import('@/lib/rep-visits')>()),
+  getClinicForReps: vi.fn(),
+}));
+vi.mock('@/lib/rep-billing', () => ({ repBookingAccess: vi.fn() }));
 vi.mock('@/lib/inventory-stock', () => ({ applyStockChange: vi.fn() }));
 vi.mock('@/app/api/inventory/_lib/create-item', () => ({ createInventoryItem: vi.fn() }));
 vi.mock('@/models/Inventory', () => ({ default: { findOne: vi.fn() } }));
@@ -48,6 +53,8 @@ import RepDelivery from '@/models/RepDelivery';
 import InventoryItem from '@/models/Inventory';
 import RepStockLink from '@/models/RepStockLink';
 import { deliveryClinicOf, notifyClinicOfDelivery, notifyRepOfDelivery } from '@/lib/rep-deliveries';
+import { getClinicForReps } from '@/lib/rep-visits';
+import { repBookingAccess } from '@/lib/rep-billing';
 import { applyStockChange } from '@/lib/inventory-stock';
 import { createInventoryItem } from '@/app/api/inventory/_lib/create-item';
 import { POST as record } from '@/app/api/medical-representatives/deliveries/route';
@@ -94,6 +101,17 @@ describe('POST /api/medical-representatives/deliveries', () => {
     );
     vi.mocked(loadRepProfileForVisits).mockResolvedValue({ _id: new Types.ObjectId(), firstName: 'Ana', lastName: 'Cruz', company: 'Acme Pharma' } as any);
     vi.mocked(RepDelivery.create).mockImplementation(async (doc: any) => ({ _id: DELIVERY, ...doc, toObject: () => ({ _id: DELIVERY, ...doc }) }));
+    vi.mocked(getClinicForReps).mockResolvedValue({ id: String(CLINIC), settings: { enabled: true, openToAllReps: true } } as any);
+    vi.mocked(repBookingAccess).mockResolvedValue({ ok: true, via: 'individual' });
+  });
+
+  it('402 without a rep subscription, and the clinic hears nothing', async () => {
+    vi.mocked(repBookingAccess).mockResolvedValue({ ok: false });
+    const res = await post(BODY);
+    expect(res.status).toBe(402);
+    expect((await res.json()).code).toBe('SUBSCRIPTION_REQUIRED');
+    expect(RepDelivery.create).not.toHaveBeenCalled();
+    expect(notifyClinicOfDelivery).not.toHaveBeenCalled();
   });
 
   it('records the lines against the visit’s clinic, snapshots the product and tells the clinic', async () => {
@@ -113,6 +131,15 @@ describe('POST /api/medical-representatives/deliveries', () => {
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe('VISIT_CANT_DELIVER');
     expect(RepDelivery.create).not.toHaveBeenCalled();
+  });
+
+  it('409 when the clinic no longer takes the rep (dropped them, or stopped taking reps)', async () => {
+    vi.mocked(getClinicForReps).mockResolvedValue({ id: String(CLINIC), settings: { enabled: true, openToAllReps: false } } as any);
+    const res = await post(BODY);
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('VISIT_CANT_DELIVER');
+    expect(RepDelivery.create).not.toHaveBeenCalled();
+    expect(notifyClinicOfDelivery).not.toHaveBeenCalled();
   });
 
   it('400 for a product that isn’t the rep’s own active one', async () => {
