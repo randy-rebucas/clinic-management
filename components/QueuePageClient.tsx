@@ -14,7 +14,7 @@ import AddToQueueModal from './queue/AddToQueueModal';
 import CheckInQrModal from './queue/CheckInQrModal';
 import VitalsModal, { hasVitals, vitalsSummary, type Vitals } from './queue/VitalsModal';
 import type { QueuePermissions } from '@/lib/queue-page';
-import { QUEUE_PRIORITY } from '@/lib/queue-order';
+import { QUEUE_PRIORITY, shortQueueNumber } from '@/lib/queue-order';
 
 type QueueStatus = 'waiting' | 'in-progress' | 'completed' | 'cancelled' | 'no-show';
 
@@ -72,11 +72,6 @@ const ICONS = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** "W20261016-003" → "W-003"; the full number stays available as a title. */
-function shortNumber(n: string) {
-  const m = /^([A-Z]+)\d{8}-(\d+)$/.exec(n || '');
-  return m ? `${m[1]}-${m[2]}` : n;
-}
 
 const nameOf = (q: QueueEntry) => (q.patient ? `${q.patient.firstName} ${q.patient.lastName}`.trim() : q.patientName || 'Unknown patient');
 const doctorOf = (q: QueueEntry) => (q.doctor ? `Dr. ${q.doctor.firstName} ${q.doctor.lastName}` : null);
@@ -201,7 +196,7 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
     (e: QueueEntry) =>
       (!doctorFilter || lineKey(e) === doctorFilter) &&
       (!typeFilter || e.queueType === typeFilter) &&
-      (!q || nameOf(e).toLowerCase().includes(q) || e.queueNumber.toLowerCase().includes(q) || shortNumber(e.queueNumber).toLowerCase().includes(q) || (e.patient?.patientCode ?? '').toLowerCase().includes(q)),
+      (!q || nameOf(e).toLowerCase().includes(q) || e.queueNumber.toLowerCase().includes(q) || shortQueueNumber(e.queueNumber).toLowerCase().includes(q) || (e.patient?.patientCode ?? '').toLowerCase().includes(q)),
     [doctorFilter, typeFilter, q]
   );
   const withDoctor = entries.filter((e) => e.status === 'in-progress' && matches(e));
@@ -329,6 +324,15 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
             >
               Check-in QR
             </button>
+            <a
+              href="/queue/display"
+              target="_blank"
+              rel="noreferrer"
+              title="Open the screen for the waiting-room TV in a new tab"
+              className={`rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}
+            >
+              Waiting-room screen
+            </a>
             {permissions.canAdd && (
               <button
                 type="button"
@@ -532,7 +536,7 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
       {vitalsFor && (
         <VitalsModal
           patientName={nameOf(vitalsFor)}
-          queueLabel={shortNumber(vitalsFor.queueNumber)}
+          queueLabel={shortQueueNumber(vitalsFor.queueNumber)}
           initial={vitalsFor.vitals}
           onClose={() => setVitalsFor(null)}
           onSave={saveVitals}
@@ -546,8 +550,8 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
             title={confirm.status === 'no-show' ? 'Mark as a no-show?' : 'Remove from the queue?'}
             description={
               confirm.status === 'no-show'
-                ? `${nameOf(confirm.entry)} (${shortNumber(confirm.entry.queueNumber)}) didn't answer when called. Their appointment, if any, is marked as a no-show too.`
-                : `${nameOf(confirm.entry)} (${shortNumber(confirm.entry.queueNumber)}) leaves the queue. Their appointment, if any, is cancelled.`
+                ? `${nameOf(confirm.entry)} (${shortQueueNumber(confirm.entry.queueNumber)}) didn't answer when called. Their appointment, if any, is marked as a no-show too.`
+                : `${nameOf(confirm.entry)} (${shortQueueNumber(confirm.entry.queueNumber)}) leaves the queue. Their appointment, if any, is cancelled.`
             }
           >
             <button
@@ -711,7 +715,7 @@ function Row({
       {/* Number + place in line */}
       <span className="flex items-center gap-3 lg:block">
         <span title={e.queueNumber} className={`inline-block rounded-md px-2 py-1 font-mono text-sm font-semibold tabular-nums ${inRoom ? 'bg-brand-teal-dark text-white' : 'bg-gray-100 text-gray-900'}`}>
-          {shortNumber(e.queueNumber)}
+          {shortQueueNumber(e.queueNumber)}
         </span>
         <span className="text-xs text-gray-500 lg:mt-1 lg:block">{inRoom ? 'In consult' : e.position ? (e.position === 1 ? 'Next in line' : `${ordinal(e.position)} in line`) : ''}</span>
       </span>
@@ -798,7 +802,7 @@ function FinishedRow({ entry: e }: { entry: QueueEntry }) {
   return (
     <li className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-sm">
       <span title={e.queueNumber} className="w-16 font-mono text-gray-500">
-        {shortNumber(e.queueNumber)}
+        {shortQueueNumber(e.queueNumber)}
       </span>
       <span className={`min-w-0 flex-1 truncate ${e.status === 'cancelled' ? 'text-gray-500 line-through decoration-gray-400' : 'text-gray-900'}`}>{nameOf(e)}</span>
       <span className="text-gray-500">{doctorOf(e) ?? ''}</span>

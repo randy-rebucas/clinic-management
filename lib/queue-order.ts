@@ -12,3 +12,9 @@ export function aheadOf(entry: { priority?: number | null; queuedAt: Date | stri
   const at = new Date(entry.queuedAt);
   return { $or: [{ priority: { $gt: p } }, { priority: p, queuedAt: { $lt: at } }] };
 }
+
+/** "W20261016-003" → "W-003", the number people read and say; the date only keeps it unique. */
+export function shortQueueNumber(n: string): string {
+  const m = /^([A-Z]+)\d{8}-(\d+)$/.exec(n || '');
+  return m ? `${m[1]}-${m[2]}` : n;
+}

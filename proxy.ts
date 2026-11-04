@@ -87,7 +87,8 @@ function buildCsp(nonce: string): string {
     "font-src 'self' data:",
     `connect-src 'self'${isProd ? '' : ' ws: wss:'}`,
     // Turnstile (lib/turnstile.ts) renders its challenge in an iframe; its script is allowed by 'strict-dynamic'.
-    "frame-src 'self' https://challenges.cloudflare.com",
+    // YouTube is the waiting-room screen's video player (lib/queue-media.ts).
+    "frame-src 'self' https://challenges.cloudflare.com https://www.youtube-nocookie.com",
     "worker-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",

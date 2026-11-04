@@ -63,6 +63,10 @@ export interface ISettings extends Document {
     displayQueuePublicly: boolean;
     /** Patients may check themselves in from the eMCR app by scanning the clinic check-in QR. */
     patientSelfCheckIn: boolean;
+    /** YouTube video ids the waiting-room screen plays (lib/queue-media.ts). */
+    displayVideos: string[];
+    /** Ad image addresses the waiting-room screen shows. */
+    displayAds: string[];
   };
 
   // General Settings
@@ -231,6 +235,8 @@ const SettingsSchema = new Schema<ISettings>(
       estimatedWaitTimeMinutes: { type: Number, default: 15 },
       displayQueuePublicly: { type: Boolean, default: false },
       patientSelfCheckIn: { type: Boolean, default: false },
+      displayVideos: { type: [String], default: [] },
+      displayAds: { type: [String], default: [] },
     },
 
     generalSettings: {

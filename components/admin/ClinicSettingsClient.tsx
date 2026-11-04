@@ -23,6 +23,7 @@ import {
 } from '@/lib/clinic-settings';
 import { BRANCH_CODE, SERIAL_PREFIX, VAT_CLASS_LABEL, formatSerial, formatTin, type BirSettings } from '@/lib/bir';
 import { VAT_CLASSES } from '@/lib/invoice-totals';
+import { MAX_DISPLAY_ADS, MAX_DISPLAY_VIDEOS, youtubeId } from '@/lib/queue-media';
 
 const PRIMARY = `inline-flex items-center justify-center gap-1.5 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`;
 const GHOST = `rounded-md px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-60 ${FOCUS_RING}`;
@@ -38,7 +39,7 @@ const SECTIONS = [
   { id: 'billing', title: 'Billing', keys: ['currency', 'taxRate', 'invoicePrefix', 'allowPartialPayments'] },
   { id: 'bir', title: 'BIR invoicing', keys: ['bir'] },
   { id: 'philhealth', title: 'PhilHealth', keys: ['philhealth'] },
-  { id: 'queue', title: 'Queue', keys: ['autoAssignRooms', 'displayQueuePublicly', 'patientSelfCheckIn'] },
+  { id: 'queue', title: 'Queue', keys: ['autoAssignRooms', 'displayQueuePublicly', 'patientSelfCheckIn', 'displayVideos', 'displayAds'] },
   { id: 'prescriptions', title: 'Prescriptions', keys: ['prescriptionPaperSize', 'prescriptionDigitalSignatureEnabled'] },
   { id: 'screens', title: 'Staff screens', keys: ['sidebarCollapsed'] },
   { id: 'automations', title: 'Automations', keys: ['automations'] },
@@ -104,6 +105,8 @@ function changesBody(f: ClinicSettingsForm, base: ClinicSettingsForm) {
   if (changed('autoAssignRooms')) queue.autoAssignRooms = f.autoAssignRooms;
   if (changed('displayQueuePublicly')) queue.displayQueuePublicly = f.displayQueuePublicly;
   if (changed('patientSelfCheckIn')) queue.patientSelfCheckIn = f.patientSelfCheckIn;
+  if (changed('displayVideos')) queue.displayVideos = f.displayVideos;
+  if (changed('displayAds')) queue.displayAds = f.displayAds;
   if (Object.keys(queue).length) body.queueSettings = queue;
   if (changed('prescriptionPaperSize')) body.prescriptionPaperSize = f.prescriptionPaperSize;
   if (changed('prescriptionDigitalSignatureEnabled')) body.prescriptionDigitalSignatureEnabled = f.prescriptionDigitalSignatureEnabled;
@@ -246,7 +249,7 @@ export default function ClinicSettingsClient({ data }: { data: ClinicSettingsPag
           <BillingSection form={form} set={set} errors={errors} />
           <BirSection form={form} base={base} set={set} errors={errors} serials={data.serials} />
           <PhilhealthSection form={form} set={set} errors={errors} />
-          <QueueSection form={form} set={set} displayPath={data.displayPath} />
+          <QueueSection form={form} set={set} displayPath={data.displayPath} canUpload={data.services.files} />
           <PrescriptionsSection form={form} set={set} />
           <Section id="screens" title="Staff screens" description="What staff see the first time they sign in on a device.">
             <SwitchRow
@@ -950,7 +953,7 @@ function SwitchRowPlain({ label, hint, on, onChange }: { label: string; hint: Re
   );
 }
 
-function QueueSection({ form, set, displayPath }: { form: ClinicSettingsForm; set: SetFn; displayPath: string }) {
+function QueueSection({ form, set, displayPath, canUpload }: { form: ClinicSettingsForm; set: SetFn; displayPath: string; canUpload: boolean }) {
   const optimising = form.automations.autoQueueOptimization === true;
   return (
     <Section id="queue" title="Queue">
@@ -977,8 +980,11 @@ function QueueSection({ form, set, displayPath }: { form: ClinicSettingsForm; se
           label="Let a waiting-room screen show the queue without signing in"
           hint={
             <>
-              Queue numbers and initials only, on the clinic’s own address. The app has no waiting-room screen of its own yet; this opens the feed at{' '}
-              <span className="font-mono text-xs">{displayPath}</span> for one set up separately. Signed-in staff can always read it.
+              Queue numbers and initials only, on the clinic’s own address. Open{' '}
+              <a href={displayPath} target="_blank" rel="noreferrer" className={`rounded font-mono text-xs font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
+                {displayPath}
+              </a>{' '}
+              on the waiting-room TV. Signed-in staff can always see it.
             </>
           }
           on={form.displayQueuePublicly}
@@ -999,8 +1005,155 @@ function QueueSection({ form, set, displayPath }: { form: ClinicSettingsForm; se
           on={form.patientSelfCheckIn}
           onChange={(v) => set('patientSelfCheckIn', v)}
         />
+        <DisplayVideos videos={form.displayVideos} onChange={(v) => set('displayVideos', v)} />
+        <DisplayAds ads={form.displayAds} canUpload={canUpload} onChange={(v) => set('displayAds', v)} />
       </div>
     </Section>
+  );
+}
+
+function DisplayVideos({ videos, onChange }: { videos: string[]; onChange: (v: string[]) => void }) {
+  const inputId = useId();
+  const [link, setLink] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+  const full = videos.length >= MAX_DISPLAY_VIDEOS;
+  const add = () => {
+    const id = youtubeId(link);
+    if (!id) return setProblem('That doesn’t look like a YouTube video link.');
+    if (videos.includes(id)) return setProblem('That video is already on the list.');
+    onChange([...videos, id]);
+    setLink('');
+    setProblem(null);
+  };
+  return (
+    <div className="px-5 py-4">
+      <label htmlFor={inputId} className="text-sm font-semibold text-gray-900">
+        Videos on the waiting-room screen
+      </label>
+      <p className="text-sm text-gray-500">
+        Paste YouTube links. They play in order and start over, with no sound. YouTube may show its own ads, and a video whose owner blocks embedding won’t play.
+      </p>
+      <div className="mt-2 flex gap-2">
+        <input
+          id={inputId}
+          value={link}
+          onChange={(e) => setLink(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              add();
+            }
+          }}
+          disabled={full}
+          placeholder="https://www.youtube.com/watch?v=…"
+          className={`${FIELD} min-w-0 flex-1`}
+        />
+        <button
+          type="button"
+          onClick={add}
+          disabled={!link.trim() || full}
+          className={`rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 disabled:opacity-50 ${FOCUS_RING}`}
+        >
+          Add video
+        </button>
+      </div>
+      {problem && <Warn>{problem}</Warn>}
+      {videos.length > 0 && (
+        <ul className="mt-2 divide-y divide-gray-100 rounded-md border border-gray-200">
+          {videos.map((id) => (
+            <li key={id} className="flex items-center justify-between gap-3 px-3 py-2">
+              <a
+                href={`https://www.youtube.com/watch?v=${id}`}
+                target="_blank"
+                rel="noreferrer"
+                className={`rounded font-mono text-sm text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}
+              >
+                {id}
+              </a>
+              <button
+                type="button"
+                onClick={() => onChange(videos.filter((v) => v !== id))}
+                aria-label={`Remove video ${id}`}
+                className={`rounded text-sm font-semibold text-gray-600 hover:text-red-700 ${FOCUS_RING}`}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function DisplayAds({ ads, canUpload, onChange }: { ads: string[]; canUpload: boolean; onChange: (v: string[]) => void }) {
+  const inputId = useId();
+  const [uploading, setUploading] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const full = ads.length >= MAX_DISPLAY_ADS;
+  const upload = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    setProblem(null);
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      const res = await fetch('/api/queue/display/ads', { method: 'POST', body });
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success) onChange([...ads, json.data.url]);
+      else setProblem(json?.error || 'The image could not be stored.');
+    } catch {
+      setProblem('The server couldn’t be reached. Try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+  return (
+    <div className="px-5 py-4">
+      <p className="text-sm font-semibold text-gray-900">Ads on the waiting-room screen</p>
+      <p className="text-sm text-gray-500">
+        Widescreen images (16:9; JPEG, PNG or WebP; up to 5 MB). Each shows for 10 seconds: once a minute over the videos, or one after another if there are none. Everyone in the room sees them, so keep patient details out.
+      </p>
+      {!canUpload && <Warn>File storage isn’t set up on this server, so images can’t be added. See Outside services below.</Warn>}
+      {problem && <Warn>{problem}</Warn>}
+      {ads.length > 0 && (
+        <ul className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {ads.map((url, i) => (
+            <li key={url} className="overflow-hidden rounded-md border border-gray-200">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt={`Ad ${i + 1}`} className="aspect-video w-full bg-gray-100 object-contain" />
+              <button
+                type="button"
+                onClick={() => onChange(ads.filter((a) => a !== url))}
+                aria-label={`Remove ad ${i + 1}`}
+                className={`w-full px-2 py-1.5 text-sm font-semibold text-gray-600 hover:text-red-700 ${FOCUS_RING}`}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {canUpload && (
+        <label
+          htmlFor={inputId}
+          className={`mt-2 inline-block rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-teal ${uploading || full ? 'opacity-50' : 'cursor-pointer hover:border-gray-900'}`}
+        >
+          {uploading ? 'Uploading…' : 'Add an image'}
+          <input
+            id={inputId}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            disabled={uploading || full}
+            className="sr-only"
+            onChange={(e) => {
+              void upload(e.target.files?.[0]);
+              e.target.value = '';
+            }}
+          />
+        </label>
+      )}
+    </div>
   );
 }
 

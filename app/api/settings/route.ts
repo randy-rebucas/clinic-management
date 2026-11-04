@@ -17,6 +17,7 @@ import { BRANCH_CODE, SERIAL_PREFIX, birSettingsOf, birSetupProblems } from '@/l
 import { philhealthSettingsOf } from '@/lib/philhealth';
 import { AUTOMATIONS } from '@/lib/clinic-automations';
 import { clearTenantCache } from '@/lib/tenant';
+import { AD_IMAGE_URL, MAX_DISPLAY_ADS, MAX_DISPLAY_VIDEOS, YOUTUBE_ID } from '@/lib/queue-media';
 
 const AUTOMATION_KEYS = new Set(AUTOMATIONS.map((a) => a.key));
 
@@ -103,6 +104,8 @@ const settingsUpdateSchema = z.object({
       estimatedWaitTimeMinutes: zNum(0, 1440),
       displayQueuePublicly: z.boolean(),
       patientSelfCheckIn: z.boolean(),
+      displayVideos: z.array(z.string().regex(YOUTUBE_ID)).max(MAX_DISPLAY_VIDEOS),
+      displayAds: z.array(z.string().max(500).regex(AD_IMAGE_URL)).max(MAX_DISPLAY_ADS),
     })
     .partial()
     .optional(),

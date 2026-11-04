@@ -429,7 +429,7 @@ myclinicsoft/
 - `DELETE /api/queue/[id]` - Remove from queue
 - `GET /api/queue/[id]/qr-code` - Get QR code
 - `POST /api/queue/check-in` - Check in patient
-- `GET /api/queue/display` - Get display data (for TV screens)
+- `GET /api/queue/display/data` - Get the waiting-room screen's data (`/queue/display`; the old `/api/queue/display` redirects there)
 
 ### Referrals
 - `GET /api/referrals` - Get all referrals

@@ -149,6 +149,8 @@ export function getDefaultSettings() {
       estimatedWaitTimeMinutes: 15,
       displayQueuePublicly: false,
       patientSelfCheckIn: false,
+      displayVideos: [] as string[],
+      displayAds: [] as string[],
     },
     generalSettings: {
       timezone: 'Asia/Manila',

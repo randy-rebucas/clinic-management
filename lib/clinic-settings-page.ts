@@ -106,6 +106,8 @@ export async function loadClinicSettingsPage(tenantIdInput: string): Promise<Cli
       autoAssignRooms: s.queueSettings?.autoAssignRooms === true,
       displayQueuePublicly: s.queueSettings?.displayQueuePublicly === true,
       patientSelfCheckIn: s.queueSettings?.patientSelfCheckIn === true,
+      displayVideos: Array.from<string>(s.queueSettings?.displayVideos ?? []),
+      displayAds: Array.from<string>(s.queueSettings?.displayAds ?? []),
       prescriptionPaperSize: s.prescriptionPaperSize === 'A5' ? 'A5' : 'A4',
       prescriptionDigitalSignatureEnabled: s.prescriptionDigitalSignatureEnabled !== false,
       sidebarCollapsed: s.displaySettings?.sidebarCollapsed === true,
@@ -119,7 +121,7 @@ export async function loadClinicSettingsPage(tenantIdInput: string): Promise<Cli
     version: doc?.updatedAt ? new Date(doc.updatedAt).toISOString() : '',
     timezones: timezones(zone),
     services: { email: isEmailConfigured(), sms: isSMSConfigured(), files: isCloudinaryConfigured() },
-    displayPath: '/api/queue/display',
+    displayPath: '/queue/display',
     now: new Date().toISOString(),
     plan: { teleconsult },
     serials: {

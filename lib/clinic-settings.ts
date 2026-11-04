@@ -73,6 +73,10 @@ export interface ClinicSettingsForm {
   displayQueuePublicly: boolean;
   /** Patients may check in from the app by scanning the clinic check-in QR. */
   patientSelfCheckIn: boolean;
+  /** YouTube video ids for the waiting-room screen. */
+  displayVideos: string[];
+  /** Ad image addresses for the waiting-room screen. */
+  displayAds: string[];
   prescriptionPaperSize: 'A4' | 'A5';
   prescriptionDigitalSignatureEnabled: boolean;
   sidebarCollapsed: boolean;
