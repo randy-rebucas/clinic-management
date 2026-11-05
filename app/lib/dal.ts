@@ -73,7 +73,9 @@ export interface SessionPayload extends JWTPayload {
 }
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const SESSION_CHECK_TTL_MS = 30 * 1000;
+// Longer than the 30 s pollers (queue desk, chat list, patient app): at exactly 30 s nearly every
+// poll found the entry just expired and read the database again.
+const SESSION_CHECK_TTL_MS = 45 * 1000;
 
 function cookieOptions(expires: Date) {
   return {

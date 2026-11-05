@@ -7,6 +7,8 @@ import { AD_MS, adAtTick, spokenCall, waitText, YOUTUBE_ORIGIN, youtubeEmbedUrl 
 
 /** A called number reaches the room within this, plus the server's few seconds of shared read. */
 const POLL_MS = 20_000;
+/** A closed clinic's board. The first patient of the day shows within this time. */
+const CLOSED_POLL_MS = 5 * 60_000;
 const CLOCK_MS = 15_000;
 /** How long a new call fills the screen. Shorter than a poll, so calls never stack up. */
 const CALL_MS = 9_000;
@@ -170,6 +172,7 @@ export default function QueueDisplayClient({
   const [lastGood, setLastGood] = useState(() => Date.now());
   const [offline, setOffline] = useState(false);
   const [switchedOff, setSwitchedOff] = useState(false);
+  const closed = useRef(!!initial.closed);
   const lastCall = useRef(latestCall(initial.nowServing));
   const nextIds = useRef(initial.nextUp.map((e) => e.id));
   const sound = useCallSound(calling);
@@ -179,9 +182,11 @@ export default function QueueDisplayClient({
   // alone: keep the last board, say it may be out of date, and keep trying.
   useEffect(() => {
     let inFlight = false;
+    let lastLoad = Date.now();
     const load = async () => {
       if (inFlight || document.visibilityState !== 'visible') return;
       inFlight = true;
+      lastLoad = Date.now();
       try {
         const res = await fetch(`/api/queue/display/data${query ? `?${query}` : ''}`, { cache: 'no-store' });
         if (res.status === 403) {
@@ -191,6 +196,7 @@ export default function QueueDisplayClient({
         const body = await res.json();
         if (!res.ok || !body.success) throw new Error(body.error);
         const next: QueueDisplayData = body.data;
+        closed.current = !!next.closed;
         // By call time, not by who is newly listed: someone older can return to a capped board.
         // Someone just seen waiting counts too, which catches a patient called back in.
         const newly = next.nowServing.filter((e) => (e.calledAt ?? 0) > lastCall.current || nextIds.current.includes(e.id));
@@ -209,7 +215,9 @@ export default function QueueDisplayClient({
         inFlight = false;
       }
     };
-    const poll = window.setInterval(load, POLL_MS);
+    const poll = window.setInterval(() => {
+      if (!closed.current || Date.now() - lastLoad >= CLOSED_POLL_MS) void load();
+    }, POLL_MS);
     document.addEventListener('visibilitychange', load);
     return () => {
       window.clearInterval(poll);

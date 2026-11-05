@@ -8,8 +8,8 @@ import { useMessaging } from './MessagingProvider';
 import { ACTION_ICONS, ActionMenu, CHAT_FOCUS_RING, formatDayLabel, type ChatAction } from './ChatParts';
 import { startVisiblePoll } from '@/lib/visible-poll';
 
-// An open thread checks for new messages every 5 s while the tab is in use, every 30 s once idle.
-const POLL_MS = 5000;
+// An open thread checks for new messages every 10 s while the tab is in use, every 30 s once idle.
+const POLL_MS = 10_000;
 const IDLE_POLL_MS = 30_000;
 
 type ThreadMessage = ChatMessage & { pending?: boolean };

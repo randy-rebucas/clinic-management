@@ -13,7 +13,8 @@ import { getSettings } from '@/lib/settings';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { createQueueEntry } from '@/lib/queue-entry';
 import { QUEUE_SORT } from '@/lib/queue-order';
-import { consultMinutesByDoctor, estimateWaits } from '@/lib/queue-wait';
+import { estimateWaits } from '@/lib/queue-wait';
+import { rememberedConsultMinutes } from '@/lib/queue-display';
 import { dayRangeInTz } from '@/lib/tz';
 
 const QUEUE_STATUSES = ['waiting', 'in-progress', 'away', 'completed', 'cancelled', 'no-show'];
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
       .lean();
 
     const [avgByDoctor, settings] = await Promise.all([
-      consultMinutesByDoctor(tenantObjectId, todayStart),
+      rememberedConsultMinutes(tenantId, todayStart, queues as { _id: unknown; status?: string }[]),
       getSettings(tenantId).catch(() => null),
     ]);
     const fallback = (settings as { appointmentSettings?: { defaultDuration?: number } } | null)?.appointmentSettings?.defaultDuration || 15;

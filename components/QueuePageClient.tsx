@@ -15,6 +15,7 @@ import CheckInQrModal from './queue/CheckInQrModal';
 import VitalsModal, { hasVitals, vitalsSummary, type Vitals } from './queue/VitalsModal';
 import type { QueuePermissions } from '@/lib/queue-page';
 import { QUEUE_PRIORITY, consultBlocker, nextCalledNotice, shortQueueNumber, type NextCalled } from '@/lib/queue-order';
+import { startVisiblePoll } from '@/lib/visible-poll';
 
 type QueueStatus = 'waiting' | 'in-progress' | 'away' | 'completed' | 'cancelled' | 'no-show';
 
@@ -42,6 +43,8 @@ interface QueueEntry {
 }
 
 const POLL_MS = 30_000;
+/** A desk nobody has touched for 5 minutes. Any input brings it back to POLL_MS. */
+const IDLE_POLL_MS = 120_000;
 /** Waits past these read amber, then red with a "Long wait" label (colour never alone). */
 const WAIT_WARN = 30;
 const WAIT_ALERT = 60;
@@ -128,23 +131,21 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
   const [vitalsFor, setVitalsFor] = useState<QueueEntry | null>(null);
   const [confirm, setConfirm] = useState<{ entry: QueueEntry; status: 'no-show' | 'cancelled' } | null>(null);
 
-  // The queue moves on its own: refresh every 30 s while the tab is visible, and keep wait clocks current.
+  // The queue moves on its own: refresh while the tab is visible, less often once the desk is idle.
+  // Wait clocks run on their own timer, so they stay current between refreshes.
   const reload = queue.reload;
   useEffect(() => {
-    const id = window.setInterval(() => {
-      setNow(Date.now());
-      if (document.visibilityState === 'visible') reload();
-    }, POLL_MS);
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') {
+    const clock = window.setInterval(() => setNow(Date.now()), POLL_MS);
+    const stopPolling = startVisiblePoll(
+      () => {
         setNow(Date.now());
         reload();
-      }
-    };
-    document.addEventListener('visibilitychange', onVisible);
+      },
+      { activeMs: POLL_MS, idleMs: IDLE_POLL_MS }
+    );
     return () => {
-      window.clearInterval(id);
-      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(clock);
+      stopPolling();
     };
   }, [reload]);
 

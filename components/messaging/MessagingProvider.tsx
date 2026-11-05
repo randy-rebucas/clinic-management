@@ -4,8 +4,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { DELETED_MESSAGE_PREVIEW, type ChatMessage, type ConversationSummary } from '@/lib/messaging';
 import { startVisiblePoll } from '@/lib/visible-poll';
 
-// The conversation list refreshes every 30 s while the tab is in use, every 5 min once idle.
-const POLL_MS = 30_000;
+// The conversation list refreshes every 60 s while the tab is in use, every 5 min once idle.
+const POLL_MS = 60_000;
 const IDLE_POLL_MS = 300_000;
 // How many chat windows the floating dock keeps open side by side
 const MAX_OPEN_CHATS = 2;

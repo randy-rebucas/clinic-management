@@ -208,6 +208,21 @@ function remembered<T>(store: Map<string, { at: number; value: Promise<T> }>, ke
   return value;
 }
 
+/**
+ * The clinic's average consult minutes by doctor. Keyed on who is in consult, so a finished consult
+ * shows at once, on every server instance.
+ */
+export function rememberedConsultMinutes(
+  tenantId: string,
+  todayStart: Date,
+  entries: { _id: unknown; status?: string }[]
+): Promise<Map<string, number>> {
+  const inConsult = entries.filter((e) => e.status === 'in-progress').map((e) => String(e._id)).sort().join(',');
+  return remembered(consults, `${tenantId}|${todayStart.getTime()}|${inConsult}`, CONSULT_TTL_MS, () =>
+    consultMinutesByDoctor(new Types.ObjectId(tenantId), todayStart)
+  );
+}
+
 async function readBoard(tenantId: string, doctorId: string, roomId: string): Promise<QueueDisplayData> {
   await connectDB();
   const tenantObjectId = new Types.ObjectId(tenantId);
@@ -233,9 +248,7 @@ async function readBoard(tenantId: string, doctorId: string, roomId: string): Pr
   ]);
 
   const { start: todayStart } = dayRangeInTz(new Date(), timeZone);
-  // Keyed on who is in consult, so a finished consult shows at once, on every server instance.
-  const inConsult = entries.filter((e) => e.status === 'in-progress').map((e) => String(e._id)).sort().join(',');
-  const averages = await remembered(consults, `${tenantId}|${todayStart.getTime()}|${inConsult}`, CONSULT_TTL_MS, () => consultMinutesByDoctor(tenantObjectId, todayStart));
+  const averages = await rememberedConsultMinutes(tenantId, todayStart, entries as { _id: unknown; status?: string }[]);
   const waits = estimateWaits(entries, averages, settings?.appointmentSettings?.defaultDuration || 15);
 
   const queueSettings = settings?.queueSettings;
