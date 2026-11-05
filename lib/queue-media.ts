@@ -24,7 +24,13 @@ export function spokenCall({ number, room }: { number: string; room: string | nu
 }
 
 /** The wait beside a patient's number. A rough guide, so it never reads as a promise. */
-export const waitText = (minutes: number) => (minutes <= 0 ? 'Next' : `~${minutes} min`);
+export function waitText(minutes: number) {
+  if (minutes <= 0) return 'Next';
+  if (minutes < 60) return `~${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `~${hours} hr ${rest} min` : `~${hours} hr`;
+}
 
 export const YOUTUBE_ID = /^[\w-]{11}$/;
 /** Ads are only ever images we uploaded: the screen's CSP allows nothing else. */

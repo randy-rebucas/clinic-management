@@ -85,5 +85,9 @@ describe('waitText', () => {
   it('says next instead of zero minutes', () => {
     expect(waitText(0)).toBe('Next');
     expect(waitText(15)).toBe('~15 min');
+    expect(waitText(55)).toBe('~55 min');
+    expect(waitText(60)).toBe('~1 hr');
+    expect(waitText(75)).toBe('~1 hr 15 min');
+    expect(waitText(195)).toBe('~3 hr 15 min');
   });
 });
