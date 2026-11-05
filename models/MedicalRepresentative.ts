@@ -66,6 +66,8 @@ export interface IMedicalRepresentative extends Document {
 
   // Activation and payment tracking
   isActivated: { type: boolean, default: false }; // Whether the medical rep has completed payment and activation
+  /** Set-password invite held until activation (lib/medrep-invite.ts). */
+  inviteDeferred?: boolean;
   activationDate?: { type: Date, default: undefined }; // Date when they became activated
   paymentStatus: { type: string, enum: ['pending', 'completed', 'failed', 'refunded'], default: 'pending' };
   paymentDate?: Date; // When payment was processed
@@ -183,6 +185,8 @@ const MedicalRepresentativeSchema: Schema = new Schema(
       enum: ['active', 'inactive', 'on-leave'],
       default: 'inactive',
     },
+    inviteDeferred: { type: Boolean },
+
     // Activation and payment tracking
     isActivated: {
       type: Boolean,
@@ -307,7 +311,7 @@ MedicalRepresentativeSchema.post('save', async function (doc) {
       medicalRepresentativeProfile: doc._id,
       tenantId: undefined, // Medical representatives are not tied to a specific tenant
     });
-    sendInviteInBackground({ email, name, token, tenantId: null, kind: 'invite' });
+    if (!doc.inviteDeferred) sendInviteInBackground({ email, name, token, tenantId: null, kind: 'invite' });
 
     // Link the User to this MedicalRepresentative using updateOne to avoid triggering save again
     await doc.updateOne({ userId: newUser._id });

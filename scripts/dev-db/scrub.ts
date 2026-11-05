@@ -35,7 +35,7 @@ const LAST_NAMES = [
 
 /** Copies of data, credentials and device links; emptied (not dropped, so their indexes stay). */
 const EMPTY = [
-  'otpchallenges', 'smsmessages', 'smspreferences', 'smsusages',
+  'otpchallenges', 'smsmessages', 'smspreferences', 'smsusages', 'repsignups',
   'backuprecords', 'refreshtokens', 'platformnonces', 'webhookdeliveries', 'mobiledevices', 'pushsubscriptions', 'apikeys',
   // Point at production Blob files that dev can't (and shouldn't) read.
   'auditlogarchives',

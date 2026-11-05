@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomBytes } from 'crypto';
 import connectDB from '@/lib/mongodb';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
+import RepSignup from '@/models/RepSignup';
 import User from '@/models/User';
 import { sendEmail } from '@/lib/email';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
-import { createCheckoutSession, isPayMongoConfigured } from '@/lib/paymongo';
-import { getPlatformFees } from '@/lib/platform-config';
 import { isMedRepSelfSignupEnabled } from '@/lib/medrep-signup';
 import { turnstileRejection } from '@/lib/turnstile';
+import { hashInviteToken } from '@/lib/user-invite';
+
+const SIGNUP_LINK_TTL_MS = 24 * 60 * 60 * 1000;
 
 interface OnboardingRequest {
     firstName: string;
@@ -97,99 +100,57 @@ export async function POST(request: NextRequest) {
         const captchaRejected = await turnstileRejection(request, body.turnstileToken);
         if (captchaRejected) return captchaRejected;
 
-        // One reply for both, so this form can't be used to find out who has a staff account.
         const email = body.email.toLowerCase().trim();
+
+        // Per address, so the form can't be pointed at someone's inbox.
+        const emailLimited = await applyRateLimit(request, rateLimiters.repSignupEmail, email);
+        if (emailLimited) return emailLimited;
+
+        const base = (process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin).replace(/\/$/, '');
+
+        // Both paths send one email and answer the same, so this form can't show who has an account.
         const emailTaken = (await MedicalRepresentative.findOne({ email })) || (await User.findOne({ email }));
         if (emailTaken) {
-            return NextResponse.json(
+            await sendEmail({
+                to: email,
+                subject: 'Someone tried to register with this email',
+                html: `<p>This email already has an account, so no new registration was made.</p>
+<p>If this was you, sign in instead. If it wasn't, you can ignore this email.</p>`,
+            });
+        } else {
+            const token = randomBytes(32).toString('base64url');
+            await RepSignup.updateOne(
+                { email },
                 {
-                    success: false,
-                    error: 'We could not complete your registration with these details. Please contact support.',
+                    $set: {
+                        tokenHash: hashInviteToken(token),
+                        expiresAt: new Date(Date.now() + SIGNUP_LINK_TTL_MS),
+                        fields: {
+                            firstName: body.firstName.trim(),
+                            lastName: body.lastName.trim(),
+                            phone: body.phone.trim(),
+                            company: body.company.trim(),
+                            territory: body.territory?.trim(),
+                            products: body.products || [],
+                            title: body.title?.trim(),
+                            bio: body.bio?.trim(),
+                        },
+                    },
                 },
-                { status: 409 }
+                { upsert: true }
             );
-        }
-
-        // All self-registrations are inactive until an admin or payment webhook activates them
-        const medicalRep = new MedicalRepresentative({
-            firstName: body.firstName.trim(),
-            lastName: body.lastName.trim(),
-            email: body.email.toLowerCase().trim(),
-            phone: body.phone.trim(),
-            company: body.company.trim(),
-            territory: body.territory?.trim(),
-            products: body.products || [],
-            title: body.title?.trim(),
-            bio: body.bio?.trim(),
-            status: 'inactive',
-            isActivated: false,
-            paymentStatus: 'pending',
-        });
-
-        await medicalRep.save();
-
-        // Send confirmation email (escape all user-supplied values)
-        if (medicalRep.email) {
-            try {
-                const esc = (s: string) => s
-                    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-                await sendEmail({
-                    to: medicalRep.email,
-                    subject: 'Medical Representative Registration Received',
-                    html: `
-          <h1>Welcome, ${esc(medicalRep.firstName)}!</h1>
-          <p>Your registration as a Medical Representative has been received and is pending admin review.</p>
-          <p><strong>Status:</strong> Pending activation</p>
-          <p>Your account requires payment verification before you can log in. Our team will contact you shortly.</p>
-          <p>If you have any questions, please contact support.</p>
-        `,
-                });
-            } catch (emailError: any) {
-                console.warn('Failed to send confirmation email:', emailError.message);
-                // Don't fail the registration if email fails
-            }
-        }
-        // With PayMongo and a fee set, the rep pays online and is activated when PayMongo confirms it.
-        let checkoutUrl: string | undefined;
-        const fee = (await getPlatformFees()).medrepActivationFee;
-        if ((await isPayMongoConfigured()) && fee >= 20) {
-            try {
-                const origin = request.headers.get('origin') || (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
-                const checkout = await createCheckoutSession({
-                    name: 'MyClinicSoft medical representative activation',
-                    amount: fee,
-                    description: `Activation for ${medicalRep.firstName} ${medicalRep.lastName}, ${medicalRep.company}`,
-                    referenceNumber: `MR-${String(medicalRep._id).slice(-8).toUpperCase()}`,
-                    successUrl: `${origin}/medical-representatives/onboard/success?id=${medicalRep._id}&paid=1`,
-                    cancelUrl: `${origin}/medical-representatives/onboard/success?id=${medicalRep._id}`,
-                    email: medicalRep.email,
-                    metadata: { purpose: 'medrep', repId: String(medicalRep._id), amount: String(fee) },
-                });
-                checkoutUrl = checkout.checkoutUrl;
-                medicalRep.paymentAmount = fee;
-                await medicalRep.save();
-            } catch (err) {
-                // Registration stands; the rep can be activated by hand as before.
-                console.error('PayMongo activation checkout failed:', err);
-            }
+            await sendEmail({
+                to: email,
+                subject: 'Confirm your medical representative registration',
+                html: `<p>Confirm this email to finish registering as a medical representative. The link works for 24 hours.</p>
+<p><a href="${base}/medical-representatives/onboard/confirm?token=${token}">Confirm my registration</a></p>
+<p>If you didn't ask for this, you can ignore this email and nothing will happen.</p>`,
+            });
         }
 
         return NextResponse.json(
-            {
-                success: true,
-                checkoutUrl,
-                message: checkoutUrl
-                    ? 'Medical representative registered. Pay the activation fee to activate the account.'
-                    : 'Medical representative registered. Awaiting payment verification and admin activation.',
-                medicalRepresentative: {
-                    id: medicalRep._id,
-                    name: `${medicalRep.firstName} ${medicalRep.lastName}`,
-                    email: medicalRep.email,
-                    company: medicalRep.company,
-                },
-            },
-            { status: 201 }
+            { success: true, message: 'Check your email to finish registering.' },
+            { status: 202 }
         );
     } catch (error: any) {
         console.error('Medical representative onboarding error:', error);

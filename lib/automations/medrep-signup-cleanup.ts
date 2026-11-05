@@ -5,17 +5,17 @@ import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
 import Product from '@/models/Product';
 import User from '@/models/User';
 
-/** Long past a PayMongo checkout, with room for the team to reach a rep about a manual payment. */
+/** Long past a PayMongo checkout. */
 export const UNPAID_SIGNUP_DAYS = 14;
 const BATCH_LIMIT = 200;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Remove public rep signups that never paid. Anyone can register any address, and an abandoned
- * signup would otherwise hold that email against its real owner forever.
+ * Remove public rep signups that abandoned their online payment, freeing the address.
  *
- * Clinic-added reps carry `tenantIds`, so they never match. A record with any payment, team or
- * linked activity stays too: this only clears signups nothing else depends on.
+ * `paymentAmount` is set only when a checkout was made, so reps waiting for the team to handle
+ * their payment never match, and clinic-added reps carry `tenantIds`. A record with any payment,
+ * team or linked activity stays too: this only clears signups nothing else depends on.
  */
 export async function cleanupUnpaidRepSignups(now = new Date()): Promise<{ deleted: number; kept: number }> {
   await connectDB();
@@ -25,6 +25,7 @@ export async function cleanupUnpaidRepSignups(now = new Date()): Promise<{ delet
     status: 'inactive',
     isActivated: false,
     paymentStatus: 'pending',
+    paymentAmount: { $gt: 0 },
     paymentReference: { $in: [null, ''] },
     teamId: null,
     createdAt: { $lt: new Date(now.getTime() - UNPAID_SIGNUP_DAYS * DAY_MS) },

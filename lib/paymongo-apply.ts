@@ -4,6 +4,7 @@ import connectDB from '@/lib/mongodb';
 import SubscriptionOrder from '@/models/SubscriptionOrder';
 import Invoice from '@/models/Invoice';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
+import { sendDeferredRepInvite } from '@/lib/medrep-invite';
 import { activateSubscriptionFromOrder, type ActivationResult } from '@/lib/subscription';
 import { scheduleSubscriptionInvoice } from '@/lib/platform-invoice';
 import { recordInvoicePayments } from '@/lib/invoice-payments';
@@ -92,6 +93,10 @@ export async function applyPaidCheckout(session: CheckoutSession): Promise<Apply
         },
       }
     );
+    if (res.modifiedCount > 0) {
+      // The payment stands even if the email doesn't go out.
+      await sendDeferredRepInvite(m.repId).catch((error) => console.error('Rep invite after payment failed:', error));
+    }
     return { ok: true, applied: res.modifiedCount > 0 };
   }
 

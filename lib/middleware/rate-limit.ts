@@ -196,6 +196,15 @@ export const rateLimiters = {
     message: 'Too many codes requested, please try again later',
   }),
 
+  // Rep signup emails per address, across all IPs
+  repSignupEmail: rateLimit({
+    name: 'rep-signup-email',
+    windowMs: 60 * 60 * 1000,
+    maxRequests: 3,
+    identifierOnly: true,
+    message: 'Too many attempts for this email. Please try again later.',
+  }),
+
   // Public code sends: anyone can trigger these, and each one is a paid text.
   publicCodeIp: rateLimit({
     name: 'public-code-ip',

@@ -31,7 +31,7 @@ export const SECRET_FIELDS = [
 ];
 
 /** Platform-level or credential-only collections that are not part of a clinic's data. */
-export const SKIPPED_COLLECTIONS = ['backuprecords', 'mobiledevices', 'pushsubscriptions', 'paypalorders', 'counters', 'specializations', 'otpchallenges', 'smsmessages', 'smsusages'];
+export const SKIPPED_COLLECTIONS = ['backuprecords', 'mobiledevices', 'pushsubscriptions', 'paypalorders', 'counters', 'specializations', 'otpchallenges', 'smsmessages', 'smsusages', 'repsignups'];
 
 /** Collection names in words, for "120 patients · 340 visits". */
 const COLLECTION_WORDS: Record<string, [string, string]> = {

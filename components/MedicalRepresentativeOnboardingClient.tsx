@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Icon, icons } from '@/components/PublicPage';
 import TurnstileWidget, { TURNSTILE_SITE_KEY } from '@/components/TurnstileWidget';
@@ -41,12 +40,12 @@ function Optional() {
 
 /** `onlineFee` is set when the activation fee is paid online through PayMongo right after submitting. */
 export default function MedicalRepresentativeOnboardingClient({ onlineFee }: { onlineFee: number | null }) {
-  const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   // Turnstile tokens are single-use: bumping this remounts the widget after each attempt.
   const [captchaKey, setCaptchaKey] = useState(0);
+  const [sentTo, setSentTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<FormData>({
@@ -148,13 +147,8 @@ export default function MedicalRepresentativeOnboardingClient({ onlineFee }: { o
         throw new Error(data.error || 'Registration failed. Please try again.');
       }
 
-      // Pay the activation fee on PayMongo when the server offers it; activation follows by itself.
-      if (typeof data.checkoutUrl === 'string' && data.checkoutUrl.startsWith('https://')) {
-        window.location.assign(data.checkoutUrl);
-        return;
-      }
-
-      router.push(`/medical-representatives/onboard/success?id=${data.medicalRepresentative?.id}`);
+      setSentTo(payload.email);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
       setError(err.message || 'An error occurred during registration. Please try again.');
       setSubmitting(false);
@@ -163,8 +157,21 @@ export default function MedicalRepresentativeOnboardingClient({ onlineFee }: { o
     }
   };
 
+  if (sentTo) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-16 sm:px-6">
+        <div className="rounded-xl border border-gray-200 bg-white p-6 sm:p-8" role="status">
+          <h1 className="text-2xl font-extrabold tracking-tight text-gray-900">Check your email</h1>
+          <p className="mt-2 text-gray-600">
+            We sent a message to {sentTo}. Open it within 24 hours to finish registering.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const activation = [
-    { title: 'Register', description: 'Tell us about you and the company you represent.' },
+    { title: 'Register', description: 'Tell us about you, then confirm your email.' },
     onlineFee
       ? { title: `Pay ${peso(onlineFee)} online`, description: 'GCash, Maya, card, GrabPay, or QR Ph through PayMongo.' }
       : { title: 'Verification', description: 'Our team contacts you about the activation fee.' },

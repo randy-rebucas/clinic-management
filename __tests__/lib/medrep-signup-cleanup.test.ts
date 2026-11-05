@@ -37,6 +37,7 @@ describe('cleanupUnpaidRepSignups', () => {
       status: 'inactive',
       isActivated: false,
       paymentStatus: 'pending',
+      paymentAmount: { $gt: 0 },
       teamId: null,
     });
     expect(filter.createdAt.$lt).toEqual(new Date('2026-11-06T00:00:00Z'));
