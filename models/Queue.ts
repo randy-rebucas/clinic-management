@@ -1,7 +1,9 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
-/** 'away': sent out mid-consult (shown as "At lab"). Out of the line, but keeps their place for when they return. */
+/** 'away': out of the line for now, but keeps their place for when they return. awayReason says why. */
 export type QueueStatus = 'waiting' | 'in-progress' | 'away' | 'completed' | 'cancelled' | 'no-show';
+/** 'lab': sent out mid-consult ("At lab"). 'missed': didn't answer when called ("Not here"). No reason means lab. */
+export type QueueAwayReason = 'lab' | 'missed';
 export type QueueType = 'appointment' | 'walk-in' | 'follow-up';
 
 export interface IQueue extends Document {
@@ -26,6 +28,7 @@ export interface IQueue extends Document {
   
   // Queue management
   status: QueueStatus;
+  awayReason?: QueueAwayReason; // Only while status is 'away'
   priority: number; // Higher = called sooner: 0 normal, 1 high, 2 urgent (see lib/queue-order.ts)
   estimatedWaitTime?: number; // Minutes
   
@@ -93,6 +96,7 @@ const QueueSchema: Schema = new Schema(
       enum: ['waiting', 'in-progress', 'away', 'completed', 'cancelled', 'no-show'],
       default: 'waiting',
     },
+    awayReason: { type: String, enum: ['lab', 'missed'] },
     priority: { type: Number, default: 0, index: true }, // Higher = called sooner (lib/queue-order.ts)
     estimatedWaitTime: { type: Number }, // Minutes
     queuedAt: { type: Date, default: Date.now, required: true, index: true },

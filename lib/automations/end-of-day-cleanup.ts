@@ -33,7 +33,7 @@ export interface EndOfDayCleanupOptions {
    * Clinic-local day to clean up. Defaults to yesterday + today (so a missed run catches up).
    */
   targetDate?: Date;
-  /** Status for queue entries still waiting at close (in-progress and away entries become 'completed'). */
+  /** Status for queue entries still waiting at close (in-progress and at-lab entries become 'completed', not-here ones 'no-show'). */
   queueCompletionStatus?: 'completed' | 'cancelled';
   /** Status for unattended appointments; defaults to 'no-show'. */
   appointmentCompletionStatus?: 'no-show' | 'cancelled' | 'completed';
@@ -72,18 +72,22 @@ async function cleanupTenant(
     const base = { tenantId, queuedAt: { $gte: rangeStart, $lte: rangeEnd } };
     const waitingStatus = options.queueCompletionStatus === 'completed' ? 'completed' : 'cancelled';
 
-    const [inProgress, waiting] = await Promise.all([
+    const [inProgress, notHere, waiting] = await Promise.all([
       Queue.updateMany(
-        { ...base, status: { $in: ['in-progress', 'away'] } },
+        { ...base, status: { $in: ['in-progress', 'away'] }, awayReason: { $ne: 'missed' } },
         { $set: { status: 'completed', completedAt: now, completionNotes: 'Auto-closed by end-of-day cleanup' } }
+      ),
+      Queue.updateMany(
+        { ...base, status: 'away', awayReason: 'missed' },
+        { $set: { status: 'no-show', completionNotes: 'Auto-closed by end-of-day cleanup (did not come back)' } }
       ),
       Queue.updateMany(
         { ...base, status: 'waiting' },
         { $set: { status: waitingStatus, completionNotes: 'Auto-closed by end-of-day cleanup (not seen)' } }
       ),
     ]);
-    result.queues.matched = (inProgress.matchedCount ?? 0) + (waiting.matchedCount ?? 0);
-    result.queues.updated = (inProgress.modifiedCount ?? 0) + (waiting.modifiedCount ?? 0);
+    result.queues.matched = [inProgress, notHere, waiting].reduce((sum, r) => sum + (r.matchedCount ?? 0), 0);
+    result.queues.updated = [inProgress, notHere, waiting].reduce((sum, r) => sum + (r.modifiedCount ?? 0), 0);
   } catch (err: unknown) {
     const msg = errorMessage(err);
     console.error('[EndOfDayCleanup] Queue cleanup error:', msg);

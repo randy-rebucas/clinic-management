@@ -32,8 +32,8 @@ async function clinicNameOf(tenantId: Types.ObjectId): Promise<string> {
 }
 
 /**
- * Send a notification to the patient when they are called or join the line, then update
- * everyone whose place in line changed. Called from the queue PUT handler after a status change.
+ * Send a notification to the patient when they are called, miss their call or join the line,
+ * then update everyone whose place in line changed. Called from the queue PUT handler after a status change.
  */
 export async function notifyQueuePatient(options: QueueNotificationOptions): Promise<void> {
   try {
@@ -56,23 +56,37 @@ export async function notifyQueuePatient(options: QueueNotificationOptions): Pro
     if (patient) {
       const firstName = patient.firstName ?? 'Patient';
 
-      if (options.newStatus === 'in-progress') {
-        // Doctor is ready — highest priority
+      const tell = (sms: string, title: string, body: string) => {
         if (patient.phone) {
-          sendSMS({ to: patient.phone, message: `Hi ${firstName}, it's your turn! Please proceed to your assigned room. – ${clinicName}` }).catch((e) =>
+          sendSMS({ to: patient.phone, message: sms }).catch((e) =>
             console.error('[queue-notifications] SMS error:', e)
           );
         }
         // Push (fire-and-forget) — patients receive push via their registered
         // MobileDevice records, not the staff-only PushSubscription/web-push path.
         sendPushToPatientDevices(queueEntry.patient.toString(), {
-          title: "It's Your Turn!",
-          body: `${clinicName}: Please proceed to your assigned room.`,
+          title,
+          body,
           tag: `queue-${queueId}`,
           url: '/queue',
           data: { type: 'queue', queueId: String(queueId) },
         }, { tenantId: tenantObjectId }).catch((e) =>
           console.error('[queue-notifications] Push error:', e)
+        );
+      };
+
+      if (options.newStatus === 'in-progress') {
+        // Doctor is ready — highest priority
+        tell(
+          `Hi ${firstName}, it's your turn! Please proceed to your assigned room. – ${clinicName}`,
+          "It's Your Turn!",
+          `${clinicName}: Please proceed to your assigned room.`
+        );
+      } else if (options.newStatus === 'away' && queueEntry.awayReason === 'missed') {
+        tell(
+          `Hi ${firstName}, we called you but couldn't find you. Your place is saved. Please see the front desk. – ${clinicName}`,
+          'We Called You',
+          `${clinicName}: Your place is saved. Please see the front desk.`
         );
       } else if (options.newStatus === 'waiting' && patient.phone) {
         // Patient just entered the line close to the front: one SMS (the app gets pushes below).

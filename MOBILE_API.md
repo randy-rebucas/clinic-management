@@ -347,6 +347,10 @@ session's clinic), `403 SELF_CHECKIN_OFF`, `404 NO_APPOINTMENT` (walk-ins regist
 `position: null`. They're out of the line but keep their place, and go back to `"waiting"` when staff
 mark them back from the lab. Treat unknown statuses as not in the queue, as older app versions do.
 
+**New:** `away` entries carry `awayReason`: `"lab"`, or `"missed"` when the patient didn't answer when
+called (staff see "Not here"). A missing value means lab. A `"missed"` patient has been told by SMS and
+push to see the front desk, and goes back to `"waiting"` in their original place, or to `"no-show"`.
+
 **Changed:** `GET /api/patients/me/queue` now counts `position` within the patient's doctor's line
 (unassigned patients share one line), the same number the staff queue screen shows. It used to
 count everyone waiting at the clinic. Use `checkedIn` to decide whether to offer "Check in".

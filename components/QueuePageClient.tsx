@@ -28,6 +28,7 @@ interface QueueEntry {
   room?: { _id: string; name?: string; roomNumber?: string } | null;
   appointment?: string | null;
   visit?: string | null;
+  awayReason?: 'lab' | 'missed' | null;
   status: QueueStatus;
   priority?: number;
   queuedAt: string;
@@ -53,6 +54,9 @@ const ICON_BTN = 'rounded-md p-2 text-gray-500 transition-colors hover:bg-brand-
 /** Destructive icon: neutral at rest, red text on a red tint only while hovered. */
 const ICON_BTN_DANGER = 'rounded-md p-2 text-gray-500 transition-colors hover:text-red-700 hover:bg-red-50 disabled:opacity-40';
 
+const isNotHere = (e: QueueEntry) => e.status === 'away' && e.awayReason === 'missed';
+const isAtLab = (e: QueueEntry) => e.status === 'away' && e.awayReason !== 'missed';
+
 const TYPE_LABEL: Record<QueueEntry['queueType'], string> = { appointment: 'Appointment', 'walk-in': 'Walk-in', 'follow-up': 'Follow-up' };
 const OUTCOME: Record<'completed' | 'cancelled' | 'no-show', { label: string; cls: string }> = {
   completed: { label: 'Seen', cls: 'bg-gray-100 text-gray-700 ring-gray-200' },
@@ -68,6 +72,7 @@ const ICONS = {
   login: 'M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1',
   play: 'M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
   undo: 'M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6',
+  pause: 'M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z',
   beaker: 'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z',
 };
 
@@ -162,7 +167,8 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
       waiting: waiting.length,
       notCheckedIn: waiting.filter((q) => !q.checkedIn).length,
       withDoctor: withDoctor.length,
-      atLab: entries.filter((q) => q.status === 'away').length,
+      atLab: entries.filter(isAtLab).length,
+      notHere: entries.filter(isNotHere).length,
       seen: seen.length,
       noShows: entries.filter((q) => q.status === 'no-show').length,
       longest,
@@ -204,7 +210,8 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
     [doctorFilter, typeFilter, q]
   );
   const withDoctor = entries.filter((e) => e.status === 'in-progress' && matches(e));
-  const atLab = entries.filter((e) => e.status === 'away' && matches(e));
+  const atLab = entries.filter((e) => isAtLab(e) && matches(e));
+  const notHere = entries.filter((e) => isNotHere(e) && matches(e));
   const waiting = entries.filter((e) => e.status === 'waiting' && matches(e)); // server order: priority, then arrival
   const finished = entries
     .filter((e) => (e.status === 'completed' || e.status === 'no-show' || e.status === 'cancelled') && matches(e))
@@ -261,6 +268,8 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
     backToWaiting: (e: QueueEntry) => act(e, put(e, { status: 'waiting' }), `${nameOf(e)} is back on the waiting list.`, 'The patient could not be moved back to waiting'),
     sendToLab: (e: QueueEntry) => act(e, put(e, { status: 'away' }), `${nameOf(e)} is at the lab. Their place in line is kept.`, 'The patient could not be sent to the lab'),
     backFromLab: (e: QueueEntry) => act(e, put(e, { status: 'waiting' }), `${nameOf(e)} is back from the lab and in their place in line.`, 'The patient could not be moved back from the lab'),
+    notHere: (e: QueueEntry) => act(e, put(e, { status: 'away', awayReason: 'missed' }), `${nameOf(e)} is marked as not here. Their place in line is kept.`, 'The patient could not be marked as not here'),
+    patientBack: (e: QueueEntry) => act(e, put(e, { status: 'waiting' }), `${nameOf(e)} is back in their place in line.`, 'The patient could not be moved back to the line'),
     setPriority: (e: QueueEntry, priority: number) =>
       act(
         e,
@@ -407,7 +416,7 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
                 <Figure
                   label="Waiting"
                   value={stats.waiting}
-                  detail={`${stats.notCheckedIn > 0 ? `${stats.notCheckedIn} not checked in` : stats.waiting ? 'all checked in' : 'nobody waiting'}${stats.atLab ? ` · ${stats.atLab} at lab` : ''}`}
+                  detail={`${stats.notCheckedIn > 0 ? `${stats.notCheckedIn} not checked in` : stats.waiting ? 'all checked in' : 'nobody waiting'}${stats.atLab ? ` · ${stats.atLab} at lab` : ''}${stats.notHere ? ` · ${stats.notHere} not here` : ''}`}
                 />
                 <Figure label="With a doctor" value={stats.withDoctor} detail={`${lines.filter((l) => l.free && l.key !== 'none').length} doctors free`} />
                 <Figure
@@ -486,7 +495,7 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
                     <span className="sr-only">Actions</span>
                   </div>
 
-                  {withDoctor.length === 0 && atLab.length === 0 && waiting.length === 0 ? (
+                  {withDoctor.length === 0 && atLab.length === 0 && notHere.length === 0 && waiting.length === 0 ? (
                     <Empty
                       narrowed={narrowed}
                       onClear={clearAll}
@@ -509,10 +518,17 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
                           ))}
                         </Group>
                       )}
+                      {notHere.length > 0 && (
+                        <Group title="Not here" count={notHere.length} hint="Didn't answer when called. Their place is kept.">
+                          {notHere.map((e, i) => (
+                            <Row key={e._id} entry={e} index={i + withDoctor.length + atLab.length} {...rowProps} />
+                          ))}
+                        </Group>
+                      )}
                       {waiting.length > 0 && (
                         <Group title="Waiting" count={waiting.length} hint="Called in this order: urgent first, then by arrival.">
                           {waiting.map((e, i) => (
-                            <Row key={e._id} entry={e} index={i + withDoctor.length + atLab.length} {...rowProps} />
+                            <Row key={e._id} entry={e} index={i + withDoctor.length + atLab.length + notHere.length} {...rowProps} />
                           ))}
                         </Group>
                       )}
@@ -641,6 +657,8 @@ type Actions = {
   backToWaiting: (e: QueueEntry) => void;
   sendToLab: (e: QueueEntry) => void;
   backFromLab: (e: QueueEntry) => void;
+  notHere: (e: QueueEntry) => void;
+  patientBack: (e: QueueEntry) => void;
   setPriority: (e: QueueEntry, p: number) => void;
 };
 
@@ -666,7 +684,8 @@ function Row({
   onConfirm: (e: QueueEntry, status: 'no-show' | 'cancelled') => void;
 }) {
   const inRoom = e.status === 'in-progress';
-  const atLab = e.status === 'away';
+  const atLab = isAtLab(e);
+  const notHere = isNotHere(e);
   const waitMin = minutesBetween(e.queuedAt, inRoom ? e.startedAt : now);
   const consultMin = inRoom ? minutesBetween(e.startedAt, now) : 0;
   const lineWait = e.status === 'waiting';
@@ -728,6 +747,13 @@ function Row({
         {busy ? 'Saving…' : 'Back from lab'}
       </button>
     );
+  } else if (notHere && permissions.canUpdate) {
+    primary = (
+      <button type="button" disabled={busy} onClick={() => actions.patientBack(e)} aria-label={`${name} is back`} className={btn}>
+        <Svg d={ICONS.undo} />
+        {busy ? 'Saving…' : 'Patient is back'}
+      </button>
+    );
   }
 
   const icon = (label: string, d: string, run: () => void, danger = false) => (
@@ -748,17 +774,19 @@ function Row({
     secondary.push(icon(hasVitals(e.vitals) ? 'Update vital signs' : 'Record vital signs', ICONS.heart, () => onVitals(e)));
     if (inRoom && permissions.canStartVisit) secondary.push(icon('Mark seen', ICONS.check, () => actions.done(e)));
     if (inRoom) {
+      secondary.push(icon('Not here', ICONS.pause, () => actions.notHere(e)));
       secondary.push(icon('Send to lab', ICONS.beaker, () => actions.sendToLab(e)));
       secondary.push(icon('Put back on the waiting list', ICONS.undo, () => actions.backToWaiting(e)));
     }
+    if (e.status === 'waiting' && e.checkedIn) secondary.push(icon('Not here', ICONS.pause, () => actions.notHere(e)));
     if (e.status === 'waiting') {
       secondary.push(
         priority >= QUEUE_PRIORITY.urgent
           ? icon('Back to normal priority', ICONS.flag, () => actions.setPriority(e, QUEUE_PRIORITY.normal))
           : icon('Mark urgent', ICONS.flag, () => actions.setPriority(e, QUEUE_PRIORITY.urgent))
       );
-      secondary.push(icon('Mark as no-show', ICONS.userX, () => onConfirm(e, 'no-show')));
     }
+    if (e.status === 'waiting' || notHere) secondary.push(icon('Mark as no-show', ICONS.userX, () => onConfirm(e, 'no-show')));
     if (!inRoom) secondary.push(icon('Remove from queue', ICONS.x, () => onConfirm(e, 'cancelled'), true));
   }
 
@@ -772,7 +800,7 @@ function Row({
         <span title={e.queueNumber} className={`inline-block rounded-md px-2 py-1 font-mono text-sm font-semibold tabular-nums ${inRoom ? 'bg-brand-teal-dark text-white' : 'bg-gray-100 text-gray-900'}`}>
           {shortQueueNumber(e.queueNumber)}
         </span>
-        <span className="text-xs text-gray-500 lg:mt-1 lg:block">{inRoom ? 'In consult' : atLab ? 'At lab' : e.position ? (e.position === 1 ? 'Next in line' : `${ordinal(e.position)} in line`) : ''}</span>
+        <span className="text-xs text-gray-500 lg:mt-1 lg:block">{inRoom ? 'In consult' : atLab ? 'At lab' : notHere ? 'Not here' : e.position ? (e.position === 1 ? 'Next in line' : `${ordinal(e.position)} in line`) : ''}</span>
       </span>
 
       {/* Patient */}

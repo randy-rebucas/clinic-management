@@ -189,6 +189,76 @@ describe('PUT /api/queue/[id] call-in', () => {
     });
   });
 
+  describe('a patient who is not here', () => {
+    it('frees the doctor when a called patient does not answer, keeping their place', async () => {
+      const queuedAt = new Date('2026-11-05T01:00:00Z');
+      const doc = entry({ status: 'in-progress', startedAt: new Date(), calledAt: new Date(), queuedAt, priority: 1 });
+
+      const res = await put({ status: 'away', awayReason: 'missed' });
+
+      expect(res.status).toBe(200);
+      expect(doc.status).toBe('away');
+      expect(doc.awayReason).toBe('missed');
+      expect(doc.startedAt).toBeUndefined();
+      expect(doc.calledAt).toBeUndefined();
+      expect(doc.queuedAt).toBe(queuedAt);
+      expect(doc.priority).toBe(1);
+    });
+
+    it('can be held straight from the line', async () => {
+      const doc = entry({ status: 'waiting' });
+
+      const res = await put({ status: 'away', awayReason: 'missed' });
+
+      expect(res.status).toBe(200);
+      expect(doc.awayReason).toBe('missed');
+    });
+
+    it('records the lab as the reason when none is given', async () => {
+      const doc = entry({ status: 'in-progress' });
+
+      await put({ status: 'away' });
+
+      expect(doc.awayReason).toBe('lab');
+    });
+
+    it.each(['away', 'completed', 'cancelled', 'no-show'])('refuses to hold a %s entry', async (status) => {
+      const doc = entry({ status });
+
+      const res = await put({ status: 'away', awayReason: 'missed' });
+
+      expect(res.status).toBe(409);
+      expect(doc.save).not.toHaveBeenCalled();
+    });
+
+    it.each(['waiting', 'no-show'])('clears the reason when they move on to %s', async (status) => {
+      const doc = entry({ status: 'away', awayReason: 'missed' });
+
+      const res = await put({ status });
+
+      expect(res.status).toBe(200);
+      expect(doc.status).toBe(status);
+      expect(doc.awayReason).toBeUndefined();
+    });
+
+    it('ignores a reason sent without a move to away', async () => {
+      const doc = entry({ status: 'waiting' });
+
+      await put({ notes: 'x', awayReason: 'missed' });
+
+      expect(doc.awayReason).toBeUndefined();
+    });
+
+    it('cannot be called straight in while held', async () => {
+      const doc = entry({ status: 'away', awayReason: 'missed' });
+
+      const res = await put({ status: 'in-progress' });
+
+      expect(res.status).toBe(409);
+      expect(doc.save).not.toHaveBeenCalled();
+    });
+  });
+
   it('reports a lost race on the unique index as a conflict', async () => {
     const doc = entry({ status: 'waiting' });
     doc.save.mockRejectedValue(Object.assign(new Error('E11000'), { code: 11000 }));

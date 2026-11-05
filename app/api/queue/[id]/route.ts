@@ -16,6 +16,7 @@ import { findConsultBlocker } from '@/lib/queue-consult';
 
 const updateQueueSchema = z.object({
   status: z.enum(['waiting', 'in-progress', 'away', 'completed', 'cancelled', 'no-show']).optional(),
+  awayReason: z.enum(['lab', 'missed']).optional(),
   priority: z.coerce.number().int().min(0).max(100).optional(),
   doctor: zObjectId.nullable().optional(),
   room: zObjectId.nullable().optional(),
@@ -95,7 +96,7 @@ export async function PUT(
 
     const parsed = await parseBody(request, updateQueueSchema);
     if (isValidationError(parsed)) return parsed;
-    const { _skipAutomation, vitals, ...fields } = parsed.data;
+    const { _skipAutomation, vitals, awayReason, ...fields } = parsed.data;
 
     if (fields.doctor && !(await Doctor.exists({ _id: fields.doctor, tenantId: tenantObjectId }))) {
       return NextResponse.json({ success: false, error: 'Doctor not found' }, { status: 404 });
@@ -113,11 +114,14 @@ export async function PUT(
     if (fields.status === 'waiting' && !['waiting', 'in-progress', 'away'].includes(oldStatus)) {
       return NextResponse.json({ success: false, error: 'This patient has already left the queue.' }, { status: 409 });
     }
-    if (fields.status === 'away' && oldStatus !== 'in-progress') {
-      return NextResponse.json({ success: false, error: 'Only a patient in consult can be sent to the lab.' }, { status: 409 });
+    // The lab is a doctor's call, made in consult. Anyone in line can turn out not to be here.
+    const holdReason = awayReason ?? 'lab';
+    if (fields.status === 'away' && oldStatus !== 'in-progress' && !(holdReason === 'missed' && oldStatus === 'waiting')) {
+      const error = holdReason === 'missed' ? 'Only a patient in line or in consult can be marked as not here.' : 'Only a patient in consult can be sent to the lab.';
+      return NextResponse.json({ success: false, error }, { status: 409 });
     }
     if (fields.status === 'in-progress' && oldStatus === 'away') {
-      return NextResponse.json({ success: false, error: 'Mark this patient as back from the lab first.' }, { status: 409 });
+      return NextResponse.json({ success: false, error: 'Mark this patient as back first.' }, { status: 409 });
     }
 
     const nextDoctor = fields.doctor !== undefined ? fields.doctor : currentQueue.doctor;
@@ -134,6 +138,9 @@ export async function PUT(
     }
     for (const [key, value] of Object.entries(fields)) {
       if (value !== undefined) (currentQueue as any)[key] = value;
+    }
+    if (fields.status) {
+      currentQueue.awayReason = fields.status === 'away' ? holdReason : undefined;
     }
     if (fields.checkedIn && !currentQueue.checkedInAt) {
       currentQueue.checkedInAt = new Date();

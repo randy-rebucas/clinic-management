@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
     }
 
     const queue = await Queue.findById(entry._id)
-      .select('queueNumber status checkedIn checkedInAt queuedAt priority doctor room tenantId estimatedWaitTime')
+      .select('queueNumber status awayReason checkedIn checkedInAt queuedAt priority doctor room tenantId estimatedWaitTime')
       .populate({ path: 'doctor', select: 'firstName lastName', match: { tenantId: tenantObjectId } })
       .populate({ path: 'room', select: 'name', match: { tenantId: tenantObjectId } })
       .lean<Record<string, any> | null>();
