@@ -4,7 +4,7 @@ import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Role from '@/models/Role';
 import Permission from '@/models/Permission';
-import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess, forgetGrantedPermissions } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
 import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
@@ -85,6 +85,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         .map(([resource, actions]) => ({ tenantId: tenantObjectId, role: role._id, resource, actions: [...actions].sort() }))
     );
     if (managed.length > 0) await Permission.deleteMany({ tenantId: tenantObjectId, _id: { $in: managed } });
+    forgetGrantedPermissions();
 
     const kept = docs.filter((d) => !ACCESS_RESOURCES.has(d.resource)).map((d) => d._id);
     role.permissions = [...kept, ...created.map((c) => c._id as Types.ObjectId)];
