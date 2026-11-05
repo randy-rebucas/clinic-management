@@ -224,11 +224,24 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           { status: 409 }
         );
       }
+      // Nobody proves the phone here, so this can only start a new account, or reissue this clinic's
+      // own temporary password. An account that already exists may reach other clinics' records.
+      const ownTemp = existing?.passwordSetBy === 'staff' && String(existing.passwordTenantId) === String(tenantId);
+      if (existing && !ownTemp) {
+        await revokeInvites(tenantId, patient._id);
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'This number already has an eMCR account, so a temporary password can’t be printed. Send an invite instead; they confirm it with an SMS code.',
+          },
+          { status: 409 }
+        );
+      }
       const account =
         existing ??
         ((await EmcrAccount.findOneAndUpdate({ phone }, { $setOnInsert: { phone } }, { upsert: true, new: true }).lean()) as EmcrAccountLean);
       const found = await findUsableInvite(code);
-      const linked = found.ok ? await redeemInvite(found.invite, account) : ({ ok: false, reason: 'used' } as const);
+      const linked = found.ok ? await redeemInvite(found.invite, account, { phoneProven: false }) : ({ ok: false, reason: 'used' } as const);
       if (!linked.ok) {
         await revokeInvites(tenantId, patient._id);
         return NextResponse.json({ success: false, error: TEMP_PASSWORD_REFUSALS[linked.reason] }, { status: 409 });

@@ -18,6 +18,7 @@ import EmcrAccount from '@/models/EmcrAccount';
 import EmcrInvite from '@/models/EmcrInvite';
 import { addClinicGuardian } from '@/lib/patient-family';
 import { attachSelf } from '@/lib/emcr/account';
+import { linkRecordsByVerifiedPhone } from '@/app/api/patients/me/_lib/linked-records';
 import {
   findUsableInvite,
   formatInviteCode,
@@ -113,6 +114,13 @@ describe('redeemInvite', () => {
     vi.mocked(Patient.find).mockReturnValue(selectLean([{ _id: PARENT, phone: '09171234567' }]) as any);
     const account = { _id: new Types.ObjectId(), phone: PHONE };
     expect(await redeemInvite(invite({ mode: 'self', patientId: PARENT, dependentIds: [] }), account)).toMatchObject({ ok: true });
+    expect(linkRecordsByVerifiedPhone).toHaveBeenCalledTimes(1);
+    vi.mocked(linkRecordsByVerifiedPhone).mockClear();
+
+    // Staff temporary password: nobody proved the phone, so other clinics stay out of it.
+    const unproven = invite({ mode: 'self', patientId: PARENT, dependentIds: [] });
+    expect(await redeemInvite(unproven, account, { phoneProven: false })).toMatchObject({ ok: true });
+    expect(linkRecordsByVerifiedPhone).not.toHaveBeenCalled();
     expect(attachSelf).toHaveBeenCalledWith(account._id, PARENT);
   });
 

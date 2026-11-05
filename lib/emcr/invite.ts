@@ -183,8 +183,15 @@ export type RedeemResult =
 /**
  * Spend the invite for the account that just proved `invite.phone`, then link what it names.
  * The invite is marked used first (one update), so two devices can't both redeem it.
+ *
+ * `phoneProven: false` is the staff temporary-password path, where nobody proved the phone: the
+ * invite's own records are linked, but never the person's records at other clinics.
  */
-export async function redeemInvite(invite: InviteLean, account: EmcrAccountLean, now = new Date()): Promise<RedeemResult> {
+export async function redeemInvite(
+  invite: InviteLean,
+  account: EmcrAccountLean,
+  { phoneProven = true, now = new Date() }: { phoneProven?: boolean; now?: Date } = {}
+): Promise<RedeemResult> {
   await connectDB();
   const tenantId = invite.tenantId;
   const records = await Patient.find({
@@ -216,7 +223,7 @@ export async function redeemInvite(invite: InviteLean, account: EmcrAccountLean,
   if (spent.modifiedCount !== 1) return { ok: false, reason: 'used' };
 
   if (invite.mode === 'self') {
-    await linkRecordsByVerifiedPhone(String(main._id), invite.phone);
+    if (phoneProven) await linkRecordsByVerifiedPhone(String(main._id), invite.phone);
     if (!account.selfPatientId) await attachSelf(account._id, main._id);
     // This clinic's location code starts the login ID (used once a password is set).
     await ensureLoginId(account._id, tenantId);

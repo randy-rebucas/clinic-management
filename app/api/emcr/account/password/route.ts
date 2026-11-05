@@ -19,6 +19,8 @@ import { accountView } from '@/lib/emcr/session';
  *   Otherwise 400 OTP_REQUIRED.
  * - Otherwise `currentPassword` must match (400 WRONG_CURRENT_PASSWORD). That includes the
  *   clinic's temporary password (`mustChangePassword`), which can't be kept.
+ * A clinic's temporary password stays tied to that clinic until the phone is proven, so a new
+ * password set with only `currentPassword` keeps the tie.
  * → { account }
  */
 export async function POST(request: NextRequest) {
@@ -69,7 +71,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await setAccountPassword(account._id, newPassword, 'user');
+    await setAccountPassword(account._id, newPassword, 'user', undefined, { phoneProven });
     await connectDB();
     const fresh = await EmcrAccount.findById(account._id).lean<EmcrAccountLean | null>();
     logger.info('eMCR account password set', { accountId: String(account._id), reset: !currentPassword && !!account.passwordSetAt });

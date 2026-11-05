@@ -9,6 +9,7 @@ import { consumeOtp, OTP_EXPIRY_MINUTES, startOtp } from '@/lib/otp';
 import { accountSessionSubject, type EmcrAccountLean } from '@/lib/emcr/account';
 import { activationView } from '@/lib/emcr/activation';
 import { fullLoginId } from '@/lib/emcr/login-id';
+import { cancelClinicPassword } from '@/lib/emcr/password';
 
 export const EMCR_OTP_EXPIRY_MINUTES = OTP_EXPIRY_MINUTES;
 
@@ -36,13 +37,20 @@ export async function consumeAccountOtp(phone: string, otp: string): Promise<Acc
   await connectDB();
   const upsert = () =>
     EmcrAccount.findOneAndUpdate({ phone }, { $setOnInsert: { phone } }, { upsert: true, new: true }).lean<EmcrAccountLean>();
+  let account: EmcrAccountLean;
   try {
-    return { ok: true, account: (await upsert()) as EmcrAccountLean };
+    account = (await upsert()) as EmcrAccountLean;
   } catch (error) {
     // Two first sign-ins raced on the unique phone index; the other one created it.
     if ((error as { code?: number }).code !== 11000) throw error;
-    return { ok: true, account: (await upsert()) as EmcrAccountLean };
+    account = (await upsert()) as EmcrAccountLean;
   }
+  if (!account.passwordTenantId) return { ok: true, account };
+
+  await cancelClinicPassword(account._id);
+  const { passwordSetAt: _at, passwordSetBy: _by, mustChangePassword: _must, passwordTenantId: _tid, ...rest } = account;
+  void [_at, _by, _must, _tid];
+  return { ok: true, account: rest };
 }
 
 /** What the app shows about the account: who it is signed in as, activation, open requests. */
@@ -67,6 +75,7 @@ export async function accountView(account: EmcrAccountLean) {
 /**
  * Sign the caller in on their eMCR account (the holder's record, or for a guardian-only account
  * the first record they manage). Null when the account has no profile to sign in as yet.
+ * A password a clinic knows signs in to that clinic only (`tid`); see setAccountPassword.
  */
 export async function accountSessionFields(
   account: EmcrAccountLean,
@@ -76,8 +85,9 @@ export async function accountSessionFields(
   if (!subject) return null;
   const { patient, rel } = subject;
   const acc = String(account._id);
-  const token = await issuePatientToken(patient, { amr, acc, rel });
-  const refreshToken = await issueRefreshToken('patient', patient._id, patient.sessionVersion ?? 0, undefined, { acc, rel });
+  const tid = amr === 'password' && account.passwordTenantId ? String(account.passwordTenantId) : undefined;
+  const token = await issuePatientToken(patient, { tid, amr, acc, rel });
+  const refreshToken = await issueRefreshToken('patient', patient._id, patient.sessionVersion ?? 0, undefined, { tid, acc, rel });
   return {
     token,
     tokenType: 'Bearer',

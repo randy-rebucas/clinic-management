@@ -39,13 +39,19 @@ export function passwordProblem(password: unknown): string | null {
 /**
  * Save the password, and give the account its structured login ID (lib/emcr/login-id.ts) if it has
  * none yet; `tenantId` is the clinic whose location code to prefer.
+ *
+ * A staff password is known to that clinic and nobody proved the phone, so it is tied to the clinic
+ * (`passwordTenantId`). Replacing it keeps that tie unless `phoneProven`: knowing the temporary
+ * password must not be enough to turn it into a sign-in that reaches every clinic.
  */
 export async function setAccountPassword(
   accountId: Types.ObjectId | string,
   password: string,
   by: 'user' | 'staff',
-  tenantId?: Types.ObjectId | string
+  tenantId?: Types.ObjectId | string,
+  options: { phoneProven?: boolean } = {}
 ): Promise<void> {
+  if (by === 'staff' && !tenantId) throw new Error('A staff-set password needs its clinic');
   await connectDB();
   await EmcrAccount.updateOne(
     { _id: accountId },
@@ -55,11 +61,27 @@ export async function setAccountPassword(
         passwordSetAt: new Date(),
         passwordSetBy: by,
         mustChangePassword: by === 'staff',
+        ...(by === 'staff' ? { passwordTenantId: tenantId } : {}),
       },
+      ...(by === 'user' && options.phoneProven ? { $unset: { passwordTenantId: 1 } } : {}),
     }
   );
   forgetAccountCache();
   await ensureLoginId(accountId, tenantId);
+}
+
+/**
+ * Cancel a password a clinic may know, once the holder has proven the phone. The account may now
+ * reach more than that clinic, and whoever holds the old password must not come with it. The app
+ * asks for a new password after this sign-in.
+ */
+export async function cancelClinicPassword(accountId: Types.ObjectId | string): Promise<void> {
+  await connectDB();
+  await EmcrAccount.updateOne(
+    { _id: accountId },
+    { $unset: { password: 1, passwordSetAt: 1, passwordSetBy: 1, mustChangePassword: 1, passwordTenantId: 1 } }
+  );
+  forgetAccountCache();
 }
 
 /** Whether `password` is the account's. False when it has none. */

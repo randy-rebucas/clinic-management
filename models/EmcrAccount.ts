@@ -56,6 +56,11 @@ export interface IEmcrAccount extends Document {
   passwordSetBy?: 'user' | 'staff';
   mustChangePassword?: boolean;
   /**
+   * Set while the password is one a clinic's staff know: sign-ins with it reach that clinic only.
+   * Cleared only by a new password set after an SMS code; proving the phone also cancels it.
+   */
+  passwordTenantId?: Types.ObjectId;
+  /**
    * Structured sign-in name, used with the password like the phone: `<location>.<initials>.<YYYYMMDD>[.n]`
    * (the local part only; the domain is lib/emcr/login-id.ts LOGIN_ID_DOMAIN). Not a mailbox.
    */
@@ -111,6 +116,7 @@ const EmcrAccountSchema = new Schema<IEmcrAccount>(
     passwordSetAt: { type: Date },
     passwordSetBy: { type: String, enum: ['user', 'staff'] },
     mustChangePassword: { type: Boolean },
+    passwordTenantId: { type: Schema.Types.ObjectId, ref: 'Tenant' },
     loginId: { type: String, lowercase: true, trim: true },
     activation: {
       plan: { type: String, enum: ['basic', 'plus'] },

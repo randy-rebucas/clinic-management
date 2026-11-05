@@ -28,6 +28,7 @@ export type EmcrAccountLean = {
   passwordSetAt?: Date;
   passwordSetBy?: 'user' | 'staff';
   mustChangePassword?: boolean;
+  passwordTenantId?: Types.ObjectId;
   loginId?: string;
   disabled?: boolean;
 };

@@ -11,12 +11,14 @@ import { Types } from 'mongoose';
 import EmcrAccount from '@/models/EmcrAccount';
 import {
   authenticateAccountPassword,
+  cancelClinicPassword,
   generateTempPassword,
   passwordProblem,
   setAccountPassword,
 } from '@/lib/emcr/password';
 
 const PHONE = '+639171234567';
+const CLINIC = new Types.ObjectId();
 const selectLean = (value: unknown) => ({ select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(value) }) });
 
 describe('eMCR account passwords', () => {
@@ -37,10 +39,38 @@ describe('eMCR account passwords', () => {
 
   it('a staff-set password must be changed; a user-set one need not', async () => {
     const id = new Types.ObjectId();
-    await setAccountPassword(id, 'temp-pass-1', 'staff');
+    await setAccountPassword(id, 'temp-pass-1', 'staff', CLINIC);
     expect((vi.mocked(EmcrAccount.updateOne).mock.calls[0] as any[])[1].$set).toMatchObject({ passwordSetBy: 'staff', mustChangePassword: true });
     await setAccountPassword(id, 'Mine-12345', 'user');
     expect((vi.mocked(EmcrAccount.updateOne).mock.calls[1] as any[])[1].$set).toMatchObject({ passwordSetBy: 'user', mustChangePassword: false });
+  });
+
+  it('a staff-set password is tied to its clinic, and refused without one', async () => {
+    const id = new Types.ObjectId();
+    await setAccountPassword(id, 'temp-pass-1', 'staff', CLINIC);
+    expect((vi.mocked(EmcrAccount.updateOne).mock.calls[0] as any[])[1].$set).toMatchObject({ passwordTenantId: CLINIC });
+    await expect(setAccountPassword(id, 'temp-pass-1', 'staff')).rejects.toThrow();
+  });
+
+  it('replacing a password lifts the clinic tie only after phone proof', async () => {
+    const id = new Types.ObjectId();
+    await setAccountPassword(id, 'Mine-12345', 'user');
+    const kept = (vi.mocked(EmcrAccount.updateOne).mock.calls[0] as any[])[1];
+    expect(kept).not.toHaveProperty('$unset');
+    expect(kept.$set).not.toHaveProperty('passwordTenantId');
+    await setAccountPassword(id, 'Mine-12345', 'user', undefined, { phoneProven: true });
+    expect((vi.mocked(EmcrAccount.updateOne).mock.calls[1] as any[])[1].$unset).toEqual({ passwordTenantId: 1 });
+  });
+
+  it('cancelling a clinic password removes it completely', async () => {
+    await cancelClinicPassword(new Types.ObjectId());
+    expect(Object.keys((vi.mocked(EmcrAccount.updateOne).mock.calls[0] as any[])[1].$unset).sort()).toEqual([
+      'mustChangePassword',
+      'password',
+      'passwordSetAt',
+      'passwordSetBy',
+      'passwordTenantId',
+    ]);
   });
 
   it('signs in with the right password and hides the hash', async () => {
