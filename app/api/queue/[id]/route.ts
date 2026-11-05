@@ -111,6 +111,10 @@ export async function PUT(
 
     const oldStatus = currentQueue.status;
 
+    // Finished is final: a screen that hasn't caught up can't complete a no-show or call in someone who left.
+    if (fields.status && fields.status !== oldStatus && !['waiting', 'in-progress', 'away'].includes(oldStatus)) {
+      return NextResponse.json({ success: false, error: 'This patient has already left the queue.' }, { status: 409 });
+    }
     // A stale screen must not reopen a finished entry, or skip a step of the lab round trip.
     if (fields.status === 'waiting' && !['waiting', 'in-progress', 'away'].includes(oldStatus)) {
       return NextResponse.json({ success: false, error: 'This patient has already left the queue.' }, { status: 409 });
@@ -166,6 +170,9 @@ export async function PUT(
       currentQueue.completedAt = new Date();
     }
 
+    // Everything above decided from oldStatus, so the save only lands if it still holds: of two desks
+    // finishing one consult, only one goes on to call the next patient in.
+    if (fields.status) currentQueue.$where = { status: oldStatus };
     await currentQueue.save();
 
     const consultEnded = oldStatus === 'in-progress' && fields.status === 'completed' && _skipAutomation !== true;
@@ -228,6 +235,12 @@ export async function PUT(
     if (error.code === 11000) {
       return NextResponse.json(
         { success: false, error: 'This doctor just started a consult with another patient.' },
+        { status: 409 }
+      );
+    }
+    if (error.name === 'DocumentNotFoundError') {
+      return NextResponse.json(
+        { success: false, error: 'Another desk just updated this patient. Check the queue and try again.' },
         { status: 409 }
       );
     }

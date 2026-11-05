@@ -321,3 +321,48 @@ describe('PUT /api/queue/[id] call-in', () => {
     expect(res.status).toBe(409);
   });
 });
+
+describe('PUT /api/queue/[id] from a screen that is behind', () => {
+  beforeEach(() => {
+    vi.mocked(requireTenantSession).mockResolvedValue({
+      session: { userId: 'u', role: 'admin', tenantId: TENANT } as any,
+      tenantId: TENANT,
+      tenantObjectId: new Types.ObjectId(TENANT),
+    });
+    vi.mocked(findConsultBlocker).mockReset().mockResolvedValue(null);
+    vi.mocked(callNextPatient).mockReset().mockResolvedValue(null as any);
+  });
+
+  it.each([
+    ['no-show', 'completed'],
+    ['cancelled', 'in-progress'],
+    ['completed', 'no-show'],
+  ])('leaves a %s entry alone when told %s', async (status, next) => {
+    const doc = entry({ status });
+    const res = await put({ status: next });
+    expect(res.status).toBe(409);
+    expect(doc.status).toBe(status);
+    expect(doc.save).not.toHaveBeenCalled();
+  });
+
+  it('still lets a finished entry take other edits', async () => {
+    const doc = entry({ status: 'completed' });
+    expect((await put({ notes: 'left a note' })).status).toBe(200);
+    expect(doc.save).toHaveBeenCalled();
+    expect(doc.$where).toBeUndefined();
+  });
+
+  it('saves a status change only if the status is still the one it read', async () => {
+    const doc = entry({ status: 'in-progress' });
+    expect((await put({ status: 'completed' })).status).toBe(200);
+    expect(doc.$where).toEqual({ status: 'in-progress' });
+  });
+
+  it('losing the race to another desk is a 409, and does not call the next patient', async () => {
+    const doc = entry({ status: 'in-progress' });
+    doc.save.mockRejectedValue(Object.assign(new Error('gone'), { name: 'DocumentNotFoundError' }));
+    const res = await put({ status: 'completed' });
+    expect(res.status).toBe(409);
+    expect(callNextPatient).not.toHaveBeenCalled();
+  });
+});
