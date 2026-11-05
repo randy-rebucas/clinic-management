@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../clinic-management-mobile"
+		},
+		{
+			"path": "../clinic-management-rep"
 		}
 	],
 	"settings": {}
