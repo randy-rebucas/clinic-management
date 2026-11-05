@@ -8,12 +8,18 @@ import { createAuditLog } from '@/lib/audit';
 import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
 import { isValidId } from '@/lib/api/tenant-session';
+import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
+import { getSettings } from '@/lib/settings';
+
+/** A finished entry has nothing left to check in to. */
+const CLOSED_STATUSES = new Set(['completed', 'cancelled', 'no-show']);
 
 /**
  * Queue check-in.
  * - Manual check-in (queueId) is a staff action and requires a session with queue access.
- * - QR check-in (kiosk) may be anonymous but only on the clinic's subdomain, and the QR's
- *   patient id must match the queue entry. Anonymous callers get a minimal response.
+ * - QR check-in (kiosk) may be anonymous but only on the clinic's subdomain, at a clinic with
+ *   self check-in on, and the QR's patient id must match the queue entry. Anonymous callers are
+ *   rate limited and get a minimal response.
  */
 export async function POST(request: NextRequest) {
   const session = await verifySession();
@@ -74,10 +80,18 @@ export async function POST(request: NextRequest) {
       if (checkInMethod === 'manual') {
         return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
       }
+      const limited = await applyRateLimit(request, rateLimiters.public);
+      if (limited) return limited;
       tenantId = tenantContext.tenantId;
     }
     if (!tenantId) {
       return NextResponse.json({ success: false, error: 'Clinic not found' }, { status: 400 });
+    }
+    if (!isStaff) {
+      const settings = await getSettings(tenantId);
+      if (!settings?.queueSettings?.patientSelfCheckIn) {
+        return NextResponse.json({ success: false, error: 'Self check-in is off at this clinic.' }, { status: 403 });
+      }
     }
     const tenantObjectId = new Types.ObjectId(tenantId);
 
@@ -114,6 +128,10 @@ export async function POST(request: NextRequest) {
 
     if (queue.checkedIn) {
       return respond('Already checked in');
+    }
+
+    if (CLOSED_STATUSES.has(queue.status)) {
+      return NextResponse.json({ success: false, error: 'This queue entry is already closed.' }, { status: 409 });
     }
 
     queue.checkedIn = true;

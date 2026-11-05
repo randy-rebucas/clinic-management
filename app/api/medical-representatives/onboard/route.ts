@@ -7,6 +7,7 @@ import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { createCheckoutSession, isPayMongoConfigured } from '@/lib/paymongo';
 import { getPlatformFees } from '@/lib/platform-config';
 import { isMedRepSelfSignupEnabled } from '@/lib/medrep-signup';
+import { turnstileRejection } from '@/lib/turnstile';
 
 interface OnboardingRequest {
     firstName: string;
@@ -92,25 +93,18 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Check if medical rep already exists
-        const existingMedRep = await MedicalRepresentative.findOne({ email: body.email.toLowerCase().trim() });
-        if (existingMedRep) {
-            return NextResponse.json(
-                {
-                    success: false,
-                    error: 'Medical representative with this email already exists',
-                },
-                { status: 409 }
-            );
-        }
+        // After the field checks, so a typo doesn't use up the single-use token.
+        const captchaRejected = await turnstileRejection(request, body.turnstileToken);
+        if (captchaRejected) return captchaRejected;
 
-        // Check if user already exists
-        const existingUser = await User.findOne({ email: body.email.toLowerCase().trim() });
-        if (existingUser) {
+        // One reply for both, so this form can't be used to find out who has a staff account.
+        const email = body.email.toLowerCase().trim();
+        const emailTaken = (await MedicalRepresentative.findOne({ email })) || (await User.findOne({ email }));
+        if (emailTaken) {
             return NextResponse.json(
                 {
                     success: false,
-                    error: 'User account with this email already exists',
+                    error: 'We could not complete your registration with these details. Please contact support.',
                 },
                 { status: 409 }
             );

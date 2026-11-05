@@ -4,6 +4,7 @@ import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Icon, icons } from '@/components/PublicPage';
+import TurnstileWidget, { TURNSTILE_SITE_KEY } from '@/components/TurnstileWidget';
 
 interface FormData {
   firstName: string;
@@ -43,6 +44,9 @@ export default function MedicalRepresentativeOnboardingClient({ onlineFee }: { o
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  // Turnstile tokens are single-use: bumping this remounts the widget after each attempt.
+  const [captchaKey, setCaptchaKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<FormData>({
@@ -98,6 +102,8 @@ export default function MedicalRepresentativeOnboardingClient({ onlineFee }: { o
     if (error) setError(null);
   };
 
+  const onLastStep = currentStep === STEPS.length - 1;
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
@@ -125,6 +131,7 @@ export default function MedicalRepresentativeOnboardingClient({ onlineFee }: { o
         products,
         title: formData.title.trim(),
         bio: formData.bio.trim(),
+        turnstileToken: captchaToken ?? undefined,
       };
 
       const response = await fetch('/api/medical-representatives/onboard', {
@@ -151,6 +158,7 @@ export default function MedicalRepresentativeOnboardingClient({ onlineFee }: { o
     } catch (err: any) {
       setError(err.message || 'An error occurred during registration. Please try again.');
       setSubmitting(false);
+      setCaptchaKey((k) => k + 1);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
@@ -446,6 +454,11 @@ export default function MedicalRepresentativeOnboardingClient({ onlineFee }: { o
               </div>
 
               {/* Navigation */}
+              {TURNSTILE_SITE_KEY && onLastStep && (
+                <div className="px-5 pt-5 sm:px-7">
+                  <TurnstileWidget key={captchaKey} onToken={setCaptchaToken} />
+                </div>
+              )}
               <div className="flex items-center justify-between gap-3 border-t border-gray-100 p-5 sm:px-7">
                 {currentStep > 0 ? (
                   <button
@@ -460,7 +473,7 @@ export default function MedicalRepresentativeOnboardingClient({ onlineFee }: { o
                 )}
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || (onLastStep && Boolean(TURNSTILE_SITE_KEY) && !captchaToken)}
                   className="group inline-flex items-center justify-center gap-2 rounded-md bg-brand-teal px-6 py-2.5 font-semibold text-white shadow-[0_6px_20px_rgba(14,165,164,0.3)] transition-colors duration-150 hover:bg-brand-teal-dark disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
                 >
                   {submitting ? (
