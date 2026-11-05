@@ -7,11 +7,26 @@ vi.mock('@/lib/settings', () => ({ getSettings: vi.fn(async () => ({ appointment
 vi.mock('@/lib/clinic-timezone', () => ({ getTenantTimezone: vi.fn(async () => 'Asia/Manila') }));
 
 import Queue from '@/models/Queue';
-import { estimateWaits, refreshQueueWaits } from '@/lib/queue-wait';
+import { consultMinutesByDoctor, estimateWaits, refreshQueueWaits } from '@/lib/queue-wait';
 
 const doctor = (id: string) => ({ _id: id });
 const waiting = (d?: { _id: string }) => ({ status: 'waiting', doctor: d });
 const seeing = (d?: { _id: string }) => ({ status: 'in-progress', doctor: d });
+
+describe('consultMinutesByDoctor', () => {
+  it('stays on recent entries, so its cost does not grow with the clinic\'s history', async () => {
+    vi.mocked(Queue.aggregate).mockReset().mockResolvedValue([]);
+    const todayStart = new Date('2026-11-05T00:00:00Z');
+
+    await consultMinutesByDoctor(new Types.ObjectId(), todayStart);
+
+    const [{ $match }] = vi.mocked(Queue.aggregate).mock.calls[0][0] as unknown as [{ $match: Record<string, any> }];
+    expect($match.status).toBe('completed');
+    expect($match.priority).toEqual({ $gte: 0 });
+    expect($match.queuedAt.$gte).toEqual(new Date('2026-11-04T00:00:00Z'));
+    expect($match.startedAt).toEqual({ $gte: todayStart });
+  });
+});
 
 describe('refreshQueueWaits', () => {
   const tenantId = new Types.ObjectId();

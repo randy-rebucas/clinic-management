@@ -8,6 +8,7 @@ import { dayRangeInTz } from '@/lib/tz';
 
 /** Upper bound on live entries read per refresh (one clinic's day). */
 const MAX_SCAN = 300;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 interface LineEntry {
   status: string;
@@ -25,7 +26,19 @@ const lineKey = (e: LineEntry) => String(e.doctor?._id ?? 'none');
 /** Each doctor's average consultation today, once they have seen at least two patients. */
 export async function consultMinutesByDoctor(tenantId: Types.ObjectId, todayStart: Date): Promise<Map<string, number>> {
   const consults = await Queue.aggregate([
-    { $match: { tenantId, status: 'completed', startedAt: { $gte: todayStart }, completedAt: { $ne: null } } },
+    {
+      $match: {
+        tenantId,
+        status: 'completed',
+        // priority and queuedAt carry the index (tenantId, status, priority, queuedAt) down to recent
+        // entries; on startedAt alone this reads every completed entry the clinic has ever had.
+        // A day back covers a patient who joined last night and was seen this morning.
+        priority: { $gte: 0 },
+        queuedAt: { $gte: new Date(todayStart.getTime() - DAY_MS) },
+        startedAt: { $gte: todayStart },
+        completedAt: { $ne: null },
+      },
+    },
     { $group: { _id: '$doctor', avg: { $avg: { $divide: [{ $subtract: ['$completedAt', '$startedAt'] }, 60_000] } }, n: { $sum: 1 } } },
   ]);
   return new Map(

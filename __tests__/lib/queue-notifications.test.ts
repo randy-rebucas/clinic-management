@@ -44,6 +44,17 @@ describe('saving new wait estimates', () => {
     expect(vi.mocked(sendSMS).mock.calls[0][0].message).toContain('~25 min');
   });
 
+  it.each(['completed', 'cancelled', 'no-show'])('reads no patient for %s, which sends no message', async (newStatus) => {
+    held({ status: newStatus });
+    vi.mocked(Patient.findOne).mockClear();
+
+    await notifyQueuePatient({ queueId, tenantId, newStatus });
+
+    expect(refreshQueueWaits).toHaveBeenCalledTimes(1);
+    expect(Queue.findOne).not.toHaveBeenCalled();
+    expect(Patient.findOne).not.toHaveBeenCalled();
+  });
+
   it('refreshes for changes that only move the line', async () => {
     held({ status: 'waiting' });
 

@@ -197,19 +197,22 @@ export async function PUT(
         })
       );
 
-      after(() =>
-        import('@/lib/automations/queue-notifications').then(({ notifyQueuePatient }) => {
-          return notifyQueuePatient({
-            queueId: currentQueue._id,
-            tenantId: tenantObjectId,
-            newStatus,
+      // Calling the next patient in updates the line too, so once is enough.
+      if (!nextCalled) {
+        after(() =>
+          import('@/lib/automations/queue-notifications').then(({ notifyQueuePatient }) => {
+            return notifyQueuePatient({
+              queueId: currentQueue._id,
+              tenantId: tenantObjectId,
+              newStatus,
+            }).catch((error) => {
+              console.error('[Queue API] Error sending queue notification:', error);
+            });
           }).catch((error) => {
-            console.error('[Queue API] Error sending queue notification:', error);
-          });
-        }).catch((error) => {
-          console.error('[Queue API] Error loading queue-notifications module:', error);
-        })
-      );
+            console.error('[Queue API] Error loading queue-notifications module:', error);
+          })
+        );
+      }
     } else if (fields.doctor !== undefined || fields.priority !== undefined) {
       // Moving someone to another doctor or changing priority reshuffles the lines.
       after(() =>

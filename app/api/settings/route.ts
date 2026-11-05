@@ -8,6 +8,7 @@ import { createAuditLog } from '@/lib/audit';
 import { resolveTimezone } from '@/lib/tz';
 import { CURRENCY_CODES, INVOICE_PREFIX, WEEKDAYS, minutesOf } from '@/lib/clinic-settings';
 import { clearSettingsCache, getDefaultSettings, getSettings } from '@/lib/settings';
+import { clearTimezoneCache } from '@/lib/clinic-timezone';
 import { isSMSConfigured } from '@/lib/sms';
 import { isEmailConfigured } from '@/lib/email';
 import { isCloudinaryConfigured } from '@/lib/cloudinary';
@@ -313,6 +314,7 @@ export async function PUT(request: NextRequest) {
     if (zoneChanged) {
       await Tenant.updateOne({ _id: ctx.tenantObjectId }, { $set: { 'settings.timezone': timezone } });
       clearTenantCache();
+      clearTimezoneCache(ctx.tenantObjectId);
     }
 
     // The version check is part of the write, so two saves at the same moment can't both pass it.
@@ -324,6 +326,7 @@ export async function PUT(request: NextRequest) {
     if (!settings && zoneChanged) {
       await Tenant.updateOne({ _id: ctx.tenantObjectId }, { $set: { 'settings.timezone': oldZone } });
       clearTenantCache();
+      clearTimezoneCache(ctx.tenantObjectId);
     }
     if (!settings && version) {
       return NextResponse.json(

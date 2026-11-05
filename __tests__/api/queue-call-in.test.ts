@@ -18,6 +18,7 @@ vi.mock('@/lib/queue-consult', () => ({ findConsultBlocker: vi.fn() }));
 vi.mock('@/lib/automations/queue-auto-call', () => ({ callNextPatient: vi.fn() }));
 vi.mock('next/server', async (orig) => ({ ...(await orig<typeof import('next/server')>()), after: vi.fn() }));
 
+import { after } from 'next/server';
 import { Types } from 'mongoose';
 import { requireTenantSession } from '@/lib/api/tenant-session';
 import Queue from '@/models/Queue';
@@ -263,6 +264,19 @@ describe('PUT /api/queue/[id] call-in', () => {
   });
 
   describe('when the consult ends', () => {
+    it('updates the line once, leaving it to the call-in when someone was called', async () => {
+      vi.mocked(after).mockClear();
+      entry({ status: 'in-progress' });
+      await put({ status: 'completed' });
+      expect(after).toHaveBeenCalledTimes(2); // appointment sync and the line
+
+      vi.mocked(after).mockClear();
+      entry({ status: 'in-progress' });
+      vi.mocked(callNextPatient).mockResolvedValue({ name: 'Ana Cruz', number: 'W-004' });
+      await put({ status: 'completed' });
+      expect(after).toHaveBeenCalledTimes(1); // appointment sync
+    });
+
     it('calls in the next patient for this doctor and says who', async () => {
       entry({ status: 'in-progress' });
       vi.mocked(callNextPatient).mockResolvedValue({ name: 'Ana Cruz', number: 'W-004' });

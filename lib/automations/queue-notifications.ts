@@ -19,6 +19,8 @@ import { Types } from 'mongoose';
 export const NOTIFY_WITHIN_POSITION = 3;
 /** Upper bound on waiting entries scanned per update (one clinic's day). */
 const MAX_SCAN = 300;
+/** The statuses that can send the patient a message; the rest only move the line. */
+const MESSAGE_STATUSES = new Set(['in-progress', 'away', 'waiting']);
 
 export interface QueueNotificationOptions {
   queueId: string | Types.ObjectId;
@@ -46,6 +48,11 @@ export async function notifyQueuePatient(options: QueueNotificationOptions): Pro
 
     // First, so the message below quotes the new estimate.
     await refreshQueueWaits(tenantObjectId);
+
+    if (!MESSAGE_STATUSES.has(options.newStatus)) {
+      await pushPositions(tenantObjectId, clinicName);
+      return;
+    }
 
     const queueId =
       typeof options.queueId === 'string' ? new Types.ObjectId(options.queueId) : options.queueId;
