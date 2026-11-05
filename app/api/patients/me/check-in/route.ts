@@ -20,7 +20,7 @@ import { scopedTenantIds } from '../_lib/patient-scope';
 import { linkedRecords, recordAtClinic } from '../_lib/linked-records';
 import { requireActiveEmcr } from '@/lib/emcr/activation';
 
-const ACTIVE = ['waiting', 'in-progress'];
+const ACTIVE = ['waiting', 'in-progress', 'away'];
 /** Appointments a patient can arrive for: anything booked and not finished or cancelled. */
 const ARRIVABLE = ['pending', 'scheduled', 'confirmed', 'rescheduled'];
 

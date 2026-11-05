@@ -33,7 +33,7 @@ export interface EndOfDayCleanupOptions {
    * Clinic-local day to clean up. Defaults to yesterday + today (so a missed run catches up).
    */
   targetDate?: Date;
-  /** Status for queue entries still waiting at close (in-progress entries become 'completed'). */
+  /** Status for queue entries still waiting at close (in-progress and away entries become 'completed'). */
   queueCompletionStatus?: 'completed' | 'cancelled';
   /** Status for unattended appointments; defaults to 'no-show'. */
   appointmentCompletionStatus?: 'no-show' | 'cancelled' | 'completed';
@@ -47,7 +47,7 @@ async function cleanupTenant(
   options: EndOfDayCleanupOptions
 ): Promise<EndOfDayCleanupResult> {
   const result: EndOfDayCleanupResult = {
-    queues: { matched: 0, updated: 0, statuses: ['waiting', 'in-progress'] },
+    queues: { matched: 0, updated: 0, statuses: ['waiting', 'in-progress', 'away'] },
     appointments: { matched: 0, updated: 0, statuses: OPEN_APPOINTMENT_STATUSES },
     errors: [],
     ranAt: new Date(),
@@ -74,7 +74,7 @@ async function cleanupTenant(
 
     const [inProgress, waiting] = await Promise.all([
       Queue.updateMany(
-        { ...base, status: 'in-progress' },
+        { ...base, status: { $in: ['in-progress', 'away'] } },
         { $set: { status: 'completed', completedAt: now, completionNotes: 'Auto-closed by end-of-day cleanup' } }
       ),
       Queue.updateMany(
@@ -148,7 +148,7 @@ export async function runEndOfDayCleanup(
   await connectDB();
 
   const total: EndOfDayCleanupResult = {
-    queues: { matched: 0, updated: 0, statuses: ['waiting', 'in-progress'] },
+    queues: { matched: 0, updated: 0, statuses: ['waiting', 'in-progress', 'away'] },
     appointments: { matched: 0, updated: 0, statuses: OPEN_APPOINTMENT_STATUSES },
     errors: [],
     ranAt: new Date(),

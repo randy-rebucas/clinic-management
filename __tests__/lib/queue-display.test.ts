@@ -34,6 +34,13 @@ const entry = (n: number, status: string, extra: Record<string, unknown> = {}) =
 });
 
 describe('shapeQueueDisplay', () => {
+  it('keeps a patient at the lab off the board', () => {
+    const data = shapeQueueDisplay([entry(1, 'away'), entry(2, 'waiting')]);
+    expect(data.nowServing).toHaveLength(0);
+    expect(data.nextUp.map((e) => e.number)).toEqual(['W-002']);
+    expect(data.waiting).toBe(1);
+  });
+
   it('never carries a surname onto the board', () => {
     const data = shapeQueueDisplay([entry(1, 'in-progress'), entry(2, 'waiting')]);
     expect(JSON.stringify(data)).not.toMatch(/Dela|Cruz/);

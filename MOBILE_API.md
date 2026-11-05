@@ -342,6 +342,11 @@ Errors carry a `code`: `400 INVALID_QR` (not a clinic check-in QR, e.g. a login 
 QR_EXPIRED` (scan again), `403 NOT_REGISTERED` (not a patient of that clinic, or outside a scoped
 session's clinic), `403 SELF_CHECKIN_OFF`, `404 NO_APPOINTMENT` (walk-ins register at the desk).
 
+**New:** queue entries can have `status: "away"`, meaning the patient was sent to the lab mid-consult.
+`GET /api/patients/me/queue` and `POST /api/patients/me/check-in` return the entry with
+`position: null`. They're out of the line but keep their place, and go back to `"waiting"` when staff
+mark them back from the lab. Treat unknown statuses as not in the queue, as older app versions do.
+
 **Changed:** `GET /api/patients/me/queue` now counts `position` within the patient's doctor's line
 (unassigned patients share one line), the same number the staff queue screen shows. It used to
 count everyone waiting at the clinic. Use `checkedIn` to decide whether to offer "Check in".

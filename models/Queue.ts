@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
-export type QueueStatus = 'waiting' | 'in-progress' | 'completed' | 'cancelled' | 'no-show';
+/** 'away': sent out mid-consult (shown as "At lab"). Out of the line, but keeps their place for when they return. */
+export type QueueStatus = 'waiting' | 'in-progress' | 'away' | 'completed' | 'cancelled' | 'no-show';
 export type QueueType = 'appointment' | 'walk-in' | 'follow-up';
 
 export interface IQueue extends Document {
@@ -89,7 +90,7 @@ const QueueSchema: Schema = new Schema(
     room: { type: Schema.Types.ObjectId, ref: 'Room', index: true },
     status: {
       type: String,
-      enum: ['waiting', 'in-progress', 'completed', 'cancelled', 'no-show'],
+      enum: ['waiting', 'in-progress', 'away', 'completed', 'cancelled', 'no-show'],
       default: 'waiting',
     },
     priority: { type: Number, default: 0, index: true }, // Higher = called sooner (lib/queue-order.ts)

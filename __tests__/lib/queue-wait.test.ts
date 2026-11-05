@@ -10,6 +10,18 @@ const waiting = (d?: { _id: string }) => ({ status: 'waiting', doctor: d });
 const seeing = (d?: { _id: string }) => ({ status: 'in-progress', doctor: d });
 
 describe('estimateWaits', () => {
+  it('leaves a patient at the lab out of the line, and they keep their place on return', () => {
+    const atLab = { status: 'away', doctor: doctor('a') };
+    const next = waiting(doctor('a'));
+    const waits = estimateWaits([atLab, next], new Map(), 15);
+    expect(waits.has(atLab)).toBe(false);
+    expect(waits.get(next)).toMatchObject({ position: 1, estimatedWaitTime: 0 });
+
+    const back = waiting(doctor('a'));
+    expect(estimateWaits([back, next], new Map(), 15).get(back)).toMatchObject({ position: 1 });
+    expect(estimateWaits([back, next], new Map(), 15).get(next)).toMatchObject({ position: 2 });
+  });
+
   it('counts each doctor’s line on its own', () => {
     const a1 = waiting(doctor('a'));
     const b1 = waiting(doctor('b'));

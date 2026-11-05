@@ -16,8 +16,8 @@ import { QUEUE_SORT } from '@/lib/queue-order';
 import { consultMinutesByDoctor, estimateWaits } from '@/lib/queue-wait';
 import { dayRangeInTz } from '@/lib/tz';
 
-const QUEUE_STATUSES = ['waiting', 'in-progress', 'completed', 'cancelled', 'no-show'];
-const ACTIVE = ['waiting', 'in-progress'];
+const QUEUE_STATUSES = ['waiting', 'in-progress', 'away', 'completed', 'cancelled', 'no-show'];
+const ACTIVE = ['waiting', 'in-progress', 'away'];
 
 export async function GET(request: NextRequest) {
   const ctx = await requireTenantSession();

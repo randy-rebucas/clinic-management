@@ -151,7 +151,8 @@ export async function PUT(
 
           const liveEntry = tenantFilter(tenantId, {
             patient: (visit.patient as any)?._id || visit.patient,
-            status: { $in: ['waiting', 'in-progress'] },
+            // Closing a visit finishes a patient at the lab too; opening a note never pulls them back in.
+            status: { $in: newQueueStatus === 'in-progress' ? ['waiting', 'in-progress'] : ['waiting', 'in-progress', 'away'] },
           });
           // Opening a note doesn't jump the line: a waiting patient stays waiting while their doctor is busy.
           const entry = newQueueStatus === 'in-progress'

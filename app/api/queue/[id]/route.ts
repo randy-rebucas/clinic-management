@@ -6,6 +6,7 @@ import Room from '@/models/Room';
 import Doctor from '@/models/Doctor';
 import Patient from '@/models/Patient';
 import Appointment from '@/models/Appointment';
+import Visit from '@/models/Visit';
 import { requirePermission } from '@/app/lib/auth-helpers';
 import { Types } from 'mongoose';
 import { requireTenantSession, isTenantSessionError, isValidId, tenantFilter } from '@/lib/api/tenant-session';
@@ -14,7 +15,7 @@ import { vitalsSchema } from '@/lib/visit-schema';
 import { findConsultBlocker } from '@/lib/queue-consult';
 
 const updateQueueSchema = z.object({
-  status: z.enum(['waiting', 'in-progress', 'completed', 'cancelled', 'no-show']).optional(),
+  status: z.enum(['waiting', 'in-progress', 'away', 'completed', 'cancelled', 'no-show']).optional(),
   priority: z.coerce.number().int().min(0).max(100).optional(),
   doctor: zObjectId.nullable().optional(),
   room: zObjectId.nullable().optional(),
@@ -108,9 +109,15 @@ export async function PUT(
 
     const oldStatus = currentQueue.status;
 
-    // Only a patient in consult goes back to the line; a stale screen must not reopen a finished entry.
-    if (fields.status === 'waiting' && oldStatus !== 'waiting' && oldStatus !== 'in-progress') {
+    // A stale screen must not reopen a finished entry, or skip a step of the lab round trip.
+    if (fields.status === 'waiting' && !['waiting', 'in-progress', 'away'].includes(oldStatus)) {
       return NextResponse.json({ success: false, error: 'This patient has already left the queue.' }, { status: 409 });
+    }
+    if (fields.status === 'away' && oldStatus !== 'in-progress') {
+      return NextResponse.json({ success: false, error: 'Only a patient in consult can be sent to the lab.' }, { status: 409 });
+    }
+    if (fields.status === 'in-progress' && oldStatus === 'away') {
+      return NextResponse.json({ success: false, error: 'Mark this patient as back from the lab first.' }, { status: 409 });
     }
 
     const nextDoctor = fields.doctor !== undefined ? fields.doctor : currentQueue.doctor;
@@ -131,10 +138,17 @@ export async function PUT(
     if (fields.checkedIn && !currentQueue.checkedInAt) {
       currentQueue.checkedInAt = new Date();
     }
-    // The consult didn't happen: the next call-in starts the clocks and the board call afresh.
-    if (fields.status === 'waiting' && oldStatus === 'in-progress') {
+    // The consult is on pause: the next call-in starts the clocks and the board call afresh.
+    if ((fields.status === 'waiting' || fields.status === 'away') && oldStatus === 'in-progress') {
       currentQueue.startedAt = undefined;
       currentQueue.calledAt = undefined;
+    }
+    // Remember the visit they already have, so coming back reopens it instead of starting a second one.
+    if ((fields.status === 'waiting' || fields.status === 'away') && (oldStatus === 'in-progress' || oldStatus === 'away')) {
+      const openVisit = await Visit.findOne(
+        tenantFilter(tenantId, { patient: currentQueue.patient, status: 'open', date: { $gte: currentQueue.queuedAt } })
+      ).sort({ date: -1 }).select('_id').lean() as { _id: Types.ObjectId } | null;
+      if (openVisit) currentQueue.visit = openVisit._id;
     }
     if (fields.status === 'in-progress' && !currentQueue.startedAt) {
       currentQueue.startedAt = new Date();

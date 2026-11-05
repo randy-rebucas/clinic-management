@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
 
     const query: any = {
       patient: { $in: linked.patientIds },
-      status: { $in: ['waiting', 'in-progress'] },
+      status: { $in: ['waiting', 'in-progress', 'away'] },
       ...tenant.filter,
     };
 

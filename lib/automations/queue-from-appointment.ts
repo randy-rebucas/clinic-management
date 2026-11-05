@@ -39,7 +39,7 @@ export async function updateQueueFromAppointment(params: UpdateQueueFromAppointm
     const query: Record<string, unknown> = {
       tenantId,
       patient: patientId,
-      status: { $in: ['waiting', 'in-progress'] },
+      status: { $in: ['waiting', 'in-progress', 'away'] },
     };
     if (queueId) {
       query._id = queueId;
@@ -74,7 +74,7 @@ export async function getQueueForAppointment(appointmentEntry: any): Promise<any
     return await Queue.findOne({
       tenantId: appointmentEntry.tenantId,
       patient: appointmentEntry.patient,
-      status: { $in: ['waiting', 'in-progress'] },
+      status: { $in: ['waiting', 'in-progress', 'away'] },
     })
       .sort({ queuedAt: -1 })
       .limit(1);
