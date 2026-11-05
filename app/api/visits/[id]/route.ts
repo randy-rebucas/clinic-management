@@ -15,6 +15,7 @@ import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenant
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { updateVisitSchema, signatureWithMetadata, touchesAttestedFields } from '@/lib/visit-schema';
 import { findConsultBlocker } from '@/lib/queue-consult';
+import { callNextPatient } from '@/lib/automations/queue-auto-call';
 
 export async function GET(
   request: NextRequest,
@@ -132,6 +133,8 @@ export async function PUT(
     await visit.populate({ path: 'patient', select: 'firstName lastName patientCode email phone', match: { tenantIds: tenantObjectId } });
     await visit.populate('provider', 'name email');
 
+    let nextCalled: Awaited<ReturnType<typeof callNextPatient>> = null;
+
     // Update queue status based on visit status change
     if (body.status && oldVisit.status !== body.status) {
       const queueStatusMap: Record<string, string> = {
@@ -161,11 +164,15 @@ export async function PUT(
           const blocked = entry?.status === 'waiting' && await findConsultBlocker(tenantObjectId, entry);
 
           if (!blocked) {
-            await Queue.findOneAndUpdate(
+            const before = await Queue.findOneAndUpdate(
               liveEntry,
               { $set: updateData },
-              { new: true, sort: { queuedAt: -1 } } // Update most recent queue entry
-            );
+              { new: false, sort: { queuedAt: -1 } } // Update most recent queue entry
+            ) as { status: string; doctor?: mongoose.Types.ObjectId } | null;
+            // Only a patient leaving consult frees the doctor, not closing the note of someone at the lab.
+            if (newQueueStatus === 'completed' && before?.status === 'in-progress') {
+              nextCalled = await callNextPatient(tenantObjectId, before.doctor);
+            }
           }
         } catch (queueError) {
           console.error('Error updating queue status:', queueError);
@@ -249,7 +256,7 @@ export async function PUT(
       });
     }
 
-    return NextResponse.json({ success: true, data: visit, prescriptionId });
+    return NextResponse.json({ success: true, data: visit, prescriptionId, nextCalled });
   } catch (error: any) {
     console.error('Error updating visit:', error);
     if (error.name === 'ValidationError' || error.name === 'CastError') {

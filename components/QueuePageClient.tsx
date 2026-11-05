@@ -14,7 +14,7 @@ import AddToQueueModal from './queue/AddToQueueModal';
 import CheckInQrModal from './queue/CheckInQrModal';
 import VitalsModal, { hasVitals, vitalsSummary, type Vitals } from './queue/VitalsModal';
 import type { QueuePermissions } from '@/lib/queue-page';
-import { QUEUE_PRIORITY, consultBlocker, shortQueueNumber } from '@/lib/queue-order';
+import { QUEUE_PRIORITY, consultBlocker, nextCalledNotice, shortQueueNumber, type NextCalled } from '@/lib/queue-order';
 
 type QueueStatus = 'waiting' | 'in-progress' | 'away' | 'completed' | 'cancelled' | 'no-show';
 
@@ -53,6 +53,8 @@ const ROW_GRID =
 const ICON_BTN = 'rounded-md p-2 text-gray-500 transition-colors hover:bg-brand-teal-light hover:text-brand-teal-deep disabled:opacity-40';
 /** Destructive icon: neutral at rest, red text on a red tint only while hovered. */
 const ICON_BTN_DANGER = 'rounded-md p-2 text-gray-500 transition-colors hover:text-red-700 hover:bg-red-50 disabled:opacity-40';
+
+const ROW_BTN = `inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-900 transition-colors hover:border-brand-teal-dark hover:bg-brand-teal-light/50 hover:text-brand-teal-deep disabled:cursor-wait disabled:opacity-50 ${FOCUS_RING}`;
 
 const isNotHere = (e: QueueEntry) => e.status === 'away' && e.awayReason === 'missed';
 const isAtLab = (e: QueueEntry) => e.status === 'away' && e.awayReason !== 'missed';
@@ -231,7 +233,7 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
   // --- Actions ----------------------------------------------------------------
 
   const act = useCallback(
-    async (entry: QueueEntry, request: () => Promise<Response>, success: string, fallback: string) => {
+    async (entry: QueueEntry, request: () => Promise<Response>, success: string | ((reply: { nextCalled?: NextCalled | null }) => string), fallback: string) => {
       setBusyId(entry._id);
       setActionError(null);
       try {
@@ -239,7 +241,7 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
         if (res.status === 401) return router.push('/login');
         const data = await res.json().catch(() => null);
         if (!res.ok || !data?.success) throw new Error(formatApiError(data, fallback));
-        setNotice(success);
+        setNotice(typeof success === 'function' ? success(data) : success);
         reload();
       } catch (err) {
         setNotice(null);
@@ -264,7 +266,7 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
         'The patient could not be checked in'
       ),
     callIn: (e: QueueEntry) => act(e, put(e, { status: 'in-progress' }), `${nameOf(e)} has been called in${doctorOf(e) ? ` to ${doctorOf(e)}` : ''}.`, 'The patient could not be called in'),
-    done: (e: QueueEntry) => act(e, put(e, { status: 'completed' }), `${nameOf(e)} is marked as seen.`, 'The queue entry could not be closed'),
+    done: (e: QueueEntry) => act(e, put(e, { status: 'completed' }), (reply) => `${nameOf(e)} is marked as seen.${nextCalledNotice(reply.nextCalled)}`, 'The queue entry could not be closed'),
     backToWaiting: (e: QueueEntry) => act(e, put(e, { status: 'waiting' }), `${nameOf(e)} is back on the waiting list.`, 'The patient could not be moved back to waiting'),
     sendToLab: (e: QueueEntry) => act(e, put(e, { status: 'away' }), `${nameOf(e)} is at the lab. Their place in line is kept.`, 'The patient could not be sent to the lab'),
     backFromLab: (e: QueueEntry) => act(e, put(e, { status: 'waiting' }), `${nameOf(e)} is back from the lab and in their place in line.`, 'The patient could not be moved back from the lab'),
@@ -495,7 +497,7 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
                     <span className="sr-only">Actions</span>
                   </div>
 
-                  {withDoctor.length === 0 && atLab.length === 0 && notHere.length === 0 && waiting.length === 0 ? (
+                  {withDoctor.length === 0 && waiting.length === 0 ? (
                     <Empty
                       narrowed={narrowed}
                       onClear={clearAll}
@@ -511,24 +513,10 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
                           ))}
                         </Group>
                       )}
-                      {atLab.length > 0 && (
-                        <Group title="At lab" count={atLab.length} hint="Out of the line until they're back. Their place is kept.">
-                          {atLab.map((e, i) => (
-                            <Row key={e._id} entry={e} index={i + withDoctor.length} {...rowProps} />
-                          ))}
-                        </Group>
-                      )}
-                      {notHere.length > 0 && (
-                        <Group title="Not here" count={notHere.length} hint="Didn't answer when called. Their place is kept.">
-                          {notHere.map((e, i) => (
-                            <Row key={e._id} entry={e} index={i + withDoctor.length + atLab.length} {...rowProps} />
-                          ))}
-                        </Group>
-                      )}
                       {waiting.length > 0 && (
                         <Group title="Waiting" count={waiting.length} hint="Called in this order: urgent first, then by arrival.">
                           {waiting.map((e, i) => (
-                            <Row key={e._id} entry={e} index={i + withDoctor.length + atLab.length + notHere.length} {...rowProps} />
+                            <Row key={e._id} entry={e} index={i + withDoctor.length} {...rowProps} />
                           ))}
                         </Group>
                       )}
@@ -554,8 +542,14 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
                 </section>
               </div>
 
-              {/* Doctors: each line is also a filter */}
-              <DoctorLines lines={lines} now={now} active={doctorFilter} onPick={(key) => setDoctorFilter((cur) => (cur === key ? null : key))} />
+              <div className="flex min-w-0 flex-col gap-6 self-start">
+                {/* Out of the line for now, with their place kept */}
+                <HeldCard title="At lab" hint="Out of the line until they're back. Their place is kept." entries={atLab} backLabel="Back from lab" onBack={actions.backFromLab} {...rowProps} />
+                <HeldCard title="Not here" hint="Didn't answer when called. Their place is kept." entries={notHere} backLabel="Patient is back" onBack={actions.patientBack} canMarkNoShow {...rowProps} />
+
+                {/* Doctors: each line is also a filter */}
+                <DoctorLines lines={lines} now={now} active={doctorFilter} onPick={(key) => setDoctorFilter((cur) => (cur === key ? null : key))} />
+              </div>
             </div>
           </>
         )}
@@ -684,8 +678,6 @@ function Row({
   onConfirm: (e: QueueEntry, status: 'no-show' | 'cancelled') => void;
 }) {
   const inRoom = e.status === 'in-progress';
-  const atLab = isAtLab(e);
-  const notHere = isNotHere(e);
   const waitMin = minutesBetween(e.queuedAt, inRoom ? e.startedAt : now);
   const consultMin = inRoom ? minutesBetween(e.startedAt, now) : 0;
   const lineWait = e.status === 'waiting';
@@ -699,7 +691,7 @@ function Row({
 
   // Next step as one labelled button, the rest as quiet icons.
   let primary: ReactNode = null;
-  const btn = `inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-900 transition-colors hover:border-brand-teal-dark hover:bg-brand-teal-light/50 hover:text-brand-teal-deep disabled:cursor-wait disabled:opacity-50 ${FOCUS_RING}`;
+  const btn = ROW_BTN;
   if (permissions.canUpdate && e.status === 'waiting' && !e.checkedIn) {
     primary = (
       <button type="button" disabled={busy} onClick={() => actions.checkIn(e)} aria-label={`Check in ${name}`} className={btn}>
@@ -740,20 +732,6 @@ function Row({
         {busy ? 'Saving…' : 'Mark seen'}
       </button>
     );
-  } else if (atLab && permissions.canUpdate) {
-    primary = (
-      <button type="button" disabled={busy} onClick={() => actions.backFromLab(e)} aria-label={`${name} is back from the lab`} className={btn}>
-        <Svg d={ICONS.undo} />
-        {busy ? 'Saving…' : 'Back from lab'}
-      </button>
-    );
-  } else if (notHere && permissions.canUpdate) {
-    primary = (
-      <button type="button" disabled={busy} onClick={() => actions.patientBack(e)} aria-label={`${name} is back`} className={btn}>
-        <Svg d={ICONS.undo} />
-        {busy ? 'Saving…' : 'Patient is back'}
-      </button>
-    );
   }
 
   const icon = (label: string, d: string, run: () => void, danger = false) => (
@@ -785,8 +763,8 @@ function Row({
           ? icon('Back to normal priority', ICONS.flag, () => actions.setPriority(e, QUEUE_PRIORITY.normal))
           : icon('Mark urgent', ICONS.flag, () => actions.setPriority(e, QUEUE_PRIORITY.urgent))
       );
+      secondary.push(icon('Mark as no-show', ICONS.userX, () => onConfirm(e, 'no-show')));
     }
-    if (e.status === 'waiting' || notHere) secondary.push(icon('Mark as no-show', ICONS.userX, () => onConfirm(e, 'no-show')));
     if (!inRoom) secondary.push(icon('Remove from queue', ICONS.x, () => onConfirm(e, 'cancelled'), true));
   }
 
@@ -800,7 +778,7 @@ function Row({
         <span title={e.queueNumber} className={`inline-block rounded-md px-2 py-1 font-mono text-sm font-semibold tabular-nums ${inRoom ? 'bg-brand-teal-dark text-white' : 'bg-gray-100 text-gray-900'}`}>
           {shortQueueNumber(e.queueNumber)}
         </span>
-        <span className="text-xs text-gray-500 lg:mt-1 lg:block">{inRoom ? 'In consult' : atLab ? 'At lab' : notHere ? 'Not here' : e.position ? (e.position === 1 ? 'Next in line' : `${ordinal(e.position)} in line`) : ''}</span>
+        <span className="text-xs text-gray-500 lg:mt-1 lg:block">{inRoom ? 'In consult' : e.position ? (e.position === 1 ? 'Next in line' : `${ordinal(e.position)} in line`) : ''}</span>
       </span>
 
       {/* Patient */}
@@ -875,6 +853,87 @@ function Row({
         {secondary}
       </span>
     </li>
+  );
+}
+
+/** Patients out of the line, in the side column: too narrow for the list's columns. */
+function HeldCard({
+  title,
+  hint,
+  entries,
+  backLabel,
+  onBack,
+  canMarkNoShow = false,
+  now,
+  busyId,
+  permissions,
+  onVitals,
+  onConfirm,
+}: {
+  title: string;
+  hint: string;
+  entries: QueueEntry[];
+  backLabel: string;
+  onBack: (e: QueueEntry) => void;
+  canMarkNoShow?: boolean;
+  now: number;
+  busyId: string | null;
+  permissions: QueuePermissions;
+  onVitals: (e: QueueEntry) => void;
+  onConfirm: (e: QueueEntry, status: 'no-show' | 'cancelled') => void;
+}) {
+  if (entries.length === 0) return null;
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white overflow-hidden" aria-label={title}>
+      <div className="border-b border-gray-200 px-5 py-4">
+        <h2 className="text-base font-bold tracking-tight text-gray-900">
+          {title} <span className="font-mono text-sm font-normal text-gray-500">{entries.length}</span>
+        </h2>
+        <p className="mt-0.5 text-sm text-gray-500">{hint}</p>
+      </div>
+      <ul className="divide-y divide-gray-100">
+        {entries.map((e) => {
+          const busy = busyId === e._id;
+          const name = nameOf(e);
+          const icon = (label: string, d: string, run: () => void, danger = false) => (
+            <button type="button" onClick={run} disabled={busy} aria-label={`${label}: ${name}`} title={label} className={`${danger ? ICON_BTN_DANGER : ICON_BTN} ${FOCUS_RING}`}>
+              <Svg d={d} />
+            </button>
+          );
+          return (
+            <li key={e._id} className="px-5 py-3">
+              <span className="flex items-center gap-2">
+                <span title={e.queueNumber} className="shrink-0 rounded-md bg-gray-100 px-2 py-1 font-mono text-sm font-semibold tabular-nums text-gray-900">
+                  {shortQueueNumber(e.queueNumber)}
+                </span>
+                {e.patient ? (
+                  <Link href={`/patients/${e.patient._id}`} className={`truncate rounded font-semibold text-gray-900 hover:text-brand-teal-deep ${FOCUS_RING}`}>
+                    {name}
+                  </Link>
+                ) : (
+                  <span className="truncate font-semibold text-gray-900">{name}</span>
+                )}
+              </span>
+              <span className="mt-1 block truncate text-xs text-gray-500">
+                {doctorOf(e) ?? 'Next available doctor'} · <span className="font-mono">{duration(minutesBetween(e.queuedAt, now))}</span> since <span className="font-mono">{clock(e.queuedAt)}</span>
+              </span>
+              {permissions.canUpdate && (
+                <span className="mt-2 flex items-center gap-1">
+                  <button type="button" disabled={busy} onClick={() => onBack(e)} aria-label={`${backLabel}: ${name}`} className={`${ROW_BTN} mr-auto`}>
+                    <Svg d={ICONS.undo} />
+                    {busy ? 'Saving…' : backLabel}
+                  </button>
+                  {icon(hasVitals(e.vitals) ? 'Update vital signs' : 'Record vital signs', ICONS.heart, () => onVitals(e))}
+                  {canMarkNoShow && icon('Mark as no-show', ICONS.userX, () => onConfirm(e, 'no-show'))}
+                  {icon('Remove from queue', ICONS.x, () => onConfirm(e, 'cancelled'), true)}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

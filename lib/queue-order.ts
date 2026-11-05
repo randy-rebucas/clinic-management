@@ -19,6 +19,17 @@ export function shortQueueNumber(n: string): string {
   return m ? `${m[1]}-${m[2]}` : n;
 }
 
+/** Who was called in automatically when a consult ended (see lib/automations/queue-auto-call.ts). */
+export interface NextCalled {
+  name: string;
+  number: string;
+}
+
+/** The sentence added to a staff message; empty when nobody was called. Starts with a space. */
+export function nextCalledNotice(next?: NextCalled | null): string {
+  return next ? ` ${next.name} (${next.number}) has been called in.` : '';
+}
+
 const doctorIdOf = (doctor: unknown) => (doctor ? String((doctor as { _id?: unknown })._id ?? doctor) : null);
 
 interface ConsultEntry {

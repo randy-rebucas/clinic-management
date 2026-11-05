@@ -91,6 +91,15 @@ export const AUTOMATIONS: Automation[] = [
     defaultOn: false,
   },
   {
+    key: 'autoCallNextPatient',
+    group: 'appointments',
+    label: 'Call in the next patient',
+    does: 'When a consult ends, calls in the next checked-in patient in that doctor’s line, urgent first and then by arrival, shows them on the queue screen and texts them. If the doctor’s line is empty, the next unassigned patient goes to that doctor.',
+    when: 'When a visit is closed or a patient is marked seen.',
+    defaultOn: false,
+    caution: 'Patients are called even if the doctor is about to take a break.',
+  },
+  {
     key: 'autoInsuranceVerification',
     group: 'appointments',
     label: 'Mark insurance checked',

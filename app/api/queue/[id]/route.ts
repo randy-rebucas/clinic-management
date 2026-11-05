@@ -13,6 +13,7 @@ import { requireTenantSession, isTenantSessionError, isValidId, tenantFilter } f
 import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
 import { vitalsSchema } from '@/lib/visit-schema';
 import { findConsultBlocker } from '@/lib/queue-consult';
+import { callNextPatient } from '@/lib/automations/queue-auto-call';
 
 const updateQueueSchema = z.object({
   status: z.enum(['waiting', 'in-progress', 'away', 'completed', 'cancelled', 'no-show']).optional(),
@@ -167,6 +168,9 @@ export async function PUT(
 
     await currentQueue.save();
 
+    const consultEnded = oldStatus === 'in-progress' && fields.status === 'completed' && _skipAutomation !== true;
+    const nextCalled = consultEnded ? await callNextPatient(tenantObjectId, currentQueue.doctor) : null;
+
     const updatedQueue = await Queue.findOne(tenantFilter(tenantId, { _id: new Types.ObjectId(id) }))
       .populate({ path: 'patient', select: 'firstName lastName patientCode', match: { tenantIds: tenantObjectId } })
       .populate({ path: 'doctor', select: 'firstName lastName', match: { tenantId: tenantObjectId } })
@@ -215,7 +219,7 @@ export async function PUT(
       );
     }
 
-    return NextResponse.json({ success: true, data: updatedQueue });
+    return NextResponse.json({ success: true, data: updatedQueue, nextCalled });
   } catch (error: any) {
     // Lost the race on uniq_tenant_doctor_in_consult: another desk called someone in first.
     if (error.code === 11000) {

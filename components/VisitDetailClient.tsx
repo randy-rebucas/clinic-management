@@ -13,6 +13,7 @@ import { STATUS_BADGE, STATUS_LABEL, visitTypeLabel, type VisitStatus } from './
 import VitalsPanel, { type VitalsReading, type VitalsRecord } from './visits/VitalsPanel';
 import AttachForm from './records/AttachForm';
 import { INVOICE_LABEL, LAB_LABEL, RX_LABEL, fileSize, money } from './records/labels';
+import { nextCalledNotice, type NextCalled } from '@/lib/queue-order';
 import type { VisitDetailPermissions } from '@/lib/visits-page';
 import MoreMenu, { type MoreMenuItem } from './ui/MoreMenu';
 import MedicalCertificateDialog from './patients/MedicalCertificateDialog';
@@ -177,7 +178,7 @@ export default function VisitDetailClient({ visitId, permissions }: { visitId: s
   }, []);
 
   const save = useCallback(
-    async (body: Record<string, unknown>, fallback: string): Promise<Visit | null> => {
+    async (body: Record<string, unknown>, fallback: string, onSaved?: (reply: { nextCalled?: NextCalled | null }) => void): Promise<Visit | null> => {
       setActionError(null);
       setBusy(true);
       try {
@@ -195,6 +196,7 @@ export default function VisitDetailClient({ visitId, permissions }: { visitId: s
           setActionError(formatApiError(json, fallback));
           return null;
         }
+        onSaved?.(json);
         return json.data as Visit;
       } catch {
         setActionError(`${fallback}. Check your connection and try again.`);
@@ -208,10 +210,13 @@ export default function VisitDetailClient({ visitId, permissions }: { visitId: s
 
   const changeStatus = async (status: VisitStatus) => {
     setConfirm(null);
-    const next = await save({ status }, 'The visit status could not be changed');
+    let called = '';
+    const next = await save({ status }, 'The visit status could not be changed', (reply) => {
+      called = nextCalledNotice(reply.nextCalled);
+    });
     if (!next) return;
     if (status === 'closed') {
-      done('Visit closed. Billing and the patient’s visit summary run in the background.', next);
+      done(`Visit closed. Billing and the patient’s visit summary run in the background.${called}`, next);
       // The invoice is made after the response; look again once it has had time to land.
       setTimeout(reloadContext, 4000);
     } else if (status === 'cancelled') {

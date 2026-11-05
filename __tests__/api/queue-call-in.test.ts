@@ -15,6 +15,7 @@ vi.mock('@/models/Patient', () => ({ default: {} }));
 vi.mock('@/models/Appointment', () => ({ default: {} }));
 vi.mock('@/models/Visit', () => ({ default: { findOne: vi.fn() } }));
 vi.mock('@/lib/queue-consult', () => ({ findConsultBlocker: vi.fn() }));
+vi.mock('@/lib/automations/queue-auto-call', () => ({ callNextPatient: vi.fn() }));
 vi.mock('next/server', async (orig) => ({ ...(await orig<typeof import('next/server')>()), after: vi.fn() }));
 
 import { Types } from 'mongoose';
@@ -23,6 +24,7 @@ import Queue from '@/models/Queue';
 import Doctor from '@/models/Doctor';
 import Visit from '@/models/Visit';
 import { findConsultBlocker } from '@/lib/queue-consult';
+import { callNextPatient } from '@/lib/automations/queue-auto-call';
 import { PUT } from '@/app/api/queue/[id]/route';
 
 const TENANT = '507f1f77bcf86cd7994390cc';
@@ -57,6 +59,7 @@ describe('PUT /api/queue/[id] call-in', () => {
     vi.mocked(Doctor.exists).mockResolvedValue({ _id: DR_B } as any);
     vi.mocked(Visit.findOne).mockReset();
     openVisit(null);
+    vi.mocked(callNextPatient).mockReset().mockResolvedValue(null);
   });
 
   it('refuses the call-in and saves nothing while the doctor is in consult', async () => {
@@ -256,6 +259,42 @@ describe('PUT /api/queue/[id] call-in', () => {
 
       expect(res.status).toBe(409);
       expect(doc.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('when the consult ends', () => {
+    it('calls in the next patient for this doctor and says who', async () => {
+      entry({ status: 'in-progress' });
+      vi.mocked(callNextPatient).mockResolvedValue({ name: 'Ana Cruz', number: 'W-004' });
+
+      const res = await put({ status: 'completed' });
+
+      expect(vi.mocked(callNextPatient).mock.calls[0][1]).toBe(DR_A);
+      expect((await res.json()).nextCalled).toEqual({ name: 'Ana Cruz', number: 'W-004' });
+    });
+
+    it.each(['waiting', 'away'])('calls nobody when a %s patient is closed, since no consult ended', async (status) => {
+      entry({ status });
+
+      await put({ status: 'completed' });
+
+      expect(callNextPatient).not.toHaveBeenCalled();
+    });
+
+    it.each(['waiting', 'away', 'no-show', 'cancelled'])('calls nobody when a patient in consult moves to %s', async (status) => {
+      entry({ status: 'in-progress' });
+
+      await put({ status });
+
+      expect(callNextPatient).not.toHaveBeenCalled();
+    });
+
+    it('calls nobody when the automation is skipped', async () => {
+      entry({ status: 'in-progress' });
+
+      await put({ status: 'completed', _skipAutomation: true });
+
+      expect(callNextPatient).not.toHaveBeenCalled();
     });
   });
 

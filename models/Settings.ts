@@ -117,6 +117,7 @@ export interface ISettings extends Document {
     autoStaffPerformanceReports: boolean;
     autoInsuranceVerification: boolean;
     autoQueueOptimization: boolean;
+    autoCallNextPatient: boolean;
     autoDataRetention: boolean;
     autoSmartAssignment: boolean;
     autoInventoryReordering: boolean;
@@ -287,6 +288,7 @@ const SettingsSchema = new Schema<ISettings>(
       autoStaffPerformanceReports: { type: Boolean, default: true },
       autoInsuranceVerification: { type: Boolean, default: true },
       autoQueueOptimization: { type: Boolean, default: false },
+      autoCallNextPatient: { type: Boolean, default: false },
       autoDataRetention: { type: Boolean, default: true },
       // New Priority 1 automations
       autoSmartAssignment: { type: Boolean, default: true },
