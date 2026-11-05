@@ -14,7 +14,7 @@ import AddToQueueModal from './queue/AddToQueueModal';
 import CheckInQrModal from './queue/CheckInQrModal';
 import VitalsModal, { hasVitals, vitalsSummary, type Vitals } from './queue/VitalsModal';
 import type { QueuePermissions } from '@/lib/queue-page';
-import { QUEUE_PRIORITY, shortQueueNumber } from '@/lib/queue-order';
+import { QUEUE_PRIORITY, consultBlocker, shortQueueNumber } from '@/lib/queue-order';
 
 type QueueStatus = 'waiting' | 'in-progress' | 'completed' | 'cancelled' | 'no-show';
 
@@ -66,6 +66,7 @@ const ICONS = {
   plus: 'M12 4v16m8-8H4',
   login: 'M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1',
   play: 'M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+  undo: 'M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6',
 };
 
 // ---------------------------------------------------------------------------
@@ -232,6 +233,7 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
       } catch (err) {
         setNotice(null);
         setActionError(err instanceof Error ? err.message : fallback);
+        reload(); // a refusal usually means this screen is behind another desk
       } finally {
         setBusyId(null);
       }
@@ -252,6 +254,7 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
       ),
     callIn: (e: QueueEntry) => act(e, put(e, { status: 'in-progress' }), `${nameOf(e)} has been called in${doctorOf(e) ? ` to ${doctorOf(e)}` : ''}.`, 'The patient could not be called in'),
     done: (e: QueueEntry) => act(e, put(e, { status: 'completed' }), `${nameOf(e)} is marked as seen.`, 'The queue entry could not be closed'),
+    backToWaiting: (e: QueueEntry) => act(e, put(e, { status: 'waiting' }), `${nameOf(e)} is back on the waiting list.`, 'The patient could not be moved back to waiting'),
     setPriority: (e: QueueEntry, priority: number) =>
       act(
         e,
@@ -282,7 +285,12 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
     }
   };
 
-  const rowProps = { now, busyId, permissions, actions, onVitals: setVitalsFor, onConfirm: (entry: QueueEntry, status: 'no-show' | 'cancelled') => setConfirm({ entry, status }) };
+  // Checked against the whole clinic, not the filtered list.
+  const inConsult = entries.filter((e) => e.status === 'in-progress');
+  const activeDoctors = doctors.filter((d) => !d.status || d.status === 'active').length;
+  const callInBlocker = (e: QueueEntry) => consultBlocker(e, inConsult, activeDoctors);
+
+  const rowProps = { now, busyId, permissions, actions, callInBlocker, onVitals: setVitalsFor, onConfirm: (entry: QueueEntry, status: 'no-show' | 'cancelled') => setConfirm({ entry, status }) };
   const refreshing = queue.loading && loaded;
 
   // --- Render -------------------------------------------------------------------
@@ -613,6 +621,7 @@ type Actions = {
   checkIn: (e: QueueEntry) => void;
   callIn: (e: QueueEntry) => void;
   done: (e: QueueEntry) => void;
+  backToWaiting: (e: QueueEntry) => void;
   setPriority: (e: QueueEntry, p: number) => void;
 };
 
@@ -623,6 +632,7 @@ function Row({
   busyId,
   permissions,
   actions,
+  callInBlocker,
   onVitals,
   onConfirm,
 }: {
@@ -632,6 +642,7 @@ function Row({
   busyId: string | null;
   permissions: QueuePermissions;
   actions: Actions;
+  callInBlocker: (e: QueueEntry) => string | null;
   onVitals: (e: QueueEntry) => void;
   onConfirm: (e: QueueEntry, status: 'no-show' | 'cancelled') => void;
 }) {
@@ -657,10 +668,18 @@ function Row({
       </button>
     );
   } else if (permissions.canUpdate && e.status === 'waiting') {
+    const blocker = callInBlocker(e);
     primary = (
-      <button type="button" disabled={busy} onClick={() => actions.callIn(e)} aria-label={`Call in ${name}`} className={btn}>
+      <button
+        type="button"
+        disabled={busy || blocker !== null}
+        onClick={() => actions.callIn(e)}
+        aria-label={blocker ? `Can't call in ${name}. ${blocker}` : `Call in ${name}`}
+        title={blocker ?? undefined}
+        className={`${btn} ${blocker ? 'disabled:cursor-not-allowed' : ''}`}
+      >
         <Svg d={ICONS.play} />
-        {busy ? 'Saving…' : 'Call in'}
+        {busy ? 'Saving…' : blocker ? 'Doctor busy' : 'Call in'}
       </button>
     );
   } else if (inRoom && permissions.canStartVisit && e.patient) {
@@ -696,6 +715,7 @@ function Row({
   if (permissions.canUpdate) {
     secondary.push(icon(hasVitals(e.vitals) ? 'Update vital signs' : 'Record vital signs', ICONS.heart, () => onVitals(e)));
     if (inRoom && permissions.canStartVisit) secondary.push(icon('Mark seen', ICONS.check, () => actions.done(e)));
+    if (inRoom) secondary.push(icon('Put back on the waiting list', ICONS.undo, () => actions.backToWaiting(e)));
     if (!inRoom) {
       secondary.push(
         priority >= QUEUE_PRIORITY.urgent

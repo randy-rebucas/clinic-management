@@ -128,6 +128,15 @@ QueueSchema.index(
   { tenantId: 1, queueNumber: 1 },
   { unique: true, name: 'uniq_tenant_queueNumber', partialFilterExpression: { queueNumber: { $type: 'string' } } }
 );
+// One patient in consult per doctor, even when two desks call in at the same moment.
+QueueSchema.index(
+  { tenantId: 1, doctor: 1 },
+  {
+    unique: true,
+    name: 'uniq_tenant_doctor_in_consult',
+    partialFilterExpression: { status: 'in-progress', doctor: { $type: 'objectId' } },
+  }
+);
 
 // Fallback only: routes normally allocate the number via nextQueueNumber (per tenant, clinic-local day).
 // Imported lazily because lib/queue-number imports this model.

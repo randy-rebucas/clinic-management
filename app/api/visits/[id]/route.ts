@@ -14,6 +14,7 @@ import { logRecordOpened } from '@/lib/audit';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { updateVisitSchema, signatureWithMetadata, touchesAttestedFields } from '@/lib/visit-schema';
+import { findConsultBlocker } from '@/lib/queue-consult';
 
 export async function GET(
   request: NextRequest,
@@ -148,14 +149,23 @@ export async function PUT(
             updateData.completedAt = new Date();
           }
 
-          await Queue.findOneAndUpdate(
-            tenantFilter(tenantId, {
-              patient: (visit.patient as any)?._id || visit.patient,
-              status: { $in: ['waiting', 'in-progress'] },
-            }),
-            { $set: updateData },
-            { new: true, sort: { queuedAt: -1 } } // Update most recent queue entry
-          );
+          const liveEntry = tenantFilter(tenantId, {
+            patient: (visit.patient as any)?._id || visit.patient,
+            status: { $in: ['waiting', 'in-progress'] },
+          });
+          // Opening a note doesn't jump the line: a waiting patient stays waiting while their doctor is busy.
+          const entry = newQueueStatus === 'in-progress'
+            ? await Queue.findOne(liveEntry).sort({ queuedAt: -1 }).select('status doctor').lean() as any
+            : null;
+          const blocked = entry?.status === 'waiting' && await findConsultBlocker(tenantObjectId, entry);
+
+          if (!blocked) {
+            await Queue.findOneAndUpdate(
+              liveEntry,
+              { $set: updateData },
+              { new: true, sort: { queuedAt: -1 } } // Update most recent queue entry
+            );
+          }
         } catch (queueError) {
           console.error('Error updating queue status:', queueError);
         }

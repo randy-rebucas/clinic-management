@@ -11,6 +11,7 @@ import { Types } from 'mongoose';
 import { requireTenantSession, isTenantSessionError, isValidId, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
 import { vitalsSchema } from '@/lib/visit-schema';
+import { findConsultBlocker } from '@/lib/queue-consult';
 
 const updateQueueSchema = z.object({
   status: z.enum(['waiting', 'in-progress', 'completed', 'cancelled', 'no-show']).optional(),
@@ -107,6 +108,19 @@ export async function PUT(
 
     const oldStatus = currentQueue.status;
 
+    // Only a patient in consult goes back to the line; a stale screen must not reopen a finished entry.
+    if (fields.status === 'waiting' && oldStatus !== 'waiting' && oldStatus !== 'in-progress') {
+      return NextResponse.json({ success: false, error: 'This patient has already left the queue.' }, { status: 409 });
+    }
+
+    const nextDoctor = fields.doctor !== undefined ? fields.doctor : currentQueue.doctor;
+    const entersConsult = (fields.status ?? oldStatus) === 'in-progress'
+      && (oldStatus !== 'in-progress' || String(nextDoctor ?? '') !== String(currentQueue.doctor ?? ''));
+    if (entersConsult) {
+      const blocker = await findConsultBlocker(tenantObjectId, { _id: currentQueue._id, doctor: nextDoctor });
+      if (blocker) return NextResponse.json({ success: false, error: blocker }, { status: 409 });
+    }
+
     if (vitals) {
       currentQueue.vitals = { ...(currentQueue.vitals || {}), ...vitals };
       currentQueue.markModified('vitals');
@@ -116,6 +130,11 @@ export async function PUT(
     }
     if (fields.checkedIn && !currentQueue.checkedInAt) {
       currentQueue.checkedInAt = new Date();
+    }
+    // The consult didn't happen: the next call-in starts the clocks and the board call afresh.
+    if (fields.status === 'waiting' && oldStatus === 'in-progress') {
+      currentQueue.startedAt = undefined;
+      currentQueue.calledAt = undefined;
     }
     if (fields.status === 'in-progress' && !currentQueue.startedAt) {
       currentQueue.startedAt = new Date();
@@ -177,6 +196,13 @@ export async function PUT(
 
     return NextResponse.json({ success: true, data: updatedQueue });
   } catch (error: any) {
+    // Lost the race on uniq_tenant_doctor_in_consult: another desk called someone in first.
+    if (error.code === 11000) {
+      return NextResponse.json(
+        { success: false, error: 'This doctor just started a consult with another patient.' },
+        { status: 409 }
+      );
+    }
     console.error('Error updating queue entry:', error);
     if (error.name === 'ValidationError' || error.name === 'CastError') {
       return NextResponse.json(
