@@ -246,6 +246,22 @@ describe('loadQueueDisplay', () => {
     queueReturns([entry(1, 'waiting')]);
     expect((await loadQueueDisplay(tenantId)).closed).toBe(false);
   });
+
+  it('picks up the new average as soon as a consult ends, and not before', async () => {
+    vi.setSystemTime(new Date('2026-11-04T12:10:00Z'));
+    queueReturns([entry(1, 'in-progress', { _id: 'a' })]);
+    await loadQueueDisplay(tenantId);
+    expect(Queue.aggregate).toHaveBeenCalledTimes(1);
+
+    vi.setSystemTime(new Date('2026-11-04T12:10:06Z'));
+    await loadQueueDisplay(tenantId);
+    expect(Queue.aggregate).toHaveBeenCalledTimes(1);
+
+    vi.setSystemTime(new Date('2026-11-04T12:10:12Z'));
+    queueReturns([]);
+    await loadQueueDisplay(tenantId);
+    expect(Queue.aggregate).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('shortQueueNumber', () => {

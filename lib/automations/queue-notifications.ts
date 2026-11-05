@@ -12,6 +12,7 @@ import { sendPushToPatientDevices } from '@/lib/push-notifications';
 import { getSettings } from '@/lib/settings';
 import { QUEUE_SORT } from '@/lib/queue-order';
 import { ordinal, queuePosition } from '@/lib/queue-position';
+import { refreshQueueWaits } from '@/lib/queue-wait';
 import { Types } from 'mongoose';
 
 /** Patients this close to the front get a push each time they move up. */
@@ -42,6 +43,9 @@ export async function notifyQueuePatient(options: QueueNotificationOptions): Pro
     if (!options.tenantId) return;
     const tenantObjectId = new Types.ObjectId(String(options.tenantId));
     const clinicName = await clinicNameOf(tenantObjectId);
+
+    // First, so the message below quotes the new estimate.
+    await refreshQueueWaits(tenantObjectId);
 
     const queueId =
       typeof options.queueId === 'string' ? new Types.ObjectId(options.queueId) : options.queueId;
@@ -101,7 +105,7 @@ export async function notifyQueuePatient(options: QueueNotificationOptions): Pro
       }
     }
 
-    await notifyQueuePositions(tenantObjectId, clinicName);
+    await pushPositions(tenantObjectId, clinicName);
   } catch (error) {
     console.error('[queue-notifications] Error sending queue notification:', error);
   }
@@ -118,16 +122,25 @@ export function positionsByLine<T extends { doctor?: unknown }>(sortedWaiting: T
   });
 }
 
-/**
- * Push "You're Nth in line" to waiting patients near the front whose position improved since
- * their last update. Each step is claimed with a conditional write first, so concurrent triggers
- * (two desks updating the queue at once) send it once. Safe to call after any queue change.
- */
+/** Saves everyone's new wait estimate and tells patients who moved up. Safe to call after any queue change. */
 export async function notifyQueuePositions(tenantId: string | Types.ObjectId, clinicName?: string): Promise<void> {
   try {
     await connectDB();
     const tenantObjectId = new Types.ObjectId(String(tenantId));
+    await refreshQueueWaits(tenantObjectId);
+    await pushPositions(tenantObjectId, clinicName);
+  } catch (error) {
+    console.error('[queue-notifications] Error updating the line:', error);
+  }
+}
 
+/**
+ * Push "You're Nth in line" to waiting patients near the front whose position improved since
+ * their last update. Each step is claimed with a conditional write first, so concurrent triggers
+ * (two desks updating the queue at once) send it once.
+ */
+async function pushPositions(tenantObjectId: Types.ObjectId, clinicName?: string): Promise<void> {
+  try {
     const waiting = await Queue.find({ tenantId: tenantObjectId, status: 'waiting' })
       .select('patient doctor priority queuedAt positionNotified')
       .sort(QUEUE_SORT)

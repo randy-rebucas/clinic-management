@@ -21,6 +21,7 @@ vi.mock('@/lib/queue-consult', () => ({ findConsultBlocker: vi.fn(async () => nu
 vi.mock('@/lib/automations/queue-auto-call', () => ({ callNextPatient: vi.fn() }));
 vi.mock('next/server', async (orig) => ({ ...(await orig<typeof import('next/server')>()), after: vi.fn() }));
 
+import { after } from 'next/server';
 import { Types } from 'mongoose';
 import { requireTenantSession } from '@/lib/api/tenant-session';
 import Visit from '@/models/Visit';
@@ -49,7 +50,44 @@ describe('PUT /api/visits/[id] calling the next patient', () => {
     });
     vi.mocked(callNextPatient).mockReset().mockResolvedValue(null);
     vi.mocked(Queue.findOneAndUpdate).mockReset();
+    vi.mocked(after).mockClear();
     visitNow('open');
+  });
+
+  // Closing always schedules billing; anything more is the line being updated.
+  describe('updating the line', () => {
+    it('updates it when a closed visit moved someone and nobody was called', async () => {
+      vi.mocked(Queue.findOneAndUpdate).mockResolvedValue({ status: 'in-progress', doctor } as never);
+
+      await put('closed');
+
+      expect(after).toHaveBeenCalledTimes(2);
+    });
+
+    it('leaves it to the call-in when someone was called', async () => {
+      vi.mocked(Queue.findOneAndUpdate).mockResolvedValue({ status: 'in-progress', doctor } as never);
+      vi.mocked(callNextPatient).mockResolvedValue({ name: 'Ana Cruz', number: 'W-004' });
+
+      await put('closed');
+
+      expect(after).toHaveBeenCalledTimes(1);
+    });
+
+    it('does nothing when no queue entry changed', async () => {
+      vi.mocked(Queue.findOneAndUpdate).mockResolvedValue(null as never);
+
+      await put('closed');
+
+      expect(after).toHaveBeenCalledTimes(1);
+    });
+
+    it('updates it when a cancelled visit takes someone out of the line', async () => {
+      vi.mocked(Queue.findOneAndUpdate).mockResolvedValue({ status: 'waiting', doctor } as never);
+
+      await put('cancelled');
+
+      expect(after).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('calls the next patient for this doctor when the visit ends a consult', async () => {

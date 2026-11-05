@@ -7,13 +7,15 @@ vi.mock('@/models/Patient', () => ({ default: { findOne: vi.fn() } }));
 vi.mock('@/lib/sms', () => ({ sendSMS: vi.fn(async () => undefined) }));
 vi.mock('@/lib/push-notifications', () => ({ sendPushToPatientDevices: vi.fn(async () => undefined) }));
 vi.mock('@/lib/settings', () => ({ getSettings: vi.fn(async () => ({ clinicName: 'Test Clinic' })) }));
-vi.mock('@/lib/queue-position', () => ({ ordinal: vi.fn(), queuePosition: vi.fn() }));
+vi.mock('@/lib/queue-position', () => ({ ordinal: vi.fn(), queuePosition: vi.fn(async () => 2) }));
+vi.mock('@/lib/queue-wait', () => ({ refreshQueueWaits: vi.fn(async () => undefined) }));
 
 import Queue from '@/models/Queue';
 import Patient from '@/models/Patient';
 import { sendSMS } from '@/lib/sms';
 import { sendPushToPatientDevices } from '@/lib/push-notifications';
-import { notifyQueuePatient } from '@/lib/automations/queue-notifications';
+import { refreshQueueWaits } from '@/lib/queue-wait';
+import { notifyQueuePatient, notifyQueuePositions } from '@/lib/automations/queue-notifications';
 
 const tenantId = new Types.ObjectId();
 const queueId = new Types.ObjectId();
@@ -24,6 +26,32 @@ function held(entry: Record<string, unknown>, phone: string | null = '+639170000
   const line: any = { select: () => line, sort: () => line, limit: () => line, lean: async () => [] };
   vi.mocked(Queue.find).mockReturnValue(line);
 }
+
+describe('saving new wait estimates', () => {
+  beforeEach(() => {
+    vi.mocked(sendSMS).mockClear();
+    vi.mocked(refreshQueueWaits).mockClear();
+    vi.mocked(Queue.findOne).mockClear();
+  });
+
+  it('refreshes once per change, before reading the figure it quotes', async () => {
+    held({ status: 'waiting', estimatedWaitTime: 25 });
+
+    await notifyQueuePatient({ queueId, tenantId, newStatus: 'waiting' });
+
+    expect(refreshQueueWaits).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(refreshQueueWaits).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(Queue.findOne).mock.invocationCallOrder[0]);
+    expect(vi.mocked(sendSMS).mock.calls[0][0].message).toContain('~25 min');
+  });
+
+  it('refreshes for changes that only move the line', async () => {
+    held({ status: 'waiting' });
+
+    await notifyQueuePositions(tenantId);
+
+    expect(refreshQueueWaits).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('notifyQueuePatient while away', () => {
   beforeEach(() => {

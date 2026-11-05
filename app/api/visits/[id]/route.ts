@@ -173,6 +173,14 @@ export async function PUT(
             if (newQueueStatus === 'completed' && before?.status === 'in-progress') {
               nextCalled = await callNextPatient(tenantObjectId, before.doctor);
             }
+            // The line moved; calling someone in above already takes care of this.
+            if (before && !nextCalled) {
+              after(() =>
+                import('@/lib/automations/queue-notifications')
+                  .then(({ notifyQueuePositions }) => notifyQueuePositions(tenantObjectId))
+                  .catch((error) => console.error('Error updating the queue after a visit change:', error))
+              );
+            }
           }
         } catch (queueError) {
           console.error('Error updating queue status:', queueError);

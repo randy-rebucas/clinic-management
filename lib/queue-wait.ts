@@ -1,6 +1,13 @@
 import 'server-only';
-import type { Types } from 'mongoose';
+import type { AnyBulkWriteOperation, Types } from 'mongoose';
 import Queue from '@/models/Queue';
+import { getSettings } from '@/lib/settings';
+import { getTenantTimezone } from '@/lib/clinic-timezone';
+import { QUEUE_SORT } from '@/lib/queue-order';
+import { dayRangeInTz } from '@/lib/tz';
+
+/** Upper bound on live entries read per refresh (one clinic's day). */
+const MAX_SCAN = 300;
 
 interface LineEntry {
   status: string;
@@ -45,4 +52,38 @@ export function estimateWaits<T extends LineEntry>(entries: T[], avgByDoctor: Ma
     estimates.set(entry, { position: ahead + 1, estimatedWaitTime: Math.round(minutes / 5) * 5, consultMinutes: Math.round(avg) });
   }
   return estimates;
+}
+
+/**
+ * Saves each waiting patient's estimate for the patient app and SMS, which read it from the entry.
+ * The staff page and TV work theirs out on load. Run after any change to the line, and safe to
+ * repeat: only values that moved are written. Never throws.
+ */
+export async function refreshQueueWaits(tenantId: Types.ObjectId): Promise<void> {
+  try {
+    const [entries, settings, timeZone] = await Promise.all([
+      Queue.find({ tenantId, status: { $in: ['waiting', 'in-progress', 'away'] } })
+        .select('status doctor estimatedWaitTime')
+        .sort(QUEUE_SORT)
+        .limit(MAX_SCAN)
+        .lean<(LineEntry & { _id: Types.ObjectId; estimatedWaitTime?: number })[]>(),
+      getSettings(String(tenantId)),
+      getTenantTimezone(tenantId),
+    ]);
+    const { start: todayStart } = dayRangeInTz(new Date(), timeZone);
+    const estimates = estimateWaits(entries, await consultMinutesByDoctor(tenantId, todayStart), settings?.appointmentSettings?.defaultDuration || 15);
+
+    const writes = entries.flatMap((entry): AnyBulkWriteOperation[] => {
+      // Out of the line, so no estimate to show; they get a fresh one when they come back.
+      if (entry.status === 'away' && entry.estimatedWaitTime != null) {
+        return [{ updateOne: { filter: { _id: entry._id, tenantId, status: 'away' }, update: { $unset: { estimatedWaitTime: 1 } } } }];
+      }
+      const minutes = estimates.get(entry)?.estimatedWaitTime;
+      if (minutes === undefined || minutes === entry.estimatedWaitTime) return [];
+      return [{ updateOne: { filter: { _id: entry._id, tenantId, status: 'waiting' }, update: { $set: { estimatedWaitTime: minutes } } } }];
+    });
+    if (writes.length) await Queue.bulkWrite(writes);
+  } catch (error) {
+    console.error('[queue-wait] Error refreshing wait estimates:', error);
+  }
 }

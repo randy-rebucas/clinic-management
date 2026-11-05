@@ -1,13 +1,83 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
+import { Types } from 'mongoose';
 
 vi.mock('server-only', () => ({}));
-vi.mock('@/models/Queue', () => ({ default: {} }));
+vi.mock('@/models/Queue', () => ({ default: { find: vi.fn(), aggregate: vi.fn(), bulkWrite: vi.fn() } }));
+vi.mock('@/lib/settings', () => ({ getSettings: vi.fn(async () => ({ appointmentSettings: { defaultDuration: 20 } })) }));
+vi.mock('@/lib/clinic-timezone', () => ({ getTenantTimezone: vi.fn(async () => 'Asia/Manila') }));
 
-import { estimateWaits } from '@/lib/queue-wait';
+import Queue from '@/models/Queue';
+import { estimateWaits, refreshQueueWaits } from '@/lib/queue-wait';
 
 const doctor = (id: string) => ({ _id: id });
 const waiting = (d?: { _id: string }) => ({ status: 'waiting', doctor: d });
 const seeing = (d?: { _id: string }) => ({ status: 'in-progress', doctor: d });
+
+describe('refreshQueueWaits', () => {
+  const tenantId = new Types.ObjectId();
+  const dr = new Types.ObjectId();
+  const row = (status: string, estimatedWaitTime?: number) => ({ _id: new Types.ObjectId(), status, doctor: dr, estimatedWaitTime });
+
+  function line(entries: unknown[]) {
+    const chain: any = { select: () => chain, sort: () => chain, limit: () => chain, lean: async () => entries };
+    vi.mocked(Queue.find).mockReturnValue(chain);
+  }
+  const writes = () => vi.mocked(Queue.bulkWrite).mock.calls[0][0] as unknown as { updateOne: { filter: Record<string, unknown>; update: Record<string, any> } }[];
+
+  beforeEach(() => {
+    vi.mocked(Queue.aggregate).mockReset().mockResolvedValue([]);
+    vi.mocked(Queue.bulkWrite).mockReset();
+  });
+
+  it('saves the estimates the staff page shows, for those still waiting', async () => {
+    const first = row('waiting');
+    const second = row('waiting');
+    line([row('in-progress'), first, second]);
+
+    await refreshQueueWaits(tenantId);
+
+    expect(writes().map((w) => [w.updateOne.filter._id, w.updateOne.update.$set.estimatedWaitTime])).toEqual([[first._id, 10], [second._id, 30]]);
+    expect(writes()[0].updateOne.filter).toMatchObject({ tenantId, status: 'waiting' });
+  });
+
+  it('follows the doctor\'s pace once a visit completes', async () => {
+    vi.mocked(Queue.aggregate).mockResolvedValue([{ _id: dr, avg: 40, n: 2 }]);
+    line([row('waiting', 0), row('waiting', 20)]);
+
+    await refreshQueueWaits(tenantId);
+
+    expect(writes()).toHaveLength(1);
+    expect(writes()[0].updateOne.update.$set.estimatedWaitTime).toBe(40);
+  });
+
+  it('writes nothing when no estimate moved', async () => {
+    line([row('waiting', 0), row('waiting', 20)]);
+
+    await refreshQueueWaits(tenantId);
+
+    expect(Queue.bulkWrite).not.toHaveBeenCalled();
+  });
+
+  it('clears the estimate of a patient out of the line, and only if they have one', async () => {
+    const held = row('away', 25);
+    line([held, row('away')]);
+
+    await refreshQueueWaits(tenantId);
+
+    expect(writes()).toHaveLength(1);
+    expect(writes()[0].updateOne).toMatchObject({ filter: { _id: held._id, status: 'away' }, update: { $unset: { estimatedWaitTime: 1 } } });
+  });
+
+  it('never fails the change that triggered it', async () => {
+    line([]);
+    vi.mocked(Queue.aggregate).mockRejectedValue(new Error('down'));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(refreshQueueWaits(tenantId)).resolves.toBeUndefined();
+    expect(log).toHaveBeenCalled();
+    log.mockRestore();
+  });
+});
 
 describe('estimateWaits', () => {
   it('leaves a patient at the lab out of the line, and they keep their place on return', () => {

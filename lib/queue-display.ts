@@ -74,6 +74,7 @@ export interface QueueDisplayData {
 }
 
 interface ActiveEntry {
+  _id?: unknown;
   queueNumber: string;
   patient?: { firstName?: string | null; lastName?: string | null } | null;
   patientName?: string | null;
@@ -232,7 +233,9 @@ async function readBoard(tenantId: string, doctorId: string, roomId: string): Pr
   ]);
 
   const { start: todayStart } = dayRangeInTz(new Date(), timeZone);
-  const averages = await remembered(consults, `${tenantId}|${todayStart.getTime()}`, CONSULT_TTL_MS, () => consultMinutesByDoctor(tenantObjectId, todayStart));
+  // Keyed on who is in consult, so a finished consult shows at once, on every server instance.
+  const inConsult = entries.filter((e) => e.status === 'in-progress').map((e) => String(e._id)).sort().join(',');
+  const averages = await remembered(consults, `${tenantId}|${todayStart.getTime()}|${inConsult}`, CONSULT_TTL_MS, () => consultMinutesByDoctor(tenantObjectId, todayStart));
   const waits = estimateWaits(entries, averages, settings?.appointmentSettings?.defaultDuration || 15);
 
   const queueSettings = settings?.queueSettings;
