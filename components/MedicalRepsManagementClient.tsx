@@ -24,6 +24,8 @@ interface MedicalRep {
   title?: string; // Mr., Ms., etc.
   bio?: string;
   status: 'active' | 'inactive' | 'on-leave';
+  isActivated?: boolean;
+  tenantIds?: string[];
   availability?: {
     dayOfWeek: number;
     startTime: string;
@@ -44,6 +46,11 @@ interface MedicalRep {
   };
   createdAt: string;
 }
+
+/** Linked to other clinics too, so what this clinic writes on the profile would reach them. */
+const isShared = (rep: MedicalRep) => (rep.tenantIds?.length ?? 0) > 1;
+/** The account isn't this clinic's to change: the rep paid for it, or other clinics share it. */
+const isRepsOwnAccount = (rep: MedicalRep) => !!rep.isActivated || isShared(rep);
 
 interface FormData {
   title: string;
@@ -179,7 +186,7 @@ export default function MedicalRepsManagementClient({ embedded = false }: { embe
     setError(null);
 
     try {
-      const payload = {
+      const payload = editingRep && isRepsOwnAccount(editingRep) ? { notes: formData.notes } : {
         title: formData.title || undefined,
         firstName: formData.firstName,
         lastName: formData.lastName,
@@ -225,7 +232,7 @@ export default function MedicalRepsManagementClient({ embedded = false }: { embe
   };
 
   const handleDelete = async (rep: MedicalRep) => {
-    if (!confirm(`Are you sure you want to deactivate ${rep.firstName} ${rep.lastName}?`)) {
+    if (!confirm(`Remove ${rep.firstName} ${rep.lastName} from this clinic?`)) {
       return;
     }
 
@@ -237,21 +244,25 @@ export default function MedicalRepsManagementClient({ embedded = false }: { embe
       const data = await response.json();
 
       if (data.success) {
-        setSuccess('Medical representative deactivated successfully');
+        setSuccess('Medical representative removed from this clinic');
         setTimeout(() => setSuccess(null), 3000);
         fetchReps();
       } else {
-        setError(data.error || 'Failed to deactivate medical representative');
+        setError(data.error || 'Failed to remove medical representative');
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to deactivate medical representative');
+      setError(err.message || 'Failed to remove medical representative');
     }
   };
 
   const handleToggleStatus = async (rep: MedicalRep) => {
     // Cycle through: active -> on-leave -> inactive -> active
     let newStatus: 'active' | 'inactive' | 'on-leave';
-    if (rep.status === 'active') {
+    if (isRepsOwnAccount(rep)) {
+      // Not this clinic's to switch off; it can only restore one that was switched off before.
+      if (rep.status === 'active') return;
+      newStatus = 'active';
+    } else if (rep.status === 'active') {
       newStatus = 'on-leave';
     } else if (rep.status === 'on-leave') {
       newStatus = 'inactive';
@@ -539,7 +550,9 @@ export default function MedicalRepsManagementClient({ embedded = false }: { embe
                   <td className="px-6 py-4 whitespace-nowrap">
                     <button
                       onClick={() => handleToggleStatus(rep)}
-                      className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold cursor-pointer hover:opacity-80 border ${
+                      disabled={isRepsOwnAccount(rep) && rep.status === 'active'}
+                      title={isRepsOwnAccount(rep) && rep.status === 'active' ? 'This representative manages their own account' : undefined}
+                      className={`disabled:cursor-default inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold cursor-pointer hover:opacity-80 border ${
                         rep.status === 'active'
                           ? 'bg-green-100 text-green-800 border-green-200'
                           : rep.status === 'on-leave'
@@ -561,7 +574,7 @@ export default function MedicalRepsManagementClient({ embedded = false }: { embe
                       onClick={() => handleDelete(rep)}
                       className="px-3 py-1.5 text-xs font-semibold bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
                     >
-                      Delete
+                      Remove
                     </button>
                   </td>
                 </tr>
@@ -589,7 +602,16 @@ export default function MedicalRepsManagementClient({ embedded = false }: { embe
               </div>
             </div>
             <form onSubmit={handleSubmit} className="p-6">
+              {editingRep && isRepsOwnAccount(editingRep) && (
+                <p className="mb-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                  {isShared(editingRep)
+                    ? 'This representative also works with other clinics, so these details can’t be changed here.'
+                    : 'This representative manages their own account, so only your notes can be changed here.'}{' '}
+                  To stop working with them, remove them from your clinic.
+                </p>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <fieldset disabled={!!editingRep && isRepsOwnAccount(editingRep)} className="contents">
                 {/* Personal Information */}
                 <div className="col-span-2">
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
@@ -755,6 +777,8 @@ export default function MedicalRepsManagementClient({ embedded = false }: { embe
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent"
                   />
                 </div>
+                </fieldset>
+                {!(editingRep && isShared(editingRep)) && (
                 <div className="col-span-2">
                   <label htmlFor="rep-internal-notes" className="block text-sm font-medium text-gray-700 mb-1">Internal Notes</label>
                   <textarea id="rep-internal-notes"
@@ -765,6 +789,7 @@ export default function MedicalRepsManagementClient({ embedded = false }: { embe
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent"
                   />
                 </div>
+                )}
               </div>
 
               <div className="mt-6 pt-4 border-t border-gray-200 flex justify-end gap-3">
@@ -777,7 +802,7 @@ export default function MedicalRepsManagementClient({ embedded = false }: { embe
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || (!!editingRep && isShared(editingRep))}
                   className="px-5 py-2.5 bg-brand-teal-dark text-white rounded-lg hover:bg-brand-teal-deep disabled:bg-brand-teal-dark transition-all font-semibold shadow-md"
                 >
                   {submitting ? 'Saving...' : (editingRep ? 'Update' : 'Create')}

@@ -40,6 +40,15 @@ async function connectDB(): Promise<typeof mongoose> {
       // Limit pool size for serverless environments where each invocation may open a new connection.
       // Without a cap, a traffic spike can exhaust MongoDB Atlas's free-tier connection limit (500).
       maxPoolSize: 10,
+      // Fail in seconds rather than holding requests until the function is killed. When the cluster
+      // throttles, the driver's defaults (30 s to find a server, no limit on the rest) let them pile up.
+      // socketTimeoutMS is long enough for one slow report or cron query: it limits a single
+      // operation's wait, not a whole job.
+      serverSelectionTimeoutMS: 10_000,
+      connectTimeoutMS: 10_000,
+      waitQueueTimeoutMS: 10_000,
+      socketTimeoutMS: 60_000,
+      maxIdleTimeMS: 60_000,
       // In production every cold start would otherwise send createIndex for every model's
       // indexes (and createCollection per model), each one a billed operation. Indexes are
       // built by `pnpm db:indexes` instead; run it after deploying a schema index change.

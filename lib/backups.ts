@@ -6,6 +6,13 @@
 /** A backup is one database document, so it has to stay well under MongoDB's 16 MB limit. */
 export const MAX_BACKUP_BYTES = 12 * 1024 * 1024;
 
+/**
+ * Backups a clinic may keep. They share the database with the records and the free tier's 512 MB,
+ * so a new one is refused at this count. Old ones are never removed for the clinic: a backup can
+ * be the only copy of something, so deleting one is an administrator's decision.
+ */
+export const MAX_BACKUPS_PER_CLINIC = 3;
+
 /** From 80% of the limit the page warns that in-app backups will soon stop working. */
 export const NEAR_BACKUP_LIMIT = 0.8;
 

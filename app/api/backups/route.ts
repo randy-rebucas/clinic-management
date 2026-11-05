@@ -6,7 +6,7 @@ import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-ses
 import mongoose, { Types } from 'mongoose';
 import BackupRecord from '@/models/BackupRecord';
 import User from '@/models/User';
-import { MAX_BACKUP_BYTES, SECRET_FIELDS, SKIPPED_COLLECTIONS, sizeLabel, type BackupRow, type BackupSummary } from '@/lib/backups';
+import { MAX_BACKUP_BYTES, MAX_BACKUPS_PER_CLINIC, SECRET_FIELDS, SKIPPED_COLLECTIONS, sizeLabel, type BackupRow, type BackupSummary } from '@/lib/backups';
 
 const { EJSON } = mongoose.mongo.BSON;
 
@@ -110,6 +110,16 @@ export async function POST(request: NextRequest) {
 
   try {
     await connectDB();
+
+    if ((await BackupRecord.countDocuments({ tenantId: tenantObjectId })) >= MAX_BACKUPS_PER_CLINIC) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `The clinic already has ${MAX_BACKUPS_PER_CLINIC} backups, the most the app keeps. Download any you need, then delete one to make a new backup.`,
+        },
+        { status: 409 }
+      );
+    }
 
     const body = await request.json().catch(() => ({}));
     const label: string | undefined =

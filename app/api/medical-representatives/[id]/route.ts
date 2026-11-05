@@ -6,6 +6,7 @@ import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { revokeUserSessions } from '@/app/lib/dal';
 import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zEmail } from '@/lib/api/validate';
+import { hideOtherClinicsNotes, REP_ACCOUNT_ERROR, refusedRepChanges, worksWithOtherClinics } from '../_lib/shared-rep';
 
 const HIDDEN_REP_FIELDS = '-internalNotes -paymentDate -paymentAmount -paymentMethod -paymentReference -password -subscription -teamInvite';
 
@@ -69,11 +70,12 @@ export async function GET(
 
     const representative = await MedicalRepresentative.findOne({ _id: id, tenantIds: ctx.tenantObjectId })
       .select(HIDDEN_REP_FIELDS)
-      .populate('userId', 'name email status');
+      .populate('userId', 'name email status')
+      .lean<{ tenantIds?: unknown[]; notes?: string } | null>();
 
     if (!representative) return repNotFound();
 
-    return NextResponse.json({ success: true, data: representative });
+    return NextResponse.json({ success: true, data: hideOtherClinicsNotes(representative, ctx.tenantObjectId) });
   } catch (error: any) {
     console.error('Error fetching medical representative:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch medical representative' }, { status: 500 });
@@ -105,6 +107,14 @@ export async function PUT(
     const representative = await MedicalRepresentative.findOne({ _id: id, tenantIds: tenantObjectId });
     if (!representative) return repNotFound();
 
+    // Status, the login email and the rep's details belong to their account, not to this clinic: a
+    // change could reach other clinics, or take over or end a sign-in the rep paid for.
+    const shared = worksWithOtherClinics(representative, tenantId);
+    const fields = refusedRepChanges(representative, tenantId, { firstName, lastName, email, phone, company, territory, products, notes, status, availability });
+    if (fields.length) {
+      return NextResponse.json({ success: false, code: 'REP_ACCOUNT', error: REP_ACCOUNT_ERROR, fields }, { status: 403 });
+    }
+
     // Activation is tied to the rep's own payment; a clinic admin cannot grant it.
     if (status === 'active' && representative.status !== 'active') {
       if (representative.paymentStatus !== 'completed' || !representative.isActivated) {
@@ -115,18 +125,7 @@ export async function PUT(
       }
     }
 
-    // A rep account is shared by every clinic it works with; changing its login email
-    // from one clinic would let that clinic take the account over.
     if (email && email !== representative.email) {
-      const otherClinics = (representative.tenantIds || []).some(
-        (t: unknown) => String(t) !== tenantId
-      );
-      if (otherClinics) {
-        return NextResponse.json(
-          { success: false, error: 'The email of a representative shared with other clinics cannot be changed here.' },
-          { status: 403 }
-        );
-      }
       const emailTaken = await User.exists({ email, _id: { $ne: representative.userId } });
       if (emailTaken || (await MedicalRepresentative.exists({ email, _id: { $ne: representative._id } }))) {
         return NextResponse.json({ success: false, error: 'A user with this email already exists' }, { status: 400 });
@@ -165,6 +164,7 @@ export async function PUT(
     delete result.password;
     delete result.subscription;
     delete result.teamInvite;
+    if (shared) delete result.notes;
 
     return NextResponse.json({
       success: true,
@@ -206,7 +206,9 @@ export async function DELETE(
     );
     if (!representative) return repNotFound();
 
-    if (!representative.tenantIds || representative.tenantIds.length === 0) {
+    // A rep who paid keeps their account after their last clinic lets them go. Only a profile a
+    // clinic set up that was never activated ends with the link.
+    if (!representative.isActivated && !representative.tenantIds?.length) {
       representative.status = 'inactive';
       await representative.save();
       if (representative.userId) {

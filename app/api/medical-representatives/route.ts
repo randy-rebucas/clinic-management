@@ -6,6 +6,7 @@ import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { sanitizeSearch } from '@/lib/utils';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zEmail } from '@/lib/api/validate';
+import { hideOtherClinicsNotes } from './_lib/shared-rep';
 
 const REP_STATUSES = ['active', 'inactive', 'on-leave'] as const;
 
@@ -77,7 +78,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: representatives,
+      data: representatives.map((rep) => hideOtherClinicsNotes(rep as { tenantIds?: unknown[]; notes?: string }, tenantObjectId)),
       pagination: {
         page,
         limit,
