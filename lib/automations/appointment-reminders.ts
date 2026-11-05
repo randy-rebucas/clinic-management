@@ -4,7 +4,7 @@ import connectDB from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
 import Visit from '@/models/Visit';
 import { getSettings } from '@/lib/settings';
-import { sendSMS, type SMSResult } from '@/lib/sms';
+import { sendSMS, smsSettled, type SMSResult } from '@/lib/sms';
 import { sendPushToPatientDevices, type PushPayload } from '@/lib/push-notifications';
 import { buildAppointmentActionUrl } from '@/lib/appointment-links';
 import { dayRangeOffsetInTz } from '@/lib/tz';
@@ -14,9 +14,14 @@ import { forEachTenant, delivered, displayDate, displayTime, errorMessage, claim
 type ReminderRow = { id: string; code?: string; success: boolean; sid?: string; error?: string; pushed?: boolean };
 
 /** SMS when the patient has a phone; a thrown send counts as a failed one. */
-async function smsIfPhone(phone: string | undefined, message: string): Promise<SMSResult | null> {
+async function smsIfPhone(
+  phone: string | undefined,
+  message: string,
+  tenantId: Types.ObjectId,
+  template: string
+): Promise<SMSResult | null> {
   if (!phone) return null;
-  return sendSMS({ to: phone, message }).catch((error) => ({ success: false, error: errorMessage(error) }));
+  return sendSMS({ to: phone, message, tenantId, category: 'transactional', template }).catch((error) => ({ success: false, error: errorMessage(error) }));
 }
 
 /** Push to the patient's app (and their family managers'). Never throws; true when a device got it. */
@@ -75,7 +80,7 @@ async function sendTenantAppointmentReminders(tenant: AutomationTenant): Promise
 
       const own = { _id: appointment._id, tenantId: tenant.tenantObjectId };
       if (!(await claimForSend(Appointment, { ...own, reminderSentAt: { $exists: false } }, 'reminderClaimedAt'))) continue;
-      const smsResult = await smsIfPhone(patient.phone, message);
+      const smsResult = await smsIfPhone(patient.phone, message, tenant.tenantObjectId, 'appointment-reminder');
       // Lock-screen text: when, never who or why.
       const pushed = await pushReminder(patient._id, {
         title: 'Appointment Tomorrow',
@@ -84,7 +89,7 @@ async function sendTenantAppointmentReminders(tenant: AutomationTenant): Promise
         url: `/appointments/${id}`,
       }, tenant.tenantObjectId);
 
-      if (delivered(smsResult) || pushed) {
+      if (smsSettled(smsResult) || pushed) {
         await Appointment.updateOne(own, { $set: { reminderSentAt: new Date() }, $unset: { reminderClaimedAt: '' } });
       } else {
         await releaseClaim(Appointment, own, 'reminderClaimedAt');
@@ -141,7 +146,7 @@ async function sendTenantVisitReminders(tenant: AutomationTenant): Promise<Remin
 
       const own = { _id: visit._id, tenantId: tenant.tenantObjectId };
       if (!(await claimForSend(Visit, { ...own, followUpReminderSent: { $ne: true } }, 'followUpReminderClaimedAt'))) continue;
-      const smsResult = await smsIfPhone(patient.phone, message);
+      const smsResult = await smsIfPhone(patient.phone, message, tenant.tenantObjectId, 'followup-reminder');
       const appointmentId = visit.followUpAppointmentId ? String(visit.followUpAppointmentId) : null;
       const pushed = await pushReminder(patient._id, {
         title: 'Follow-up Visit Tomorrow',
@@ -150,7 +155,7 @@ async function sendTenantVisitReminders(tenant: AutomationTenant): Promise<Remin
         ...(appointmentId ? { data: { appointmentId } } : {}),
       }, tenant.tenantObjectId);
 
-      if (delivered(smsResult) || pushed) {
+      if (smsSettled(smsResult) || pushed) {
         await Visit.updateOne(own, { $set: { followUpReminderSent: true }, $unset: { followUpReminderClaimedAt: '' } });
       } else {
         await releaseClaim(Visit, own, 'followUpReminderClaimedAt');

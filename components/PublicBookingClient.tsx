@@ -4,6 +4,7 @@ import { useState, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
 import { toDateKey } from './utils/dateKey';
 import TurnstileWidget, { TURNSTILE_SITE_KEY } from './TurnstileWidget';
+import PhoneCodeStep, { type PhoneProof } from './PhoneCodeStep';
 
 interface Clinic {
   _id: string;
@@ -177,6 +178,9 @@ export default function PublicBookingClient({ subdomain, rootDomain }: { subdoma
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   // Turnstile tokens are single-use: bumping this remounts the widget after each attempt.
   const [captchaKey, setCaptchaKey] = useState(0);
+  // Set when the server asks for a code; the proof holds for this number and clinic only.
+  const [needsPhoneCode, setNeedsPhoneCode] = useState(false);
+  const [phoneProof, setPhoneProof] = useState<(PhoneProof & { key: string }) | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -296,8 +300,12 @@ export default function PublicBookingClient({ subdomain, rootDomain }: { subdoma
     return doctor ? `Dr. ${doctor.firstName} ${doctor.lastName}` : '';
   };
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const proofKey = `${formData.patientPhone}|${selectedClinic?._id ?? ''}`;
+  const liveProof = phoneProof?.key === proofKey ? phoneProof : null;
+
+  const handleSubmit = async (e?: FormEvent, proof: PhoneProof | null = liveProof) => {
+    e?.preventDefault();
+    let keepCaptcha = false;
     setError('');
     setBooked(null);
     if (!availableSlots.includes(formData.appointmentTime)) {
@@ -314,6 +322,8 @@ export default function PublicBookingClient({ subdomain, rootDomain }: { subdoma
         doctorId: selectedDoctor,
         appointmentDate: selectedDate,
         turnstileToken: captchaToken ?? undefined,
+        phoneProof: proof?.token,
+        smsPromoConsent: proof?.promoConsent,
       };
 
       if (selectedClinic) {
@@ -328,7 +338,16 @@ export default function PublicBookingClient({ subdomain, rootDomain }: { subdoma
 
       const data = await res.json();
 
+      if (data.code === 'PHONE_PROOF_REQUIRED') {
+        // Refused before the captcha was checked, so its token still works for sending the code.
+        keepCaptcha = true;
+        setNeedsPhoneCode(true);
+        return;
+      }
+
       if (data.success) {
+        setPhoneProof(null);
+        setNeedsPhoneCode(false);
         setBooked({
           doctor: doctorLabel(selectedDoctor),
           date: formatDate(selectedDate),
@@ -356,8 +375,10 @@ export default function PublicBookingClient({ subdomain, rootDomain }: { subdoma
       setError('Failed to submit appointment request. Please try again.');
     } finally {
       setSubmitting(false);
-      setCaptchaKey((k) => k + 1);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (!keepCaptcha) {
+        setCaptchaKey((k) => k + 1);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     }
   };
 
@@ -736,7 +757,26 @@ export default function PublicBookingClient({ subdomain, rootDomain }: { subdoma
                 />
               </fieldset>
 
-              {TURNSTILE_SITE_KEY && (
+              {needsPhoneCode && !liveProof && (
+                <div className="px-5 pt-5 sm:px-7">
+                  <PhoneCodeStep
+                    key={proofKey}
+                    phone={formData.patientPhone}
+                    purpose="booking"
+                    tenantId={selectedClinic?._id}
+                    captchaToken={captchaToken}
+                    onCaptchaUsed={() => {
+                      setCaptchaToken(null);
+                      setCaptchaKey((k) => k + 1);
+                    }}
+                    onVerified={(proof) => {
+                      setPhoneProof({ ...proof, key: proofKey });
+                      void handleSubmit(undefined, proof);
+                    }}
+                  />
+                </div>
+              )}
+              {TURNSTILE_SITE_KEY && !liveProof && (
                 <div className="px-5 pt-5 sm:px-7">
                   <TurnstileWidget key={captchaKey} onToken={setCaptchaToken} />
                 </div>
@@ -747,7 +787,7 @@ export default function PublicBookingClient({ subdomain, rootDomain }: { subdoma
                 </p>
                 <button
                   type="submit"
-                  disabled={submitting || (Boolean(TURNSTILE_SITE_KEY) && !captchaToken)}
+                  disabled={submitting || (needsPhoneCode && !liveProof) || (Boolean(TURNSTILE_SITE_KEY) && !captchaToken && !liveProof)}
                   className="group inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-md bg-brand-teal px-6 py-3 font-semibold text-white shadow-[0_6px_20px_rgba(14,165,164,0.3)] transition-colors duration-150 hover:bg-brand-teal-dark disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
                 >
                   {submitting ? (

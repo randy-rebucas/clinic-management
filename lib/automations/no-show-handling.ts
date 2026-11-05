@@ -79,7 +79,7 @@ export async function handleNoShow(options: NoShowHandlingOptions): Promise<{
     // Patients have no User account, so no in-app notification is created here.
     if (options.sendSMS !== false && patient.phone) {
       try {
-        await sendSMS({ to: patient.phone, message });
+        await sendSMS({ tenantId: tenantId, category: 'transactional', template: 'no-show', patientId: patient._id, to: patient.phone, message });
       } catch (error) {
         console.error('Error sending no-show SMS:', error);
       }

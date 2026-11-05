@@ -28,3 +28,10 @@ export function normalizePhone(input: string | null | undefined, defaultCountryC
   const len = e164.length - 1;
   return len >= 8 && len <= 15 ? e164 : null;
 }
+
+/** "+639171234567" → "+63*******4567" — never log full phone numbers. */
+export function maskPhone(phone: string): string {
+  const raw = phone.replace(/\s/g, '');
+  if (raw.length <= 6) return '****';
+  return raw.slice(0, 3) + '*'.repeat(raw.length - 7) + raw.slice(-4);
+}

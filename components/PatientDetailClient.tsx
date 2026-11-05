@@ -3,6 +3,7 @@
 import { useEffect, useId, useState, type KeyboardEvent, type ReactNode } from 'react';
 import MessagePatientDialog from './patients/MessagePatientDialog';
 import AppInviteDialog from './patients/AppInviteDialog';
+import PatientSmsPreference from './patients/PatientSmsPreference';
 import MoreMenu, { type MoreMenuItem } from './ui/MoreMenu';
 import MedicalCertificateDialog from './patients/MedicalCertificateDialog';
 import { createPortal } from 'react-dom';
@@ -1194,6 +1195,9 @@ function AppAccessPanel({ patientId, fallbackEmail, firstName }: { patientId: st
           <span className="font-mono text-gray-700">/my-qr</span>, or on a clinic tablet at{' '}
           <span className="font-mono text-gray-700">/kiosk/qr</span>, after a code to their phone and a few questions.
         </p>
+      </div>
+      <div className="mt-4">
+        <PatientSmsPreference patientId={patientId} />
       </div>
       <AppInviteDialog open={inviteOpen} onOpenChange={setInviteOpen} patientId={patientId} firstName={firstName} />
       <Modal open={!!qr} onOpenChange={(o) => !o && setQr(null)} className="max-w-sm" labelledBy={`${ids}-qr-title`}>

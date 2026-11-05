@@ -172,7 +172,7 @@ export async function createNextRecurringAppointment(
       if (patient.phone) {
         try {
           const message = `Your next recurring appointment has been scheduled for ${dateText}${appointmentTime ? ` at ${timeText}` : ''}. Appointment Code: ${appointmentCode}. - ${clinicName}`;
-          await sendSMS({ to: patient.phone, message });
+          await sendSMS({ tenantId: tid, category: 'transactional', template: 'recurring-appointment', patientId: patient._id, to: patient.phone, message });
         } catch (error) {
           console.error('Error sending recurring appointment SMS:', error);
         }

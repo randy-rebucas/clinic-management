@@ -7,7 +7,7 @@ import EmcrInvite, { type EmcrInviteChannel, type EmcrInviteMode } from '@/model
 import Patient from '@/models/Patient';
 import Tenant from '@/models/Tenant';
 import { normalizePhone } from '@/lib/phone';
-import { sendSMS } from '@/lib/sms';
+import { sendSMS, smsSent } from '@/lib/sms';
 import { maskPhone } from '@/app/api/patients/auth/shared';
 import { linkRecordsByVerifiedPhone } from '@/app/api/patients/me/_lib/linked-records';
 import { addClinicGuardian, personRecordIds } from '@/lib/patient-family';
@@ -143,10 +143,13 @@ export async function sendInviteSms(options: { code: string; phone: string; tena
   const clinic = await clinicName(options.tenantId);
   const name = options.firstName ? `Hi ${options.firstName}, ` : '';
   const result = await sendSMS({
+    tenantId: options.tenantId,
+    category: 'transactional',
+    template: 'emcr-invite',
     to: options.phone,
     message: `${name}${clinic} invited you to eMCR, your health records app. Open ${inviteLink(options.code)} or enter code ${formatInviteCode(options.code)} in the app. Valid ${INVITE_TTL_DAYS} days.`,
   });
-  return !!result.success;
+  return smsSent(result);
 }
 
 /** "Maria Dela Cruz" → "Maria D." */

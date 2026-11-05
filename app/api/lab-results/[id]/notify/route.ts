@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import LabResult from '@/models/LabResult';
 import { requirePermission } from '@/app/lib/auth-helpers';
-import { sendSMS } from '@/lib/sms';
+import { sendSMS, smsSent } from '@/lib/sms';
 import { sendEmail, generateLabResultEmail } from '@/lib/email';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
 import { normalizePhone } from '@/lib/phone';
@@ -82,9 +82,9 @@ export async function POST(
       if (phoneNumber) {
         try {
           const message = `Your lab results for ${labResult.request.testType} are now available. Request Code: ${labResult.requestCode}. Please contact the clinic to view your results.`;
-          const smsResult = await sendSMS({ to: phoneNumber, message });
+          const smsResult = await sendSMS({ tenantId: tenantId, category: 'transactional', template: 'lab-result', to: phoneNumber, message });
 
-          if (smsResult.success) {
+          if (smsSent(smsResult)) {
             results.smsSent = true;
           } else {
             results.errors.push('SMS failed to send');

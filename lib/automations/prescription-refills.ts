@@ -104,7 +104,7 @@ export async function sendRefillReminder(options: PrescriptionRefillOptions): Pr
 
     if (options.sendSMS !== false && patient.phone) {
       try {
-        const smsResult = await sendSMS({ to: patient.phone, message: generateRefillMessage(prescription, daysUntilRefill) });
+        const smsResult = await sendSMS({ tenantId: tenantId, category: 'transactional', template: 'prescription-refill', patientId: patient._id, to: patient.phone, message: generateRefillMessage(prescription, daysUntilRefill) });
         if (delivered(smsResult)) sent = true;
       } catch (error) {
         console.error('Error sending refill reminder SMS:', error);

@@ -79,7 +79,7 @@ async function processTenant(tenant: AutomationTenant): Promise<MembershipExpiry
 
       try {
         if (patient.phone) {
-          await sendSMS({ to: patient.phone, message: smsMessage });
+          await sendSMS({ tenantId: tenant.tenantObjectId, category: 'promotional', template: 'membership-expiry', patientId: patient._id, to: patient.phone, message: smsMessage });
         }
 
         if (patient.email) {

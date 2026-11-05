@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { toDateKey } from './utils/dateKey';
 import { SUPPORT_EMAIL } from '@/lib/seo';
 import TurnstileWidget, { TURNSTILE_SITE_KEY } from './TurnstileWidget';
+import PhoneCodeStep, { type PhoneProof } from './PhoneCodeStep';
 
 interface AllergyEntry {
   substance: string;
@@ -75,6 +76,9 @@ export default function PublicOnboardingClient({ subdomain }: { subdomain: strin
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   // Turnstile tokens are single-use: bumping this remounts the widget after each attempt.
   const [captchaKey, setCaptchaKey] = useState(0);
+  // Set when the server asks for a code; the proof holds for this number and clinic only.
+  const [needsPhoneCode, setNeedsPhoneCode] = useState(false);
+  const [phoneProof, setPhoneProof] = useState<(PhoneProof & { key: string }) | null>(null);
 
   useEffect(() => {
     if (!needsClinic) return;
@@ -174,8 +178,12 @@ export default function PublicOnboardingClient({ subdomain }: { subdomain: strin
     }
   };
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const proofKey = `${formData.phone}|${clinicId ?? ''}`;
+  const liveProof = phoneProof?.key === proofKey ? phoneProof : null;
+
+  const handleSubmit = async (e?: FormEvent, proof: PhoneProof | null = liveProof) => {
+    e?.preventDefault();
+    let keepCaptcha = false;
     setSubmitting(true);
     setError(null);
     setSuccess(false);
@@ -205,6 +213,10 @@ export default function PublicOnboardingClient({ subdomain }: { subdomain: strin
       };
       if (needsClinic) payload.tenantId = clinicId;
       if (captchaToken) payload.turnstileToken = captchaToken;
+      if (proof) {
+        payload.phoneProof = proof.token;
+        payload.smsPromoConsent = proof.promoConsent;
+      }
 
       // Add email only if provided
       if (formData.email && formData.email.trim()) {
@@ -242,6 +254,16 @@ export default function PublicOnboardingClient({ subdomain }: { subdomain: strin
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+
+      if (res.status === 403) {
+        const refused = await res.clone().json().catch(() => null);
+        if (refused?.code === 'PHONE_PROOF_REQUIRED') {
+          // Refused before the captcha was checked, so its token still works for sending the code.
+          keepCaptcha = true;
+          setNeedsPhoneCode(true);
+          return;
+        }
+      }
 
       // Check response status first
       if (!res.ok) {
@@ -311,7 +333,7 @@ export default function PublicOnboardingClient({ subdomain }: { subdomain: strin
       setError(`Failed to register: ${error.message || 'Unknown error'}`);
     } finally {
       setSubmitting(false);
-      setCaptchaKey((k) => k + 1);
+      if (!keepCaptcha) setCaptchaKey((k) => k + 1);
     }
   };
 
@@ -1173,7 +1195,27 @@ export default function PublicOnboardingClient({ subdomain }: { subdomain: strin
                     </div>
                   )}
 
-                  {TURNSTILE_SITE_KEY && currentStep === STEPS.length - 1 && (
+                  {needsPhoneCode && !liveProof && currentStep === STEPS.length - 1 && (
+                    <div className="pt-6">
+                      <PhoneCodeStep
+                        key={proofKey}
+                        phone={formData.phone}
+                        purpose="registration"
+                        tenantId={needsClinic ? clinicId : undefined}
+                        captchaToken={captchaToken}
+                        onCaptchaUsed={() => {
+                          setCaptchaToken(null);
+                          setCaptchaKey((k) => k + 1);
+                        }}
+                        onVerified={(proof) => {
+                          setPhoneProof({ ...proof, key: proofKey });
+                          void handleSubmit(undefined, proof);
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {TURNSTILE_SITE_KEY && !liveProof && currentStep === STEPS.length - 1 && (
                     <div className="pt-6">
                       <TurnstileWidget key={captchaKey} onToken={setCaptchaToken} />
                     </div>

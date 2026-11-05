@@ -142,6 +142,10 @@ export async function sendHealthReminder(options: HealthReminderOptions): Promis
       attempted = true;
       try {
         const smsResult = await sendSMS({
+          tenantId: tenantId,
+          category: 'promotional',
+          template: 'health-reminder',
+          patientId: patient._id,
           to: patient.phone,
           message: generateHealthReminderSMS(options.reminderType, clinicName, bookingUrl),
         });

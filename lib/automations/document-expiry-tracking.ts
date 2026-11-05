@@ -124,7 +124,7 @@ async function sendDocumentExpiryAlert(
 
       if (patient.phone) {
         try {
-          const smsResult = await sendSMS({ to: patient.phone, message });
+          const smsResult = await sendSMS({ tenantId: tenant.tenantObjectId, category: 'transactional', template: 'document-expiry', patientId: patient._id, to: patient.phone, message });
           if (delivered(smsResult)) sent = true;
         } catch (error) {
           console.error('Error sending document expiry SMS:', error);

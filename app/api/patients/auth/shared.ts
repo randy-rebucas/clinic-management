@@ -7,6 +7,8 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import MobileDevice from '@/models/MobileDevice';
 import { normalizePhone } from '@/lib/phone';
+export { maskPhone } from '@/lib/phone';
+import { consumeOtp, startOtp } from '@/lib/otp';
 import {
   isFreshOtpSession,
   issuePatientToken,
@@ -17,8 +19,6 @@ import {
   type PatientTokenClaims,
 } from '@/app/lib/dal';
 import { issueRefreshToken, REFRESH_TOKEN_TTL_SECONDS } from '@/app/lib/refresh-tokens';
-
-export const MAX_OTP_ATTEMPTS = 5;
 
 let dummyHash: string | null = null;
 /** Valid bcrypt hash compared when no account matches, so timing does not reveal existence. */
@@ -44,13 +44,6 @@ export function parseOptionalTenantId(value: unknown): { ok: true; tenantId?: Ty
 
 export function invalidTenantResponse() {
   return NextResponse.json({ success: false, error: 'Invalid tenantId' }, { status: 400 });
-}
-
-/** "+639171234567" → "+63*******4567" — never log full phone numbers. */
-export function maskPhone(phone: string): string {
-  const raw = phone.replace(/\s/g, '');
-  if (raw.length <= 6) return '****';
-  return raw.slice(0, 3) + '*'.repeat(raw.length - 7) + raw.slice(-4);
 }
 
 /**
@@ -87,54 +80,49 @@ export type OtpResult =
   | { ok: true; patient: any }
   | { ok: false; reason: 'invalid' | 'expired' | 'locked' };
 
+/** The code goes to this number, on this record: its own phone, or a minor's contact number. */
+export async function sendPatientOtp(
+  phone: string,
+  patientId: Types.ObjectId | string,
+  message: (code: string, expiryMinutes: number) => string
+): Promise<boolean> {
+  return startOtp({ scope: 'patient', phone, patientId, message });
+}
+
 /**
- * Verify and consume a patient OTP. The attempt counter is checked and incremented in a
- * single conditional update, so parallel guesses cannot exceed MAX_OTP_ATTEMPTS, and a
- * correct code can be redeemed only once.
+ * Verify and spend a patient code, then load the record it opens. By phone for sign-in, or by
+ * record for phone proof in a session. The record must still be active and, by phone, must still
+ * carry that number.
  */
-export async function consumePatientOtp(filter: Record<string, unknown>, otp: string): Promise<OtpResult> {
+export async function consumePatientOtp(
+  target: { phone: string; tenantId?: Types.ObjectId } | { patientId: string },
+  otp: string
+): Promise<OtpResult> {
   await connectDB();
-  const now = new Date();
 
-  const patient = await Patient.findOneAndUpdate(
-    {
-      ...filter,
-      active: { $ne: false },
-      otp: { $exists: true, $ne: null },
-      otpExpiry: { $gt: now },
-      otpAttempts: { $lt: MAX_OTP_ATTEMPTS },
-    },
-    { $inc: { otpAttempts: 1 } },
-    { new: true }
-  ).select('+otp');
-
-  if (!patient) {
-    // Only used to pick an error message; nothing is granted from this read.
-    const current = await Patient.findOne({ ...filter, otp: { $exists: true, $ne: null } })
-      .select('otpExpiry otpAttempts')
-      .lean<{ _id: Types.ObjectId; otpExpiry?: Date; otpAttempts?: number } | null>();
-    if (!current) return { ok: false, reason: 'invalid' };
-    if ((current.otpAttempts ?? 0) >= MAX_OTP_ATTEMPTS || !current.otpExpiry || current.otpExpiry <= now) {
-      await Patient.updateOne(
-        { _id: current._id },
-        { $unset: { otp: 1, otpExpiry: 1 }, $set: { otpAttempts: 0 } }
-      );
-      return { ok: false, reason: (current.otpAttempts ?? 0) >= MAX_OTP_ATTEMPTS ? 'locked' : 'expired' };
+  if ('patientId' in target) {
+    let result = await consumeOtp({ scope: 'patient', patientId: target.patientId }, otp);
+    const patient = await Patient.findOne({ _id: target.patientId, active: { $ne: false } });
+    if (!result.ok && result.noChallenge && patient?.phone) {
+      // otp/request picks the newest record on a shared number, which may not be this one. A code
+      // sent to this record's own phone still proves that phone.
+      const own = normalizePhone(patient.phone);
+      if (own) result = await consumeOtp({ scope: 'patient', phone: own }, otp);
     }
-    return { ok: false, reason: 'invalid' };
+    if (!result.ok) return result;
+    return patient ? { ok: true, patient } : { ok: false, reason: 'invalid' };
   }
 
-  const storedHash = patient.otp as string;
-  const match = await bcrypt.compare(otp, storedHash);
-  if (!match) return { ok: false, reason: 'invalid' };
+  const phone = normalizePhone(target.phone);
+  if (!phone) return { ok: false, reason: 'invalid' };
+  const result = await consumeOtp({ scope: 'patient', phone }, otp);
+  if (!result.ok) return result;
+  if (!result.patientId) return { ok: false, reason: 'invalid' };
 
-  const consumed = await Patient.updateOne(
-    { _id: patient._id, otp: storedHash },
-    { $unset: { otp: 1, otpExpiry: 1 }, $set: { otpAttempts: 0 } }
-  );
-  if (consumed.modifiedCount !== 1) return { ok: false, reason: 'invalid' };
-
-  return { ok: true, patient };
+  const filter: Record<string, unknown> = { ...phoneFilter(phone), _id: result.patientId, active: { $ne: false } };
+  if (target.tenantId) filter.tenantIds = target.tenantId;
+  const patient = await Patient.findOne(filter);
+  return patient ? { ok: true, patient } : { ok: false, reason: 'invalid' };
 }
 
 export function otpFailureResponse(reason: 'invalid' | 'expired' | 'locked') {
@@ -337,7 +325,7 @@ export type PhoneProof =
 export async function checkPhoneProof(session: PatientSessionPayload, otp: unknown): Promise<PhoneProof> {
   if (isFreshOtpSession(session)) return { ok: true, proven: true };
   if (typeof otp !== 'string' || !otp.trim()) return { ok: true, proven: false };
-  const result = await consumePatientOtp({ _id: new Types.ObjectId(session.patientId) }, otp.trim());
+  const result = await consumePatientOtp({ patientId: session.patientId }, otp.trim());
   return result.ok ? { ok: true, proven: true } : { ok: false, reason: result.reason };
 }
 

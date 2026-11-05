@@ -56,7 +56,7 @@ async function processTenant(tenant: AutomationTenant): Promise<VisitFollowUpRes
 
     try {
       if (patient.phone) {
-        await sendSMS({ to: patient.phone, message: smsMessage });
+        await sendSMS({ tenantId: tenant.tenantObjectId, category: 'transactional', template: 'visit-followup', patientId: patient._id, to: patient.phone, message: smsMessage });
       }
 
       if (patient.email) {

@@ -113,7 +113,7 @@ export async function sendBroadcastMessage(options: BroadcastMessageOptions): Pr
 
       if (options.sendSMS !== false && patient.phone) {
         try {
-          const r = await sendSMS({ to: patient.phone, message: options.message });
+          const r = await sendSMS({ tenantId: tenantId, category: 'promotional', template: 'broadcast', patientId: patient._id, to: patient.phone, message: options.message });
           if (r.success) delivered = true;
           else {
             patientFailed = true;

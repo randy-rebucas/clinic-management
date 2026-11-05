@@ -90,6 +90,9 @@ async function sendSMSReminder(appointment: any, tz: string) {
   }
 
   const smsResult = await sendSMS({
+    tenantId: appointment.tenantId,
+    category: 'transactional',
+    template: 'appointment-reminder',
     to: phoneNumber,
     message,
   });

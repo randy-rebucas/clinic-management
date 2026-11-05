@@ -6,6 +6,7 @@ import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { normalizePhone } from '@/lib/phone';
 import { maskPhone, phoneFilter, phoneRateKey } from '@/app/api/patients/auth/shared';
 import { EMCR_OTP_EXPIRY_MINUTES, sendAccountOtp } from '@/lib/emcr/session';
+import { otpAvailable } from '@/lib/otp';
 
 /**
  * POST /api/emcr/auth/otp/request
@@ -37,6 +38,15 @@ export async function POST(request: NextRequest) {
     success: true,
     message: `If a clinic has this number on file, a code will arrive by SMS within a minute. It expires in ${EMCR_OTP_EXPIRY_MINUTES} minutes.`,
   });
+
+  // Before any lookup: refusing after one would reveal which numbers are on file.
+  if (!otpAvailable()) {
+    logger.error('eMCR OTP requested but no provider is configured', new Error('OTP unavailable'));
+    return NextResponse.json(
+      { success: false, error: 'Text message codes are unavailable right now. Please try again later.' },
+      { status: 503 }
+    );
+  }
 
   try {
     await connectDB();

@@ -105,7 +105,7 @@ const defaultSettings: Settings = {
     minAdvanceBookingHours: 2,
   },
   communicationSettings: {
-    smsEnabled: false,
+    smsEnabled: true,
     emailEnabled: false,
     appointmentReminders: true,
     labResultNotifications: true,

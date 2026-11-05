@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { randomInt } from 'crypto';
-import bcrypt from 'bcryptjs';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
-import { sendSMS } from '@/lib/sms';
+import { OTP_EXPIRY_MINUTES, otpAvailable } from '@/lib/otp';
 import { normalizePhone } from '@/lib/phone';
 import { isMinor } from '@/lib/patient-family';
 import {
@@ -15,14 +13,8 @@ import {
   phoneFilter,
   phoneRateKey,
   phoneVariants,
+  sendPatientOtp,
 } from '../../shared';
-
-const OTP_EXPIRY_MINUTES = 5;
-const OTP_LENGTH = 6;
-
-function generateOTP(): string {
-  return randomInt(0, 10 ** OTP_LENGTH).toString().padStart(OTP_LENGTH, '0');
-}
 
 /**
  * Request an OTP sent to the patient's registered phone number
@@ -30,7 +22,7 @@ function generateOTP(): string {
  * Body: { phone, tenantId? }
  */
 export async function POST(request: NextRequest) {
-  const rateLimitResponse = await applyRateLimit(request, rateLimiters.auth);
+  const rateLimitResponse = await applyRateLimit(request, rateLimiters.otpRequest);
   if (rateLimitResponse) return rateLimitResponse;
 
   try {
@@ -60,6 +52,15 @@ export async function POST(request: NextRequest) {
     const perPhoneLimit = await applyRateLimit(request, rateLimiters.otpSend, phoneRateKey(phone));
     if (perPhoneLimit) return perPhoneLimit;
 
+    // Before any lookup: refusing after one would reveal which numbers are on file.
+    if (!otpAvailable()) {
+      logger.error('Patient OTP requested but no provider is configured', new Error('OTP unavailable'));
+      return NextResponse.json(
+        { success: false, error: 'Text message codes are unavailable right now. Please try again later.' },
+        { status: 503 }
+      );
+    }
+
     await connectDB();
 
     // Build tenant-scoped query — search both phone and contacts.phone, in every stored spelling
@@ -87,17 +88,6 @@ export async function POST(request: NextRequest) {
 
     if (!patient || patient.active === false) return genericResponse;
 
-    const otp = generateOTP();
-    const otpHash = await bcrypt.hash(otp, 10);
-    const otpExpiry = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
-
-    await Patient.updateOne(
-      { _id: patient._id },
-      {
-        $set: { otp: otpHash, otpExpiry, otpAttempts: 0 },
-      }
-    );
-
     const normalizedPhone = normalizePhone(phone);
     if (!normalizedPhone) {
       logger.warn('Patient OTP requested for an unroutable phone number', {
@@ -106,22 +96,11 @@ export async function POST(request: NextRequest) {
       return genericResponse;
     }
 
-    const smsResult = await sendSMS({
-      to: normalizedPhone,
-      message: `Your clinic login code is: ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes. Do not share this code.`,
-    });
-
-    // Local development without Twilio: show the code in the dev server console so phone sign-in
-    // can be tested. Never in production.
-    if (smsResult.skipped && process.env.NODE_ENV !== 'production') {
-      console.warn(`[dev] Patient OTP for ${maskPhone(normalizedPhone)}: ${otp}`);
-    }
-
-    if (!smsResult.success && smsResult.error && !smsResult.error.includes('logged only')) {
-      logger.error('Failed to send OTP SMS', new Error(smsResult.error), {
-        patientId: patient._id.toString(),
-      });
-    }
+    await sendPatientOtp(
+      normalizedPhone,
+      patient._id,
+      (code, minutes) => `Your clinic login code is: ${code}. It expires in ${minutes} minutes. Do not share this code.`
+    );
 
     logger.info('Patient OTP requested', {
       patientId: patient._id.toString(),

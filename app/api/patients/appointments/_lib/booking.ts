@@ -132,6 +132,9 @@ export async function sendBookingConfirmation(appointment: any, tz: string, opts
   const phoneNumber = patient.phone ? normalizePhone(patient.phone) : null;
   if (phoneNumber) {
     await sendSMS({
+      tenantId: appointment.tenantId,
+      category: 'transactional',
+      template: 'booking-confirmation',
       to: phoneNumber,
       message,
     }).catch((error) => {

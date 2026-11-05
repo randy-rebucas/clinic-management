@@ -4,14 +4,17 @@ import connectDB from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
 import Patient from '@/models/Patient';
 import { createNotification } from '@/lib/notifications';
+import { phoneVariants } from '@/app/api/patients/auth/shared';
 import { normalizePhone } from '@/lib/phone';
+import { setSmsPreference } from '@/lib/sms-preferences';
+import { signedTwilioUrl } from '@/lib/twilio-webhook';
 import { Types } from 'mongoose';
 
 /**
  * POST /api/webhooks/twilio
  *
- * Handles inbound SMS replies from patients.
- * Twilio calls this URL when a patient replies to an appointment reminder.
+ * Handles inbound SMS from patients. Only reachable through an inbound long code: replies to the
+ * alphanumeric sender don't come back, and reminders use a confirm link instead.
  *
  * Setup in Twilio Console:
  *   Phone Number → Messaging → A Message Comes In → Webhook → POST {BASE_URL}/api/webhooks/twilio
@@ -19,37 +22,9 @@ import { Types } from 'mongoose';
  * Every request must carry a valid X-Twilio-Signature (TWILIO_AUTH_TOKEN is required).
  *
  * Patient workflow:
- *   Clinic sends: "Your appointment on Apr 10 at 9am. Reply YES to confirm, NO to cancel."
- *   Patient replies: "YES" → appointment confirmed
- *   Patient replies: "NO" → appointment cancelled
+ *   Patient texts: "YES" → appointment confirmed
+ *   Patient texts: "NO" → appointment cancelled
  */
-
-/**
- * The URL Twilio signed: the public URL configured in the console. Behind a proxy
- * request.url is the internal address, so prefer the configured app URL.
- */
-function signedUrl(request: NextRequest): string {
-  const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || '').replace(/\/+$/, '');
-  if (base) {
-    const { pathname, search } = new URL(request.url);
-    return `${base}${pathname}${search}`;
-  }
-  return request.url;
-}
-
-/** Stored phone formats vary (local 09…, E.164, digits only); match all of them. */
-function phoneVariants(raw: string): string[] {
-  const variants = new Set<string>();
-  const trimmed = raw.trim();
-  if (trimmed) variants.add(trimmed);
-  const e164 = normalizePhone(trimmed);
-  if (e164) {
-    variants.add(e164);
-    variants.add(e164.slice(1));
-    if (e164.startsWith('+63')) variants.add(`0${e164.slice(3)}`);
-  }
-  return [...variants];
-}
 
 /**
  * Find the patient's next pending/confirmed appointment within 7 days. The SMS number is
@@ -117,13 +92,26 @@ export async function POST(request: NextRequest) {
   }
 
   const twilioSignature = request.headers.get('x-twilio-signature') ?? '';
-  if (!twilioSignature || !validateRequest(authToken, twilioSignature, signedUrl(request), params)) {
+  if (!twilioSignature || !validateRequest(authToken, twilioSignature, signedTwilioUrl(request), params)) {
     return new NextResponse('Forbidden', { status: 403 });
   }
 
   try {
     const fromPhone = params['From'] ?? '';
     const rawBody = (params['Body'] ?? '').trim().toUpperCase();
+
+    // Stops every clinic's texts: this inbound number is shared, and a reply names no clinic.
+    const e164 = normalizePhone(fromPhone);
+    const isStop = /^(STOP|STOPALL|UNSUBSCRIBE|END|QUIT)$/.test(rawBody);
+    const isStart = /^(START|UNSTOP)$/.test(rawBody);
+    if (e164 && (isStop || isStart)) {
+      await setSmsPreference({ phone: e164, tenantId: null, optedOut: isStop, source: 'reply' });
+      return twimlResponse(
+        isStop
+          ? 'You will no longer get texts from clinics using this service. Sign-in codes you ask for still arrive. Reply START to undo.'
+          : 'Texts are back on.'
+      );
+    }
 
     // Determine intent from message body
     const isConfirm = /^(YES|Y|CONFIRM|OK|1)$/.test(rawBody);

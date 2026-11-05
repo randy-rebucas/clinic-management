@@ -19,6 +19,7 @@ export interface SubscriptionLimitations {
   
   // Visit Limits
   maxVisitsPerMonth: number | null; // null = unlimited
+  maxSmsPerMonth: number; // Text segments. Always a number: every text costs money.
   
   // Storage Limits
   maxStorageGB: number | null; // null = unlimited
@@ -94,6 +95,7 @@ export const SUBSCRIPTION_PACKAGES: Record<SubscriptionPlan, SubscriptionLimitat
     maxAppointmentsPerMonth: 100,
     maxAppointmentsPerDay: 20,
     maxVisitsPerMonth: 100,
+    maxSmsPerMonth: 100,
     maxStorageGB: 1,
     maxFileSizeMB: 5,
     features: {
@@ -141,6 +143,7 @@ export const SUBSCRIPTION_PACKAGES: Record<SubscriptionPlan, SubscriptionLimitat
     maxAppointmentsPerMonth: 500,
     maxAppointmentsPerDay: 50,
     maxVisitsPerMonth: 500,
+    maxSmsPerMonth: 500,
     maxStorageGB: 5,
     maxFileSizeMB: 10,
     features: {
@@ -188,6 +191,7 @@ export const SUBSCRIPTION_PACKAGES: Record<SubscriptionPlan, SubscriptionLimitat
     maxAppointmentsPerMonth: 2000,
     maxAppointmentsPerDay: 100,
     maxVisitsPerMonth: 2000,
+    maxSmsPerMonth: 2000,
     maxStorageGB: 20,
     maxFileSizeMB: 25,
     features: {
@@ -235,6 +239,7 @@ export const SUBSCRIPTION_PACKAGES: Record<SubscriptionPlan, SubscriptionLimitat
     maxAppointmentsPerMonth: null, // Unlimited
     maxAppointmentsPerDay: null, // Unlimited
     maxVisitsPerMonth: null, // Unlimited
+    maxSmsPerMonth: 10000,
     maxStorageGB: null, // Unlimited
     maxFileSizeMB: 100,
     features: {

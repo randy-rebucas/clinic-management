@@ -69,7 +69,7 @@ export async function notifyQueuePatient(options: QueueNotificationOptions): Pro
 
       const tell = (sms: string, title: string, body: string) => {
         if (patient.phone) {
-          sendSMS({ to: patient.phone, message: sms }).catch((e) =>
+          sendSMS({ tenantId: tenantObjectId, category: 'transactional', template: 'queue', patientId: patient._id, to: patient.phone, message: sms }).catch((e) =>
             console.error('[queue-notifications] SMS error:', e)
           );
         }
@@ -105,6 +105,10 @@ export async function notifyQueuePatient(options: QueueNotificationOptions): Pro
         const estimatedWait = queueEntry.estimatedWaitTime ?? position * 10;
         if (position <= NOTIFY_WITHIN_POSITION || estimatedWait <= 15) {
           sendSMS({
+            tenantId: tenantObjectId,
+            category: 'transactional',
+            template: 'queue',
+            patientId: patient._id,
             to: patient.phone,
             message: `Hi ${firstName}, you are #${position} in the queue at ${clinicName}. Estimated wait: ~${estimatedWait} min.`,
           }).catch((e) => console.error('[queue-notifications] SMS error:', e));

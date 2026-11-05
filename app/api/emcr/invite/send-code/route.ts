@@ -3,6 +3,7 @@ import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { maskPhone, phoneRateKey } from '@/app/api/patients/auth/shared';
 import { EMCR_OTP_EXPIRY_MINUTES, sendAccountOtp } from '@/lib/emcr/session';
+import { otpAvailable } from '@/lib/otp';
 import { readInvite } from '../_shared';
 
 /**
@@ -24,7 +25,9 @@ export async function POST(request: NextRequest) {
     const perPhone = await applyRateLimit(request, rateLimiters.otpSend, phoneRateKey(phone));
     if (perPhone) return perPhone;
 
-    await sendAccountOtp(phone);
+    if (!otpAvailable() || !(await sendAccountOtp(phone))) {
+      return NextResponse.json({ success: false, error: 'Failed to send the code. Please try again.' }, { status: 500 });
+    }
     logger.info('eMCR invite code sent', { inviteId: String(read.invite._id), phone: maskPhone(phone) });
     return NextResponse.json({ success: true, sentTo: maskPhone(phone), expiresInMinutes: EMCR_OTP_EXPIRY_MINUTES });
   } catch (error) {

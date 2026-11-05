@@ -189,10 +189,7 @@ async function handleOtpLogin(request: NextRequest, body: Record<string, unknown
   if (limited) return limited;
 
   try {
-    const filter: Record<string, unknown> = phoneFilter(phone);
-    if (tenant.tenantId) filter.tenantIds = tenant.tenantId;
-
-    const result = await consumePatientOtp(filter, otp);
+    const result = await consumePatientOtp({ phone, tenantId: tenant.tenantId }, otp);
     if (!result.ok) return otpFailureResponse(result.reason);
     const scope = otpSignInScope(result.patient, phone, tenant.tenantId);
     if (!scope) return otpFailureResponse('invalid');

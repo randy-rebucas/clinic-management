@@ -63,6 +63,7 @@ export interface ClinicSettingsForm {
   businessHours: DayHours[];
   timezone: string;
   defaultDuration: number;
+  smsEnabled: boolean;
   appointmentReminders: boolean;
   /** Patients may book video visits from the app. */
   teleconsultBooking: boolean;

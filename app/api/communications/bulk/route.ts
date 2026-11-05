@@ -6,7 +6,8 @@ import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, patientTenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId } from '@/lib/api/validate';
 import { escapeHtml } from '@/lib/document-protection';
-import { sendSMS } from '@/lib/sms';
+import { sendSMS, smsSent } from '@/lib/sms';
+import { checkSubscriptionLimit } from '@/lib/subscription-limits';
 import { sendEmail } from '@/lib/email';
 import { Types } from 'mongoose';
 
@@ -32,6 +33,8 @@ const bulkSchema = z.object({
     .refine((v) => Object.keys(v).length <= 50, 'Too many variables')
     .optional(),
   testMode: z.boolean().optional(),
+  // Promotional texts need the patient's consent; staff say when a message is a clinic notice.
+  category: z.enum(['transactional', 'promotional']).default('promotional'),
 });
 
 function fillTemplate(text: string, variables: Record<string, string>, escape: (s: string) => string) {
@@ -66,10 +69,20 @@ export async function POST(request: NextRequest) {
 
   const parsed = await parseBody(request, bulkSchema);
   if (isValidationError(parsed)) return parsed;
-  const { type, recipientIds, template, variables = {}, testMode = false } = parsed.data;
+  const { type, recipientIds, template, variables = {}, testMode = false, category } = parsed.data;
 
   try {
     await connectDB();
+
+    if (type === 'sms' && !testMode) {
+      const plan = await checkSubscriptionLimit(ctx.tenantId, 'useFeature', 'broadcastMessaging');
+      if (!plan.allowed) {
+        return NextResponse.json(
+          { success: false, code: 'PLAN_REQUIRED', error: plan.reason || 'Bulk text messages need a Professional or Enterprise plan.' },
+          { status: 403 }
+        );
+      }
+    }
 
     const patients = await Patient.find(patientTenantFilter(ctx.tenantId, { _id: { $in: recipientIds } }))
       .select('_id phone email firstName')
@@ -99,8 +112,8 @@ export async function POST(request: NextRequest) {
       try {
         if (!testMode) {
           if (type === 'sms' && patient.phone) {
-            const smsResult = await sendSMS({ to: patient.phone, message: smsMessage });
-            if (!smsResult.success) {
+            const smsResult = await sendSMS({ tenantId: ctx.tenantId, category: category, template: 'bulk', patientId: patient._id, to: patient.phone, message: smsMessage });
+            if (!smsSent(smsResult)) {
               console.error('Bulk SMS failed', { patientId: String(patient._id), error: smsResult.error });
               status = 'failed';
               error = 'Delivery failed';

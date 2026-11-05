@@ -5,7 +5,7 @@ import { SUBSCRIPTION_PACKAGES, type SubscriptionPlan } from '@/lib/subscription
  * Used by the admin overview (meters) and the subscription page (meters and plan fit).
  */
 
-export type UsageKey = 'patients' | 'users' | 'doctors' | 'appointments' | 'appointmentsToday' | 'visits' | 'storage';
+export type UsageKey = 'patients' | 'users' | 'doctors' | 'appointments' | 'appointmentsToday' | 'visits' | 'sms' | 'storage';
 
 export interface UsageRow {
   key: UsageKey;
@@ -21,6 +21,7 @@ export const RESETS: Partial<Record<UsageKey, string>> = {
   appointments: 'this month',
   appointmentsToday: 'today',
   visits: 'this month',
+  sms: 'this month',
 };
 
 interface Usage {
@@ -30,6 +31,7 @@ interface Usage {
   appointmentsThisMonth: { current: number; limit: number | null };
   appointmentsToday: { current: number; limit: number | null };
   visitsThisMonth: { current: number; limit: number | null };
+  smsThisMonth: { current: number; limit: number | null };
   storage: { currentGB: number; limitGB: number | null };
 }
 
@@ -53,6 +55,7 @@ export function buildUsageRows(usage: Usage): UsageRow[] {
       blocks: 'no more can be booked today',
     },
     { key: 'visits', label: 'Visits this month', current: usage.visitsThisMonth.current, limit: usage.visitsThisMonth.limit, blocks: 'no more visits can be started this month' },
+    { key: 'sms', label: 'Text messages this month', current: usage.smsThisMonth.current, limit: usage.smsThisMonth.limit, blocks: 'no more texts go out this month, except sign-in codes' },
     {
       key: 'storage',
       label: 'File storage',
@@ -73,6 +76,7 @@ export function planLimits(plan: SubscriptionPlan): Record<UsageKey, number | nu
     appointments: p.maxAppointmentsPerMonth,
     appointmentsToday: p.maxAppointmentsPerDay,
     visits: p.maxVisitsPerMonth,
+    sms: p.maxSmsPerMonth,
     storage: p.maxStorageGB,
   };
 }

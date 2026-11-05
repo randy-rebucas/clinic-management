@@ -91,7 +91,7 @@ export async function sendMedicationReminder(options: MedicationReminderOptions)
 
     if (options.sendSMS !== false && patient.phone) {
       try {
-        const smsResult = await sendSMS({ to: patient.phone, message: generateMedicationReminderSMS(medication, clinicName) });
+        const smsResult = await sendSMS({ tenantId: tenantId, category: 'transactional', template: 'medication-reminder', patientId: patient._id, to: patient.phone, message: generateMedicationReminderSMS(medication, clinicName) });
         if (delivered(smsResult)) sent = true;
       } catch (error) {
         console.error('Error sending medication reminder SMS:', error);

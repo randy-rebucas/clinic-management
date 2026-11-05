@@ -220,7 +220,7 @@ const SettingsSchema = new Schema<ISettings>(
     },
 
     communicationSettings: {
-      smsEnabled: { type: Boolean, default: false },
+      smsEnabled: { type: Boolean, default: true },
       emailEnabled: { type: Boolean, default: false },
       appointmentReminders: { type: Boolean, default: true },
       labResultNotifications: { type: Boolean, default: true },

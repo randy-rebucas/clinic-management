@@ -288,7 +288,7 @@ export async function fillCancelledSlot(
     if (patient.phone) {
       try {
         const message = `Great news! An appointment slot has become available. Your appointment is scheduled for ${dateText} at ${timeText}. Appointment Code: ${newAppointment.appointmentCode}. Confirm: ${confirmUrl}`;
-        await sendSMS({ to: patient.phone, message });
+        await sendSMS({ tenantId: tenantId, category: 'transactional', template: 'waitlist', patientId: patient._id, to: patient.phone, message });
       } catch (error) {
         console.error('Error sending waitlist fill SMS:', error);
       }

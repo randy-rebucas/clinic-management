@@ -14,7 +14,7 @@ import { getTenantStaff, safeNotify } from './shared';
 
 export interface UsageAlert {
   tenantId: Types.ObjectId;
-  alertType: 'patients' | 'users' | 'doctors' | 'appointments' | 'visits' | 'storage';
+  alertType: 'patients' | 'users' | 'doctors' | 'appointments' | 'visits' | 'sms' | 'storage';
   current: number;
   limit: number | null;
   percentage: number;
@@ -105,13 +105,14 @@ export async function checkAndSendUsageAlerts(tenantId: string | Types.ObjectId)
     checkLimit(usage.doctors.current, usage.doctors.limit, 'doctors', 'Doctors');
     checkLimit(usage.appointmentsThisMonth.current, usage.appointmentsThisMonth.limit, 'appointments', 'Monthly appointments');
     checkLimit(usage.visitsThisMonth.current, usage.visitsThisMonth.limit, 'visits', 'Monthly visits');
+    checkLimit(usage.smsThisMonth.current, usage.smsThisMonth.limit, 'sms', 'Monthly text messages');
     checkLimit(usage.storage.currentGB, usage.storage.limitGB, 'storage', 'Storage');
 
     // Only alert when a limit crosses a higher threshold than last reported; usage that
     // drops back below 80% resets that type so a later climb alerts again.
     const previousLevels: Record<string, number> = { ...((tenant.subscription as any)?.usageAlertLevels || {}) };
     const nextLevels: Record<string, number> = {};
-    for (const type of ['patients', 'users', 'doctors', 'appointments', 'visits', 'storage']) {
+    for (const type of ['patients', 'users', 'doctors', 'appointments', 'visits', 'sms', 'storage']) {
       const alert = alerts.find((a) => a.alertType === type);
       nextLevels[type] = alert ? Math.max(alert.threshold, previousLevels[type] || 0) : 0;
     }

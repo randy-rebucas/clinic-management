@@ -98,6 +98,7 @@ export async function loadClinicSettingsPage(tenantIdInput: string): Promise<Cli
       businessHours: hours,
       timezone: zone,
       defaultDuration: Number(s.appointmentSettings?.defaultDuration) || 30,
+      smsEnabled: s.communicationSettings?.smsEnabled !== false,
       appointmentReminders: s.communicationSettings?.appointmentReminders !== false,
       teleconsultBooking: s.appointmentSettings?.teleconsultBooking === true,
       currency: CURRENCIES.some((c) => c.code === currency) ? currency : 'PHP',

@@ -17,6 +17,7 @@ interface BulkCommunicationRequest {
   template: string;
   variables: Record<string, string>;
   testMode: boolean;
+  category: 'transactional' | 'promotional';
 }
 
 interface BulkCommunicationResponse {
@@ -76,6 +77,7 @@ export function BulkCommunicationModal({
   const [selectedTemplate, setSelectedTemplate] = useState<string>('');
   const [variables, setVariables] = useState<Record<string, string>>({});
   const [testMode, setTestMode] = useState(false);
+  const [category, setCategory] = useState<'transactional' | 'promotional'>('promotional');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -140,6 +142,7 @@ export function BulkCommunicationModal({
         template,
         variables,
         testMode,
+        category,
       };
 
       const response = await fetch('/api/communications/bulk', {
@@ -376,6 +379,19 @@ export function BulkCommunicationModal({
 
           {/* Test Mode & Recipients */}
           <div className="space-y-3">
+            {communicationType === 'sms' && (
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={category === 'transactional'}
+                  onChange={(e) => setCategory(e.target.checked ? 'transactional' : 'promotional')}
+                  className="mt-0.5 w-4 h-4 rounded cursor-pointer"
+                />
+                <span className="text-sm text-gray-700">
+                  This is a clinic notice, not an offer or greeting. Offers only reach patients who agreed to them.
+                </span>
+              </label>
+            )}
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"

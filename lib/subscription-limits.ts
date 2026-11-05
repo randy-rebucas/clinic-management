@@ -12,9 +12,10 @@ import User from '@/models/User';
 import Doctor from '@/models/Doctor';
 import Appointment from '@/models/Appointment';
 import Visit from '@/models/Visit';
+import SmsUsage from '@/models/SmsUsage';
 import { Types } from 'mongoose';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
-import { dayRangeInTz, monthRangeInTz } from '@/lib/tz';
+import { clinicMonth, dayRangeInTz, monthRangeInTz } from '@/lib/tz';
 
 function tid(tenantId: string | Types.ObjectId): Types.ObjectId {
   return new Types.ObjectId(String(tenantId));
@@ -231,6 +232,7 @@ export async function getSubscriptionUsage(tenantId: string | Types.ObjectId): P
   appointmentsThisMonth: { current: number; limit: number | null; remaining: number | null };
   appointmentsToday: { current: number; limit: number | null; remaining: number | null };
   visitsThisMonth: { current: number; limit: number | null; remaining: number | null };
+  smsThisMonth: { current: number; limit: number | null; remaining: number | null };
   storage: { currentGB: number; limitGB: number | null; remainingGB: number | null; percentageUsed: number; exceeded: boolean };
 }> {
   try {
@@ -243,6 +245,8 @@ export async function getSubscriptionUsage(tenantId: string | Types.ObjectId): P
     const { startOfMonth, startOfDay, endOfDay } = await clinicWindows(tenantId);
     const tenantObjectId = tid(tenantId);
 
+    const timezone = await getTenantTimezone(tenantId);
+
     const [
       patientsCount,
       usersCount,
@@ -250,6 +254,7 @@ export async function getSubscriptionUsage(tenantId: string | Types.ObjectId): P
       appointmentsThisMonth,
       appointmentsToday,
       visitsThisMonth,
+      smsUsage,
     ] = await Promise.all([
       Patient.countDocuments({ tenantIds: tenantObjectId }),
       User.countDocuments({ tenantId: tenantObjectId, status: { $ne: 'inactive' } }),
@@ -266,11 +271,14 @@ export async function getSubscriptionUsage(tenantId: string | Types.ObjectId): P
         tenantId: tenantObjectId,
         createdAt: { $gte: startOfMonth },
       }),
+      SmsUsage.findOne({ tenantId: tenantObjectId, month: clinicMonth(timezone) }).select('segments').lean<{ segments: number } | null>(),
     ]);
 
     // Get storage usage
     const { calculateStorageUsage } = await import('@/lib/storage-tracking');
     const storageUsage = await calculateStorageUsage(tenantId);
+
+    const smsThisMonth = smsUsage?.segments ?? 0;
 
     return {
       patients: {
@@ -314,6 +322,11 @@ export async function getSubscriptionUsage(tenantId: string | Types.ObjectId): P
         remaining: limitations.maxVisitsPerMonth !== null 
           ? Math.max(0, limitations.maxVisitsPerMonth - visitsThisMonth)
           : null,
+      },
+      smsThisMonth: {
+        current: smsThisMonth,
+        limit: limitations.maxSmsPerMonth,
+        remaining: Math.max(0, limitations.maxSmsPerMonth - smsThisMonth),
       },
       storage: {
         currentGB: storageUsage.totalGB,

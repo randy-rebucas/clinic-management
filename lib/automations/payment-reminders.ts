@@ -94,7 +94,7 @@ export async function sendPaymentReminder(options: PaymentReminderOptions): Prom
 
     if (options.sendSMS !== false && patient.phone) {
       try {
-        const smsResult = await sendSMS({ to: patient.phone, message: generateReminderMessage(invoice, daysSinceInvoice, reminderLevel) });
+        const smsResult = await sendSMS({ tenantId: tenantId, category: 'transactional', template: 'payment-reminder', patientId: patient._id, to: patient.phone, message: generateReminderMessage(invoice, daysSinceInvoice, reminderLevel) });
         if (delivered(smsResult)) sent = true;
       } catch (error) {
         console.error('Error sending payment reminder SMS:', error);

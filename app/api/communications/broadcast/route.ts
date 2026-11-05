@@ -7,7 +7,8 @@ import { requireTenantSession, isTenantSessionError, patientTenantFilter } from 
 import { notifyPatients, MAX_PATIENT_RECIPIENTS } from '@/lib/notify';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { escapeHtml } from '@/lib/document-protection';
-import { sendSMS } from '@/lib/sms';
+import { sendSMS, smsSent } from '@/lib/sms';
+import { checkSubscriptionLimit } from '@/lib/subscription-limits';
 import { sendEmail } from '@/lib/email';
 import { sanitizeSearch } from '@/lib/utils';
 
@@ -38,6 +39,16 @@ export async function POST(request: NextRequest) {
 
   try {
     await connectDB();
+
+    if (channels.includes('sms')) {
+      const plan = await checkSubscriptionLimit(ctx.tenantId, 'useFeature', 'broadcastMessaging');
+      if (!plan.allowed) {
+        return NextResponse.json(
+          { success: false, code: 'PLAN_REQUIRED', error: plan.reason || 'Broadcast messages need a Professional or Enterprise plan.' },
+          { status: 403 }
+        );
+      }
+    }
 
     const patientQuery: Record<string, unknown> = patientTenantFilter(ctx.tenantId, { active: { $ne: false } });
     if (filters) {
@@ -70,10 +81,14 @@ export async function POST(request: NextRequest) {
       try {
         if (channels.includes('sms') && patient.phone) {
           const smsResult = await sendSMS({
+            tenantId: ctx.tenantId,
+            category: 'promotional',
+            template: 'broadcast',
+            patientId: patient._id,
             to: patient.phone,
             message: `${title}\n\n${message}`,
           });
-          if (smsResult.success) {
+          if (smsSent(smsResult)) {
             results.smsSent++;
           } else {
             console.error('Broadcast SMS failed', { patientId: String(patient._id), error: smsResult.error });

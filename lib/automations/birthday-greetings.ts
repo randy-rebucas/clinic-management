@@ -59,6 +59,10 @@ export async function sendBirthdayGreeting(options: BirthdayGreetingOptions): Pr
     if (options.sendSMS !== false && patient.phone) {
       try {
         const smsResult = await sendSMS({
+          tenantId: tenantId,
+          category: 'promotional',
+          template: 'birthday',
+          patientId: patient._id,
           to: patient.phone,
           message: generateBirthdaySMS(patient, clinicName, bookingUrl),
         });

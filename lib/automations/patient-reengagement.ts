@@ -78,7 +78,7 @@ async function processTenant(tenant: AutomationTenant): Promise<PatientReengagem
 
     try {
       if (patient.phone) {
-        await sendSMS({ to: patient.phone, message: smsMessage });
+        await sendSMS({ tenantId: tenantId, category: 'promotional', template: 'reengagement', patientId: patient._id, to: patient.phone, message: smsMessage });
       }
 
       if (patient.email) {

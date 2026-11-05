@@ -27,7 +27,12 @@ const envConfig: EnvConfig = {
     'DOCUMENT_ANTI_INSPECT', // Set to "off" to disable the DevTools trap on protected documents
     'TWILIO_ACCOUNT_SID',
     'TWILIO_AUTH_TOKEN',
+    'TWILIO_MESSAGING_SERVICE_SID', // Registered alphanumeric sender; takes priority over TWILIO_PHONE_NUMBER
     'TWILIO_PHONE_NUMBER',
+    'TWILIO_VERIFY_SERVICE_SID', // Twilio Verify service (VA...) used when OTP_PROVIDER=verify
+    'SMS_POLICY_MODE', // "enforce" blocks texts; anything else only logs what would be blocked
+    'REQUIRE_PUBLIC_PHONE_VERIFICATION', // "true" makes online booking and registration confirm the phone by code
+    'OTP_PROVIDER', // "verify" for Twilio Verify; anything else sends codes through sendSMS
     'SMTP_HOST',
     'SMTP_PORT',
     'SMTP_USER',
@@ -144,7 +149,7 @@ export function isFeatureEnabled(feature: 'sms' | 'email' | 'cloudinary'): boole
       return !!(
         process.env.TWILIO_ACCOUNT_SID &&
         process.env.TWILIO_AUTH_TOKEN &&
-        process.env.TWILIO_PHONE_NUMBER
+        (process.env.TWILIO_MESSAGING_SERVICE_SID || process.env.TWILIO_PHONE_NUMBER)
       );
     case 'email':
       return !!(

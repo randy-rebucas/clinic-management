@@ -180,7 +180,9 @@ This project uses Next.js environment variables. According to the [Next.js docum
 #### SMS (Twilio)
 - `TWILIO_ACCOUNT_SID` - Twilio Account SID for SMS functionality
 - `TWILIO_AUTH_TOKEN` - Twilio Auth Token for SMS functionality
-- `TWILIO_PHONE_NUMBER` - Twilio phone number (e.g., +1234567890)
+- `TWILIO_MESSAGING_SERVICE_SID` - Messaging Service with the registered sender; needed for Philippine delivery
+- `TWILIO_PHONE_NUMBER` - Twilio phone number (e.g., +1234567890), used when no Messaging Service is set
+- `TWILIO_VERIFY_SERVICE_SID`, `OTP_PROVIDER`, `SMS_POLICY_MODE`, `REQUIRE_PUBLIC_PHONE_VERIFICATION` - see [docs/SMS_TWILIO.md](docs/SMS_TWILIO.md)
 
 #### Email
 - `SMTP_HOST` - SMTP server host

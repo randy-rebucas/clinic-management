@@ -70,6 +70,10 @@ export async function sendVisitSummary(options: VisitSummaryOptions): Promise<{
       try {
         const clinicName = settings.clinicName || 'the clinic';
         const smsResult = await sendSMS({
+          tenantId: tenantId,
+          category: 'transactional',
+          template: 'visit-summary',
+          patientId: patient._id,
           to: patient.phone,
           message: `Your visit summary from ${clinicName} (${displayDate(visit.date, tz)}) is ready.${patient.email ? ' Full details were sent to your email.' : ' Please contact the clinic for details.'}`,
         });

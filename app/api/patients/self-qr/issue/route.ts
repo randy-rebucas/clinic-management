@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
 
   const rateKey = `selfqr-answers:${body.patientId}`;
   const limited =
-    (await applyAuthRateLimits(request, rateKey)) || (await applyRateLimit(request, rateLimiters.emcrClaimDaily, rateKey));
+    (await applyAuthRateLimits(request, rateKey, rateLimiters.otpRequest)) || (await applyRateLimit(request, rateLimiters.emcrClaimDaily, rateKey));
   if (limited) return limited;
 
   try {

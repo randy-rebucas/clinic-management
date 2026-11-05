@@ -59,7 +59,7 @@ async function processTenant(tenant: AutomationTenant): Promise<ReferralFollowUp
 
       try {
         if (patient.phone) {
-          await sendSMS({ to: patient.phone, message: patientMsg });
+          await sendSMS({ tenantId: tenantId, category: 'transactional', template: 'referral-followup', patientId: patient._id, to: patient.phone, message: patientMsg });
         }
 
         if (patient.email) {

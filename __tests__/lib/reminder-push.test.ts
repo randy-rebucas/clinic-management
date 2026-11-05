@@ -4,7 +4,10 @@ import { Types } from 'mongoose';
 vi.mock('server-only', () => ({}));
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn() }));
 vi.mock('@/lib/settings', () => ({ getSettings: vi.fn().mockResolvedValue({}), preloadSettings: vi.fn() }));
-vi.mock('@/lib/sms', () => ({ sendSMS: vi.fn() }));
+vi.mock('@/lib/sms', () => ({
+  sendSMS: vi.fn(),
+  smsSettled: (r: any) => !!r && r.success && !r.skipped,
+}));
 vi.mock('@/lib/email', () => ({ sendEmail: vi.fn(), escapeHtml: (s: unknown) => String(s ?? '') }));
 vi.mock('@/lib/push-notifications', () => ({ sendPushToPatientDevices: vi.fn() }));
 vi.mock('@/models/Appointment', () => ({ default: { find: vi.fn(), updateOne: vi.fn() } }));

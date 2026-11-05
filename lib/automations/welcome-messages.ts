@@ -46,10 +46,9 @@ export async function sendWelcomeMessage(options: WelcomeMessageOptions): Promis
     }
 
     const clinicName = settings.clinicName || 'Our Clinic';
-    const clinicPhone = settings.clinicPhone || '';
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://your-clinic.com';
 
-    const welcomeMessage = generateWelcomeSMS(patient, clinicName, clinicPhone);
+    const welcomeMessage = generateWelcomeSMS(patient, clinicName);
     const emailContent = generateWelcomeEmail(patient, settings, baseUrl);
 
     let sent = false;
@@ -58,6 +57,10 @@ export async function sendWelcomeMessage(options: WelcomeMessageOptions): Promis
     if (options.sendSMS !== false && patient.phone) {
       try {
         const smsResult = await sendSMS({
+          tenantId: tenantId,
+          category: 'transactional',
+          template: 'welcome',
+          patientId: patient._id,
           to: patient.phone,
           message: welcomeMessage,
         });
@@ -105,10 +108,10 @@ export async function sendWelcomeMessage(options: WelcomeMessageOptions): Promis
 }
 
 /**
- * Generate welcome SMS message
+ * Generate welcome SMS message. Philippine sender rules don't allow phone numbers in the body.
  */
-function generateWelcomeSMS(patient: any, clinicName: string, clinicPhone: string): string {
-  return `Welcome to ${clinicName}! Thank you for registering. Your patient code is ${patient.patientCode || 'N/A'}. ${clinicPhone ? `Call us at ${clinicPhone} to book an appointment.` : 'Visit our website to book an appointment.'} We look forward to serving you!`;
+function generateWelcomeSMS(patient: any, clinicName: string): string {
+  return `Welcome to ${clinicName}! Thank you for registering. Your patient code is ${patient.patientCode || 'N/A'}. Contact the clinic to book an appointment. We look forward to serving you!`;
 }
 
 /**

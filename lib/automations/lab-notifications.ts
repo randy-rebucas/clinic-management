@@ -6,7 +6,7 @@ import LabResult from '@/models/LabResult';
 import { getSettings } from '@/lib/settings';
 import { createNotification } from '@/lib/notifications';
 import { sendEmail, generateLabResultEmail } from '@/lib/email';
-import { sendSMS } from '@/lib/sms';
+import { sendSMS, smsSettled } from '@/lib/sms';
 import { sendPushToPatientDevices } from '@/lib/push-notifications';
 import { Types } from 'mongoose';
 import { forEachTenant, automationEnabled, delivered, safeNotify, errorMessage, getTenantStaff, claimForSend, releaseClaim } from './shared';
@@ -85,12 +85,15 @@ export async function sendLabResultNotification(options: LabNotificationOptions)
     let sent = false;
     let smsSent = false;
     let emailSent = false;
+    // Stopped for good (opted out, texts off): retrying every run would never change that.
+    let smsFinal = false;
 
     if (options.sendSMS !== false && patient.phone) {
       try {
         const message = `Your lab results for ${testType} are now available. Request Code: ${labResult.requestCode || 'N/A'}. Please contact the clinic to view your results.`;
-        const smsResult = await sendSMS({ to: patient.phone, message });
+        const smsResult = await sendSMS({ tenantId: tenantId, category: 'transactional', template: 'lab-result', patientId: patient._id, to: patient.phone, message });
         if (delivered(smsResult)) sent = smsSent = true;
+        else smsFinal = smsSettled(smsResult);
       } catch (error) {
         console.error('Error sending lab result SMS:', error);
       }
@@ -151,7 +154,11 @@ export async function sendLabResultNotification(options: LabNotificationOptions)
       );
     }
 
-    if (!sent) await releaseClaim(LabResult, own, 'notificationClaimedAt');
+    if (!sent && smsFinal) {
+      await LabResult.updateOne({ _id: labResult._id, tenantId }, { $set: { notificationSent: true }, $unset: { notificationClaimedAt: '' } });
+    } else if (!sent) {
+      await releaseClaim(LabResult, own, 'notificationClaimedAt');
+    }
     return { success: true, sent };
   } catch (error: any) {
     if (claimed) await releaseClaim(LabResult, claimed, 'notificationClaimedAt').catch(() => undefined);

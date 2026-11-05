@@ -43,6 +43,7 @@ export async function GET(_request: NextRequest) {
           maxAppointmentsPerMonth: limitations.maxAppointmentsPerMonth,
           maxAppointmentsPerDay: limitations.maxAppointmentsPerDay,
           maxVisitsPerMonth: limitations.maxVisitsPerMonth,
+          maxSmsPerMonth: limitations.maxSmsPerMonth,
           maxStorageGB: limitations.maxStorageGB,
           maxFileSizeMB: limitations.maxFileSizeMB,
           features: limitations.features,

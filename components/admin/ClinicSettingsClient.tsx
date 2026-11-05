@@ -35,7 +35,7 @@ const ROW = 'flex items-start justify-between gap-4 px-5 py-4';
 const SECTIONS = [
   { id: 'clinic', title: 'Clinic details', keys: ['clinicName', 'clinicAddress', 'clinicPhone', 'clinicEmail', 'clinicWebsite', 'taxId', 'licenseNumber', 'ptr', 'locationCode'] },
   { id: 'hours', title: 'Opening hours', keys: ['businessHours', 'timezone'] },
-  { id: 'appointments', title: 'Appointments', keys: ['defaultDuration', 'appointmentReminders', 'teleconsultBooking'] },
+  { id: 'appointments', title: 'Appointments', keys: ['defaultDuration', 'smsEnabled', 'appointmentReminders', 'teleconsultBooking'] },
   { id: 'billing', title: 'Billing', keys: ['currency', 'taxRate', 'invoicePrefix', 'allowPartialPayments'] },
   { id: 'bir', title: 'BIR invoicing', keys: ['bir'] },
   { id: 'philhealth', title: 'PhilHealth', keys: ['philhealth'] },
@@ -94,7 +94,10 @@ function changesBody(f: ClinicSettingsForm, base: ClinicSettingsForm) {
   if (changed('defaultDuration')) appointments.defaultDuration = f.defaultDuration;
   if (changed('teleconsultBooking')) appointments.teleconsultBooking = f.teleconsultBooking;
   if (Object.keys(appointments).length) body.appointmentSettings = appointments;
-  if (changed('appointmentReminders')) body.communicationSettings = { appointmentReminders: f.appointmentReminders };
+  const communication: Record<string, unknown> = {};
+  if (changed('smsEnabled')) communication.smsEnabled = f.smsEnabled;
+  if (changed('appointmentReminders')) communication.appointmentReminders = f.appointmentReminders;
+  if (Object.keys(communication).length) body.communicationSettings = communication;
   const billing: Record<string, unknown> = {};
   if (changed('currency')) billing.currency = f.currency;
   if (changed('taxRate')) billing.taxRate = f.taxRate;
@@ -542,6 +545,15 @@ function AppointmentsSection({
             <span className="text-sm text-gray-600">minutes</span>
           </span>
         </Field>
+      </div>
+      <div className="border-t border-gray-100">
+        <SwitchRow
+          id="set-smsEnabled"
+          label="Send text messages to patients"
+          hint="Turn this off to stop every text from this clinic, including reminders and queue calls. Sign-in codes still go out."
+          on={form.smsEnabled}
+          onChange={(v) => set('smsEnabled', v)}
+        />
       </div>
       <div className="border-t border-gray-100">
         <SwitchRow
@@ -1308,7 +1320,7 @@ function AutomationsSection({
 function ServicesSection({ services }: { services: ClinicSettingsPageData['services'] }) {
   const rows = [
     { key: 'email', label: 'Email', ok: services.email, means: 'Reminders, receipts, results and invites by email.', vars: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM (optional)'] },
-    { key: 'sms', label: 'Text messages', ok: services.sms, means: 'Reminders and notices by SMS through Twilio.', vars: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_PHONE_NUMBER'] },
+    { key: 'sms', label: 'Text messages', ok: services.sms, means: 'Reminders and notices by SMS through Twilio.', vars: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_MESSAGING_SERVICE_SID'] },
     { key: 'files', label: 'File storage', ok: services.files, means: 'Documents and images kept on Cloudinary; without it, files are stored in the database.', vars: ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'] },
   ];
   return (

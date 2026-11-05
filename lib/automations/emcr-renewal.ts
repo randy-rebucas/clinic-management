@@ -70,7 +70,7 @@ export async function sendEmcrRenewalReminders(now = new Date()): Promise<{ chec
       if (subject) {
         await sendPushToPatientDevices(String(subject.patient._id), { ...text, tag: `emcr-renewal-${step}`, data: { screen: 'activate' } });
       }
-      if (account.phone) await sendSMS({ to: account.phone, message: `${text.title}. ${text.body}` });
+      if (account.phone) await sendSMS({ tenantId: null, category: 'transactional', template: 'emcr-renewal', to: account.phone, message: `${text.title}. ${text.body}` });
       sent++;
     } catch (error) {
       errors.push(String(account._id));

@@ -1,16 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { randomInt } from 'crypto';
-import bcrypt from 'bcryptjs';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
-import { sendSMS } from '@/lib/sms';
+import { otpAvailable } from '@/lib/otp';
 import { normalizePhone } from '@/lib/phone';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
-import { maskPhone, phoneRateKey } from '../../auth/shared';
-
-const OTP_EXPIRY_MINUTES = 5;
+import { maskPhone, phoneRateKey, sendPatientOtp } from '../../auth/shared';
 
 /**
  * POST /api/patients/me/phone-code
@@ -45,21 +41,16 @@ export async function POST(request: NextRequest) {
     const perPhoneLimit = await applyRateLimit(request, rateLimiters.otpSend, phoneRateKey(phone));
     if (perPhoneLimit) return perPhoneLimit;
 
-    const otp = randomInt(0, 1_000_000).toString().padStart(6, '0');
-    await Patient.updateOne(
-      { _id: session.patientId },
-      { $set: { otp: await bcrypt.hash(otp, 10), otpExpiry: new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000), otpAttempts: 0 } }
-    );
-
-    const sms = await sendSMS({
-      to: phone,
-      message: `Your eMCR confirmation code is: ${otp}. It expires in ${OTP_EXPIRY_MINUTES} minutes. Do not share this code.`,
-    });
-    if (sms.skipped && process.env.NODE_ENV !== 'production') {
-      console.warn(`[dev] Patient confirmation code for ${maskPhone(phone)}: ${otp}`);
+    if (!otpAvailable()) {
+      return NextResponse.json({ success: false, error: 'Text message codes are unavailable right now. Please try again later.' }, { status: 503 });
     }
-    if (!sms.success && sms.error && !sms.error.includes('logged only')) {
-      logger.error('Failed to send patient confirmation code', new Error(sms.error), { patientId: session.patientId });
+    const sent = await sendPatientOtp(
+      phone,
+      session.patientId,
+      (code, minutes) => `Your eMCR confirmation code is: ${code}. It expires in ${minutes} minutes. Do not share this code.`
+    );
+    if (!sent) {
+      return NextResponse.json({ success: false, error: 'Couldn’t send a code. Please try again.' }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, data: { phone: maskPhone(phone) } });

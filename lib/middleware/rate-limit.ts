@@ -187,6 +187,37 @@ export const rateLimiters = {
     message: 'Too many attempts for this account, please try again later',
   }),
 
+  // Code requests per IP. Looser than `auth`: one clinic kiosk serves many patients from one IP,
+  // and otpSend already caps each destination.
+  otpRequest: rateLimit({
+    name: 'otp-request',
+    windowMs: 15 * 60 * 1000,
+    maxRequests: 30,
+    message: 'Too many codes requested, please try again later',
+  }),
+
+  // Public code sends: anyone can trigger these, and each one is a paid text.
+  publicCodeIp: rateLimit({
+    name: 'public-code-ip',
+    windowMs: 60 * 60 * 1000,
+    maxRequests: 10,
+    message: 'Too many codes requested from this device. Please try again later.',
+  }),
+  publicCodeClinic: rateLimit({
+    name: 'public-code-clinic',
+    windowMs: 24 * 60 * 60 * 1000,
+    maxRequests: 200,
+    identifierOnly: true,
+    message: 'This clinic can\'t send more codes today. Please contact the clinic.',
+  }),
+  publicCodeGlobal: rateLimit({
+    name: 'public-code-global',
+    windowMs: 24 * 60 * 60 * 1000,
+    maxRequests: 2000,
+    identifierOnly: true,
+    message: 'Text message codes are unavailable right now. Please contact the clinic.',
+  }),
+
   // OTP delivery per destination (SMS bombing protection)
   otpSend: rateLimit({
     name: 'otp-send',
@@ -270,13 +301,14 @@ export async function applyRateLimit(
 
 /**
  * Apply the per-IP auth limit plus per-account limits for a credential attempt.
- * Returns a 429 response or null.
+ * Pass `ipLimiter` for shared-IP flows such as kiosks. Returns a 429 response or null.
  */
 export async function applyAuthRateLimits(
   request: NextRequest,
-  account: string | null | undefined
+  account: string | null | undefined,
+  ipLimiter: Limiter = rateLimiters.auth
 ): Promise<NextResponse | null> {
-  const ipLimited = await rateLimiters.auth(request);
+  const ipLimited = await ipLimiter(request);
   if (ipLimited) return ipLimited;
   if (!account) return null;
   return (

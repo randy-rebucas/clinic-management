@@ -162,7 +162,7 @@ export async function scheduleFollowupAppointment(options: FollowupSchedulingOpt
     if (options.sendSMS && patient.phone) {
       try {
         const message = `Your follow-up appointment has been scheduled for ${dateText} at ${timeText}. Appointment Code: ${appointment.appointmentCode}. We'll send a reminder closer to the date.`;
-        await sendSMS({ to: patient.phone, message });
+        await sendSMS({ tenantId: tenantId, category: 'transactional', template: 'followup', patientId: patient._id, to: patient.phone, message });
       } catch (error) {
         console.error('Error sending follow-up appointment SMS:', error);
       }

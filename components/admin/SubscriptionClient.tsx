@@ -37,6 +37,7 @@ const LIMIT_ROWS: { key: UsageKey; label: string }[] = [
   { key: 'appointments', label: 'Appointments a month' },
   { key: 'appointmentsToday', label: 'Appointments a day' },
   { key: 'visits', label: 'Visits a month' },
+  { key: 'sms', label: 'Text messages a month' },
   { key: 'storage', label: 'File storage' },
 ];
 

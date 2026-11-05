@@ -86,3 +86,10 @@ export function combineDateAndTimeInTz(dateOnly: Date | string, time: string | n
   const [hh, mm] = (time && /^\d{1,2}:\d{2}/.test(time) ? time : '00:00').split(':').map(Number);
   return new Date(new TZDate(y, m - 1, d, hh, mm, 0, zone).getTime());
 }
+
+/** The clinic-local month as "2026-11". */
+export function clinicMonth(timezone: string, now = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit' }).formatToParts(now);
+  const value = (type: string) => parts.find((p) => p.type === type)?.value;
+  return `${value('year')}-${value('month')}`;
+}

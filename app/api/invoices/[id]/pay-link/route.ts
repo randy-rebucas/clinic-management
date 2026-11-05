@@ -101,6 +101,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     let texted = false;
     if (parsed.data.sms && inv.patient?.phone && isSMSConfigured()) {
       const r = await sendSMS({
+        tenantId: ctx.tenantId,
+        category: 'transactional',
+        template: 'pay-link',
         to: inv.patient.phone,
         message: `${clinic}: you can pay the ₱${owed.toLocaleString('en-PH', { minimumFractionDigits: 2 })} balance on invoice ${inv.invoiceNumber} here: ${url}`,
       });

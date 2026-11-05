@@ -23,7 +23,8 @@ Open items from the `app/(public)` audit of 2026-10-22. The fixes so far are on 
 
 - [ ] **Turn on Turnstile.** Create a Cloudflare Turnstile widget and set *both*
       `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`. With only the secret set, every public
-      booking and registration is refused.
+      booking and registration is refused. Public phone codes refuse to send in production without it
+      (see docs/SMS_TWILIO.md).
 - [ ] **Upstash Redis in production.** Without `UPSTASH_REDIS_REST_URL`/`_TOKEN`, rate limits are per
       serverless instance. The per-phone pending-booking cap is the only database-backed limit.
 - [ ] **PayMongo always on in production.** If it's unset, plans can't be paid for online (PayPal was

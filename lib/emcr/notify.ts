@@ -1,5 +1,5 @@
 import 'server-only';
-import { sendSMS } from '@/lib/sms';
+import { sendSMS, smsSent } from '@/lib/sms';
 import { sendEmail, escapeHtml } from '@/lib/email';
 import { normalizePhone } from '@/lib/phone';
 
@@ -28,10 +28,13 @@ export async function sendSignInInstructions(record: {
 
   if (phone) {
     const result = await sendSMS({
+      tenantId: null,
+      category: 'transactional',
+      template: 'emcr-sign-in-instructions',
       to: phone,
       message: `${name}your records${clinic} are ready on eMCR. Get the app at ${url} and sign in with this mobile number; we'll text you a code.`,
     });
-    sms = !!result.success;
+    sms = smsSent(result);
   }
   if (record.email) {
     const result = await sendEmail({

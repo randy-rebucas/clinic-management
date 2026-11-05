@@ -45,12 +45,7 @@ export async function POST(request: NextRequest) {
     const rateLimitResponse = await applyAuthRateLimits(request, phoneRateKey(phone));
     if (rateLimitResponse) return rateLimitResponse;
 
-    const filter: Record<string, unknown> = phoneFilter(phone);
-    if (tenant.tenantId) {
-      filter.tenantIds = tenant.tenantId;
-    }
-
-    const result = await consumePatientOtp(filter, otp);
+    const result = await consumePatientOtp({ phone, tenantId: tenant.tenantId }, otp);
     if (!result.ok) return otpFailureResponse(result.reason);
     const patient = result.patient;
     const scope = otpSignInScope(patient, phone, tenant.tenantId);

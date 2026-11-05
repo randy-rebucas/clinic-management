@@ -12,6 +12,8 @@ import { parseBody, isValidationError } from '@/lib/api/validate';
 import { checkSubscriptionLimit } from '@/lib/subscription-limits';
 import { normalizePhone } from '@/lib/phone';
 import { turnstileRejection } from '@/lib/turnstile';
+import { phoneProofMatches, phoneProofRequiredResponse, publicPhoneProofRequired } from '@/lib/public-phone-proof';
+import { setSmsPreference } from '@/lib/sms-preferences';
 import { patientFieldsSchema, cleanPatientInput, nextPatientCode } from '@/lib/patient-schema';
 
 // Self-registration may only fill in demographic/medical history fields; status, tags,
@@ -22,6 +24,8 @@ const publicRegistrationSchema = patientFieldsSchema
     sex: z.enum(['male', 'female', 'other']).optional(),
     tenantId: z.string().optional(),
     turnstileToken: z.string().max(2048).optional(),
+    phoneProof: z.string().max(512).optional(),
+    smsPromoConsent: z.boolean().optional(),
   });
 
 /**
@@ -41,17 +45,7 @@ export async function POST(request: NextRequest) {
 
     const parsed = await parseBody(request, publicRegistrationSchema);
     if (isValidationError(parsed)) return parsed;
-    const { tenantId: requestedTenantId, turnstileToken, ...fields } = parsed.data;
-
-    const captchaRejected = await turnstileRejection(request, turnstileToken);
-    if (captchaRejected) return captchaRejected;
-
-    // Each registration sends a welcome SMS to the submitted number.
-    const phone = normalizePhone(fields.phone);
-    if (phone) {
-      const phoneLimited = await applyRateLimit(request, rateLimiters.publicWritePhone, phone);
-      if (phoneLimited) return phoneLimited;
-    }
+    const { tenantId: requestedTenantId, turnstileToken, phoneProof, smsPromoConsent, ...fields } = parsed.data;
 
     // The clinic comes from the subdomain; an explicit id is accepted only for an active clinic.
     const ctx = await getTenantContext();
@@ -65,6 +59,25 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Clinic not found. Please register through your clinic\'s page.' },
         { status: 400 }
       );
+    }
+
+    const phone = normalizePhone(fields.phone);
+    if (!phone && publicPhoneProofRequired()) {
+      return NextResponse.json({ success: false, error: 'Enter a valid mobile number.' }, { status: 400 });
+    }
+
+    // A proven number already passed the captcha to get its code, and captcha tokens work once.
+    const proven = !!phone && phoneProofMatches(phoneProof, phone, tenantObjectId, 'registration');
+    if (!proven) {
+      if (publicPhoneProofRequired()) return phoneProofRequiredResponse();
+      const captchaRejected = await turnstileRejection(request, turnstileToken);
+      if (captchaRejected) return captchaRejected;
+    }
+
+    // Each registration sends a welcome SMS to the submitted number.
+    if (phone) {
+      const phoneLimited = await applyRateLimit(request, rateLimiters.publicWritePhone, phone);
+      if (phoneLimited) return phoneLimited;
     }
 
     const limitCheck = await checkSubscriptionLimit(tenantObjectId, 'createPatient');
@@ -118,6 +131,14 @@ export async function POST(request: NextRequest) {
       patientId: patient._id.toString(),
       patientCode: patient.patientCode,
     });
+
+    if (proven && smsPromoConsent) {
+      after(() =>
+        setSmsPreference({ phone, tenantId: tenantObjectId, promoOptIn: true, source: 'registration' }).catch((error) =>
+          logger.error('Saving SMS consent failed', error as Error)
+        )
+      );
+    }
 
     after(() =>
       import('@/lib/automations/welcome-messages').then(({ sendWelcomeMessage }) => {

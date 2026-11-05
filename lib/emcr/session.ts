@@ -1,95 +1,48 @@
 import 'server-only';
-import { randomInt } from 'crypto';
-import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import EmcrAccount from '@/models/EmcrAccount';
 import EmcrAccessRequest from '@/models/EmcrAccessRequest';
 import { issuePatientToken, PATIENT_TOKEN_TTL_SECONDS } from '@/app/lib/dal';
 import { issueRefreshToken, REFRESH_TOKEN_TTL_SECONDS } from '@/app/lib/refresh-tokens';
-import { MAX_OTP_ATTEMPTS, maskPhone } from '@/app/api/patients/auth/shared';
-import logger from '@/lib/logger';
-import { sendSMS } from '@/lib/sms';
+import { consumeOtp, OTP_EXPIRY_MINUTES, startOtp } from '@/lib/otp';
 import { accountSessionSubject, type EmcrAccountLean } from '@/lib/emcr/account';
 import { activationView } from '@/lib/emcr/activation';
 import { fullLoginId } from '@/lib/emcr/login-id';
 
-export const EMCR_OTP_EXPIRY_MINUTES = 5;
-const OTP_LENGTH = 6;
-
-export function generateOtp(): string {
-  return randomInt(0, 10 ** OTP_LENGTH).toString().padStart(OTP_LENGTH, '0');
-}
-
-export async function hashOtp(otp: string): Promise<string> {
-  return bcrypt.hash(otp, 10);
-}
+export const EMCR_OTP_EXPIRY_MINUTES = OTP_EXPIRY_MINUTES;
 
 /**
- * Put a fresh sign-in code on the eMCR account for `phone` (created if new) and text it. The
- * caller decides whether this number may get a code (on file at a clinic, or named on an invite).
+ * Text a sign-in code to `phone`. The caller decides whether this number may get a code (on file
+ * at a clinic, or named on an invite). The account is created only once the code is proven.
  */
-export async function sendAccountOtp(phone: string): Promise<void> {
-  await connectDB();
-  const otp = generateOtp();
-  await EmcrAccount.findOneAndUpdate(
-    { phone },
-    {
-      $set: { otp: await hashOtp(otp), otpExpiry: new Date(Date.now() + EMCR_OTP_EXPIRY_MINUTES * 60 * 1000), otpAttempts: 0 },
-      $setOnInsert: { phone },
-    },
-    { upsert: true }
-  );
-
-  const sms = await sendSMS({
-    to: phone,
-    message: `Your eMCR sign-in code is ${otp}. It expires in ${EMCR_OTP_EXPIRY_MINUTES} minutes. Never share this code.`,
+export async function sendAccountOtp(phone: string): Promise<boolean> {
+  return startOtp({
+    scope: 'emcr',
+    phone,
+    message: (code, minutes) => `Your eMCR sign-in code is ${code}. It expires in ${minutes} minutes. Never share this code.`,
   });
-  if (sms.skipped && process.env.NODE_ENV !== 'production') {
-    console.warn(`[dev] eMCR OTP for ${maskPhone(phone)}: ${otp}`);
-  }
-  if (!sms.success && sms.error && !sms.error.includes('logged only')) {
-    logger.error('Failed to send eMCR OTP SMS', new Error(sms.error), { phone: maskPhone(phone) });
-  }
 }
 
 export type AccountOtpResult =
   | { ok: true; account: EmcrAccountLean }
   | { ok: false; reason: 'invalid' | 'expired' | 'locked' };
 
-/**
- * Verify and spend the account's OTP, as consumePatientOtp: the attempt counter is checked and
- * raised in one update, and a right code is spent once.
- */
+/** Verify and spend the code for `phone`, then return its account, created on first proof. */
 export async function consumeAccountOtp(phone: string, otp: string): Promise<AccountOtpResult> {
+  const result = await consumeOtp({ scope: 'emcr', phone }, otp);
+  if (!result.ok) return { ok: false, reason: result.reason };
+
   await connectDB();
-  const now = new Date();
-  const account = await EmcrAccount.findOneAndUpdate(
-    { phone, otp: { $exists: true, $ne: null }, otpExpiry: { $gt: now }, otpAttempts: { $lt: MAX_OTP_ATTEMPTS } },
-    { $inc: { otpAttempts: 1 } },
-    { new: true }
-  ).select('+otp');
-
-  if (!account) {
-    const current = await EmcrAccount.findOne({ phone, otp: { $exists: true, $ne: null } })
-      .select('otpExpiry otpAttempts')
-      .lean<{ _id: unknown; otpExpiry?: Date; otpAttempts?: number } | null>();
-    if (!current) return { ok: false, reason: 'invalid' };
-    if ((current.otpAttempts ?? 0) >= MAX_OTP_ATTEMPTS || !current.otpExpiry || current.otpExpiry <= now) {
-      await EmcrAccount.updateOne({ _id: current._id }, { $unset: { otp: 1, otpExpiry: 1 }, $set: { otpAttempts: 0 } });
-      return { ok: false, reason: (current.otpAttempts ?? 0) >= MAX_OTP_ATTEMPTS ? 'locked' : 'expired' };
-    }
-    return { ok: false, reason: 'invalid' };
+  const upsert = () =>
+    EmcrAccount.findOneAndUpdate({ phone }, { $setOnInsert: { phone } }, { upsert: true, new: true }).lean<EmcrAccountLean>();
+  try {
+    return { ok: true, account: (await upsert()) as EmcrAccountLean };
+  } catch (error) {
+    // Two first sign-ins raced on the unique phone index; the other one created it.
+    if ((error as { code?: number }).code !== 11000) throw error;
+    return { ok: true, account: (await upsert()) as EmcrAccountLean };
   }
-
-  const storedHash = account.otp as string;
-  if (!(await bcrypt.compare(otp, storedHash))) return { ok: false, reason: 'invalid' };
-  const spent = await EmcrAccount.updateOne(
-    { _id: account._id, otp: storedHash },
-    { $unset: { otp: 1, otpExpiry: 1 }, $set: { otpAttempts: 0 } }
-  );
-  if (spent.modifiedCount !== 1) return { ok: false, reason: 'invalid' };
-  return { ok: true, account: account.toObject() as EmcrAccountLean };
 }
 
 /** What the app shows about the account: who it is signed in as, activation, open requests. */

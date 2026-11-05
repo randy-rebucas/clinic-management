@@ -310,7 +310,7 @@ export default function SelfServeQrClient({
 
       {step === "code" && (
         <form onSubmit={verifyCode} className="space-y-5" autoComplete="off">
-          <Heading refEl={headingRef} title="Enter the code" sub={`We texted a 6-digit code to ${phone} if it’s on file. It expires in 5 minutes.`} />
+          <Heading refEl={headingRef} title="Enter the code" sub={`We texted a 6-digit code to ${phone} if it’s on file. It expires in 10 minutes.`} />
           <div>
             <label htmlFor="sq-otp" className={LABEL}>6-digit code</label>
             <input

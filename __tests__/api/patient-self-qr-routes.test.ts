@@ -10,7 +10,7 @@ vi.mock('@/lib/audit', () => ({ createAuditLog: vi.fn() }));
 vi.mock('@/lib/middleware/rate-limit', () => ({
   applyRateLimit: vi.fn().mockResolvedValue(null),
   applyAuthRateLimits: vi.fn().mockResolvedValue(null),
-  rateLimiters: { public: {}, auth: {}, authAccount: {}, emcrClaimDaily: {} },
+  rateLimiters: { public: {}, auth: {}, authAccount: {}, emcrClaimDaily: {}, otpRequest: {} },
 }));
 vi.mock('@/models/Patient', () => ({ default: {} }));
 vi.mock('@/models/MobileDevice', () => ({ default: {} }));
@@ -83,7 +83,7 @@ describe('POST /api/patients/self-qr/issue', () => {
     expect(res.status).toBe(200);
     expect((await res.json()).data.qrData).toContain('patient_login');
     expect(issuePatientLoginQr).toHaveBeenCalledWith(record._id, { ttlSeconds: 90 });
-    expect(applyAuthRateLimits).toHaveBeenCalledWith(expect.anything(), `selfqr-answers:${record._id}`);
+    expect(applyAuthRateLimits).toHaveBeenCalledWith(expect.anything(), `selfqr-answers:${record._id}`, expect.anything());
   });
 
   it('gives one generic error for any wrong answer', async () => {

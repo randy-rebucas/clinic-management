@@ -14,6 +14,9 @@ import { normalizePhone } from '@/lib/phone';
 import { phoneVariants } from '@/app/api/patients/auth/shared';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { turnstileRejection } from '@/lib/turnstile';
+import { resolvePublicTenant } from '@/lib/public-tenant';
+import { phoneProofMatches, phoneProofRequiredResponse, publicPhoneProofRequired } from '@/lib/public-phone-proof';
+import { setSmsPreference } from '@/lib/sms-preferences';
 import { nextPatientCode } from '@/lib/patient-schema';
 import { checkSubscriptionLimit } from '@/lib/subscription-limits';
 import { getTenantTimezone } from '@/lib/clinic-timezone';
@@ -37,19 +40,6 @@ import {
   slotRejection,
   type BookedTime,
 } from '@/lib/booking-slots';
-
-/**
- * Resolve the clinic for a public request. The subdomain wins; on the root domain the
- * booking page lets the visitor pick a clinic, so an explicit id is accepted only if it
- * names an active tenant.
- */
-async function resolvePublicTenant(explicitTenantId: unknown): Promise<Types.ObjectId | null> {
-  const ctx = await getTenantContext();
-  if (ctx.tenantId) return new Types.ObjectId(ctx.tenantId);
-  if (!isValidId(explicitTenantId)) return null;
-  const tenant = await Tenant.findOne({ _id: explicitTenantId, status: 'active' }).select('_id').lean() as any;
-  return tenant ? (tenant._id as Types.ObjectId) : null;
-}
 
 // Public endpoint for patient online booking (no authentication required)
 export async function GET(request: NextRequest) {
@@ -150,6 +140,8 @@ const publicBookingSchema = z.object({
   sex: z.enum(['male', 'female', 'other']).optional(),
   tenantId: zObjectId.optional(),
   turnstileToken: z.string().max(2048).optional(),
+  phoneProof: z.string().max(512).optional(),
+  smsPromoConsent: z.boolean().optional(),
 });
 
 const SLOT_TAKEN = 'This time slot is already booked. Please choose another time.';
@@ -168,9 +160,6 @@ export async function POST(request: NextRequest) {
     if (isValidationError(parsed)) return parsed;
     const body = parsed.data;
 
-    const captchaRejected = await turnstileRejection(request, body.turnstileToken);
-    if (captchaRejected) return captchaRejected;
-
     const tenantId = await resolvePublicTenant(body.tenantId);
     if (!tenantId) {
       return NextResponse.json({ success: false, error: 'Clinic not found' }, { status: 404 });
@@ -185,8 +174,14 @@ export async function POST(request: NextRequest) {
     if (!phone) {
       return NextResponse.json({ success: false, error: 'Invalid phone number' }, { status: 400 });
     }
-    const phoneLimited = await applyRateLimit(request, rateLimiters.publicWritePhone, phone);
-    if (phoneLimited) return phoneLimited;
+
+    // A proven number already passed the captcha to get its code, and captcha tokens work once.
+    const proven = phoneProofMatches(body.phoneProof, phone, tenantId, 'booking');
+    if (!proven) {
+      if (publicPhoneProofRequired()) return phoneProofRequiredResponse();
+      const captchaRejected = await turnstileRejection(request, body.turnstileToken);
+      if (captchaRejected) return captchaRejected;
+    }
 
     const doctor = await Doctor.findOne({ _id: body.doctorId, status: 'active', tenantId })
       .select('firstName lastName schedule availabilityOverrides')
@@ -223,6 +218,10 @@ export async function POST(request: NextRequest) {
     if (conflict) {
       return NextResponse.json({ success: false, error: SLOT_TAKEN }, { status: 409 });
     }
+
+    // After the slot checks, so losing a slot doesn't use up one of the day's attempts.
+    const phoneLimited = await applyRateLimit(request, rateLimiters.publicWritePhone, phone);
+    if (phoneLimited) return phoneLimited;
 
     // Durable backstop to the rate limits: pending slots block real patients, so one number
     // can't hold more than a few at once. The note line is written below.
@@ -309,9 +308,16 @@ export async function POST(request: NextRequest) {
       throw err;
     }
 
+    if (proven && body.smsPromoConsent) {
+      after(() =>
+        setSmsPreference({ phone, tenantId, promoOptIn: true, source: 'booking' }).catch(console.error)
+      );
+    }
+
     // Send only to the number submitted with this request, never to a stored number.
     after(() =>
       sendBookingConfirmation({
+        tenantId,
         appointmentCode: appointment.appointmentCode,
         appointmentDate: body.appointmentDate,
         appointmentTime,
@@ -344,6 +350,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function sendBookingConfirmation(info: {
+  tenantId: Types.ObjectId;
   appointmentCode?: string;
   appointmentDate: string;
   appointmentTime: string;
@@ -357,7 +364,7 @@ async function sendBookingConfirmation(info: {
 
   const message = `Your appointment request (${info.appointmentCode}) is pending confirmation. Date: ${info.appointmentDate} at ${displayTime}${info.doctor ? ` with Dr. ${info.doctor.firstName} ${info.doctor.lastName}` : ''}. You will receive a confirmation shortly.`;
 
-  await sendSMS({ to: info.phone, message }).catch((error) => {
+  await sendSMS({ tenantId: info.tenantId, category: 'transactional', template: 'booking-request', to: info.phone, message }).catch((error) => {
     console.error('Failed to send booking confirmation SMS:', error);
   });
 }

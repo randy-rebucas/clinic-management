@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import logger from '@/lib/logger';
-import { applyAuthRateLimits } from '@/lib/middleware/rate-limit';
+import { applyAuthRateLimits, rateLimiters } from '@/lib/middleware/rate-limit';
 import { normalizePhone } from '@/lib/phone';
 import {
   consumePatientOtp,
@@ -36,16 +36,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Enter your phone number and the code we sent.' }, { status: 400 });
   }
 
-  const limited = await applyAuthRateLimits(request, `selfqr:${phoneRateKey(phone)}`);
+  const limited = await applyAuthRateLimits(request, `selfqr:${phoneRateKey(phone)}`, rateLimiters.otpRequest);
   if (limited) return limited;
 
   try {
     const e164 = normalizePhone(phone);
     if (!e164) return otpFailureResponse('invalid');
 
-    const filter: Record<string, unknown> = phoneFilter(phone);
-    if (tenant.tenantId) filter.tenantIds = tenant.tenantId;
-    const result = await consumePatientOtp(filter, otp);
+    const result = await consumePatientOtp({ phone, tenantId: tenant.tenantId }, otp);
     if (!result.ok) return otpFailureResponse(result.reason);
 
     const tenantId = tenant.tenantId ? String(tenant.tenantId) : undefined;

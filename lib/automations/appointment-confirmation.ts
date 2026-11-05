@@ -70,7 +70,7 @@ export async function sendConfirmationRequest(options: AppointmentConfirmationOp
       try {
         const confirmUrl = buildAppointmentActionUrl(appBaseUrl(), appointment._id.toString(), 'yes');
         const message = `Please confirm your appointment on ${dateText} at ${timeText}${doctor ? ` with Dr. ${doctor.firstName} ${doctor.lastName}` : ''}. Confirm: ${confirmUrl}`;
-        const smsResult = await sendSMS({ to: patient.phone, message });
+        const smsResult = await sendSMS({ tenantId: appointment.tenantId, category: 'transactional', template: 'appointment-confirmation', patientId: patient._id, to: patient.phone, message });
         if (delivered(smsResult)) sent = true;
       } catch (error) {
         console.error('Error sending confirmation SMS:', error);

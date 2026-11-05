@@ -88,6 +88,10 @@ export async function sendFeedbackRequest(options: FeedbackCollectionOptions): P
     if (options.sendSMS !== false && patient.phone) {
       try {
         const smsResult = await sendSMS({
+          tenantId: tenantId,
+          category: 'promotional',
+          template: 'feedback',
+          patientId: patient._id,
           to: patient.phone,
           message: generateFeedbackSMS(visitDate, clinicName, feedbackUrl),
         });

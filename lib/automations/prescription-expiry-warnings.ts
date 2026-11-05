@@ -58,7 +58,8 @@ function determineWarningLevel(daysUntilExpiry: number): 'urgent' | 'warning' | 
 
 async function sendExpiryWarning(
   warning: PrescriptionExpiryWarning,
-  tz: string
+  tz: string,
+  tenantId: Types.ObjectId
 ): Promise<{ sent: boolean; error?: string }> {
   try {
     const patient = warning.patient;
@@ -91,7 +92,7 @@ async function sendExpiryWarning(
 
     if (patient.phone) {
       try {
-        const smsResult = await sendSMS({ to: patient.phone, message });
+        const smsResult = await sendSMS({ tenantId, category: 'transactional', template: 'prescription-expiry', patientId: patient._id, to: patient.phone, message });
         if (delivered(smsResult)) sent = true;
       } catch (error) {
         console.error('Error sending prescription expiry SMS:', error);
@@ -170,7 +171,7 @@ async function processTenant(tenant: AutomationTenant): Promise<ExpiryWarningsRe
         warningLevel: determineWarningLevel(daysUntilExpiry),
       };
 
-      const result = await sendExpiryWarning(warning, tenant.timezone);
+      const result = await sendExpiryWarning(warning, tenant.timezone, tenant.tenantObjectId);
       if (result.sent) {
         out.warningsSent++;
         await Prescription.updateOne(

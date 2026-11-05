@@ -17,6 +17,7 @@ import Queue from '@/models/Queue';
 import DocumentRequest from '@/models/DocumentRequest';
 import Referral from '@/models/Referral';
 import Survey from '@/models/Survey';
+import SmsMessage from '@/models/SmsMessage';
 import Visit from '@/models/Visit';
 import WaitlistEntry from '@/models/WaitlistEntry';
 import { cloudinaryRefForDocument } from '@/lib/document-file';
@@ -55,6 +56,7 @@ export const PATIENT_RECORDS: Link[] = [
   { model: DocumentRequest, field: 'patient' },
   { model: Referral, field: 'patient' },
   { model: Survey, field: 'patientId' },
+  { model: SmsMessage, field: 'patientId' },
   { model: Visit, field: 'patient' },
   { model: WaitlistEntry, field: 'patient' },
 ];
@@ -90,7 +92,7 @@ const RETAINED_RECORDS = new Set<Model<any>>([Invoice]);
  * Not part of the medical record; removed in both modes. Document requests go too: the audit log
  * keeps the record of each release.
  */
-const NON_CLINICAL = [DocumentModel, PatientMessage, MobileDevice, Survey, EmcrAccessRequest, EmcrInvite, WaitlistEntry, DocumentRequest];
+const NON_CLINICAL: Model<any>[] = [DocumentModel, PatientMessage, MobileDevice, Survey, EmcrAccessRequest, EmcrInvite, WaitlistEntry, DocumentRequest, SmsMessage];
 
 const ANONYMIZED = '[ANONYMIZED]';
 
