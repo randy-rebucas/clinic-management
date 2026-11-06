@@ -19,7 +19,7 @@ import User from '@/models/User';
 import Role from '@/models/Role';
 import Patient from '@/models/Patient';
 import PatientMessage from '@/models/PatientMessage';
-import { sendPushToUser, sendPushToPatientDevices } from '@/lib/push-notifications';
+import { sendPushToUser, sendPushToUserDevices, sendPushToPatientDevices } from '@/lib/push-notifications';
 import { notifyStaff, notifyPatients, resolveStaffAudience } from '@/lib/notify';
 
 const TENANT = '507f1f77bcf86cd799439011';
@@ -82,6 +82,14 @@ describe('notifyStaff', () => {
     expect(String(rows[0].user)).toBe(U1);
     await flush();
     expect(sendPushToUser).toHaveBeenCalledWith(U1, expect.objectContaining({ title: 'Staff meeting' }), TENANT);
+  });
+
+  it('passes the priority on and honors quiet hours on both browsers and devices', async () => {
+    vi.mocked(User.find).mockReturnValue(query([{ _id: U1 }]) as any);
+    await notifyStaff({ tenantId: TENANT, audience: { userIds: [U1] }, type: 'lab_result', title: 't', message: 'm', priority: 'urgent', sender: { kind: 'system' } });
+    await flush();
+    expect(sendPushToUser).toHaveBeenCalledWith(U1, expect.objectContaining({ priority: 'urgent' }), TENANT);
+    expect(sendPushToUserDevices).toHaveBeenCalledWith(U1, expect.objectContaining({ priority: 'urgent' }), { honorQuietHours: true });
   });
 
   it('does not push low-priority notices', async () => {

@@ -3,6 +3,9 @@ import { Expo, ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
 import connectDB from '@/lib/mongodb';
 import PushSubscription from '@/models/PushSubscription';
 import MobileDevice, { PushCategory } from '@/models/MobileDevice';
+import NotificationPreference from '@/models/NotificationPreference';
+import type { NotificationPriority } from '@/models/Notification';
+import { shouldDeliverPush, type DeliveryPreferences } from '@/lib/notification-policy';
 import { Types } from 'mongoose';
 
 const expo = new Expo();
@@ -26,11 +29,31 @@ export interface PushPayload {
   tag?: string;
   /** Mobile app only: routing hints delivered in the Expo message's `data`. */
   data?: Record<string, string>;
+  /** Decides whether quiet hours or a pause hold the push. Defaults to normal. */
+  priority?: NotificationPriority;
 }
 
 /**
- * Send a push notification to all subscriptions for a given user.
- * Silently removes expired/invalid subscriptions (410 Gone).
+ * Who among these users shouldn't be interrupted by this push right now. If preferences can't
+ * be read, nobody is held: a failed lookup must not swallow a clinical alert.
+ */
+async function usersHoldingPush(userIds: string[], priority?: NotificationPriority): Promise<Set<string>> {
+  if (priority === 'urgent' || !userIds.length) return new Set();
+  try {
+    const rows = await NotificationPreference.find({ userId: { $in: userIds.map((id) => new Types.ObjectId(id)) } })
+      .select('userId pausedUntil quietHours')
+      .lean<(DeliveryPreferences & { userId: Types.ObjectId })[]>();
+    const now = new Date();
+    return new Set(rows.filter((row) => !shouldDeliverPush(row, priority, now)).map((row) => String(row.userId)));
+  } catch (error) {
+    console.error('[push] Could not read notification preferences; delivering anyway:', error);
+    return new Set();
+  }
+}
+
+/**
+ * Send a push notification to all subscriptions for a given user, unless their quiet hours or
+ * pause hold it. Silently removes expired/invalid subscriptions (410 Gone).
  */
 export async function sendPushToUser(
   userId: string,
@@ -41,6 +64,8 @@ export async function sendPushToUser(
   if (!vapidConfigured) return;
 
   await connectDB();
+
+  if ((await usersHoldingPush([userId], payload.priority)).has(userId)) return;
 
   const query: any = { userId: new Types.ObjectId(userId) };
   if (tenantId) query.tenantId = new Types.ObjectId(tenantId);
@@ -126,11 +151,20 @@ export async function sendPushToPatientDevices(
 /**
  * Send a push notification to a staff user's registered mobile devices (today: medical
  * representatives signed in to the mobile app). Same Expo delivery as patients.
+ *
+ * `honorQuietHours` is opt-in: pass it only for a push with a copy in the person's feed. The
+ * medical rep reminders are marked sent whether or not they go out and have no such copy, so
+ * holding one would lose it.
  */
 export async function sendPushToUserDevices(
   userId: string,
-  payload: PushPayload
+  payload: PushPayload,
+  options: { honorQuietHours?: boolean } = {}
 ): Promise<{ sent: boolean }> {
+  if (options.honorQuietHours) {
+    await connectDB();
+    if ((await usersHoldingPush([userId], payload.priority)).has(userId)) return { sent: false };
+  }
   return sendToMobileDevices({ userId: new Types.ObjectId(userId) }, payload);
 }
 
@@ -206,7 +240,8 @@ async function sendToMobileDevices(
 }
 
 /**
- * Send a push notification to all subscriptions for a given tenant.
+ * Send a push notification to all subscriptions for a given tenant, leaving out anyone whose
+ * quiet hours or pause hold it.
  */
 export async function sendPushToTenant(
   tenantId: string,
@@ -223,10 +258,11 @@ export async function sendPushToTenant(
 
   if (!subscriptions.length) return;
 
+  const held = await usersHoldingPush([...new Set(subscriptions.map((sub) => String(sub.userId)))], payload.priority);
   const staleEndpoints: string[] = [];
 
   await Promise.allSettled(
-    subscriptions.map(async (sub) => {
+    subscriptions.filter((sub) => !held.has(String(sub.userId))).map(async (sub) => {
       try {
         await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: sub.keys },

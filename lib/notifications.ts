@@ -86,6 +86,7 @@ export async function createNotification(options: CreateNotificationOptions): Pr
         actionUrl: options.actionUrl,
         tenantId: notificationData.tenantId ? String(notificationData.tenantId) : null,
         tag: `notification-${notification._id}`,
+        priority: notificationData.priority,
       });
     }
     return notification;
