@@ -18,7 +18,8 @@ import { createSignedLinkToken, readSignedLinkToken } from '@/lib/signed-link';
  * - `self`: the record's own phone must be the verified number. It becomes the holder's record.
  * - `other`, the person is a minor: managed by the holder (lapses at 18), as the existing family
  *   rules: on the child's records (`Patient.guardians`) when the holder has a record, else on
- *   the account (`dependents`).
+ *   the account (`dependents`). When the number is only the child's contact number, the link
+ *   covers one clinic (`tenantId`), as a contact-number sign-in does.
  * - `other`, the person is an adult: never on a birth date alone. A request goes to the clinic,
  *   whose staff confirm consent in person.
  *
@@ -176,10 +177,16 @@ export async function claimProfile(options: {
     return requestAdultProfile(account, person, relationship!, options.firstName, dob);
   }
 
+  // Only the child's own number reaches every clinic. A contact number plus a name and birth date
+  // isn't proof of that, so it neither merges records nor links beyond the record's clinic.
+  const contactOnly = !person.some((r) => r.phone && normalizePhone(r.phone) === proven);
+  if (contactOnly && !target.tenantIds?.[0]) return { status: 'no_match' };
+  const clinicOf = (r: CandidateRecord) => (contactOnly && r.tenantIds?.[0] ? { tenantId: r.tenantIds[0] } : {});
+
   // One person, possibly at several clinics: link their records so the profile shows all.
   const personIds = person.map((r) => r._id);
   const accountGroups = [...new Set(person.map((r) => r.accountId).filter(Boolean).map(String))].map((id) => new Types.ObjectId(id));
-  if (personIds.length > 1 || accountGroups.length > 1) {
+  if (!contactOnly && (personIds.length > 1 || accountGroups.length > 1)) {
     const accountId = accountGroups[0] ?? personIds[0];
     await Patient.updateMany(
       accountGroups.length ? { $or: [{ _id: { $in: personIds } }, { accountId: { $in: accountGroups } }] } : { _id: { $in: personIds } },
@@ -191,9 +198,14 @@ export async function claimProfile(options: {
     const holderIds = new Set((await personRecordIds(account.selfPatientId)).map(String));
     const fresh = person.filter((r) => !(r.guardians ?? []).some((g) => holderIds.has(String(g.patient))));
     if (!fresh.length) return { status: 'already_linked', relation: 'other', patientId: String(target._id) };
-    await Patient.updateMany(
-      { _id: { $in: fresh.map((r) => r._id) } },
-      { $push: { guardians: { patient: account.selfPatientId, relationship, source: 'phone', addedAt: now } } }
+    const holder = account.selfPatientId;
+    await Promise.all(
+      fresh.map((r) =>
+        Patient.updateOne(
+          { _id: r._id },
+          { $push: { guardians: { patient: holder, relationship, source: 'phone', ...clinicOf(r), addedAt: now } } }
+        )
+      )
     );
     // canActFor caches decisions for 30 s; new links only add access, so stale "no" answers
     // just make the first switch to the profile wait briefly.
@@ -204,7 +216,7 @@ export async function claimProfile(options: {
   if (already) return { status: 'already_linked', relation: 'other', patientId: String(target._id) };
   await EmcrAccount.updateOne(
     { _id: account._id },
-    { $push: { dependents: { patientId: target._id, relationship, source: 'phone_dob', addedAt: now } } }
+    { $push: { dependents: { patientId: target._id, relationship, source: 'phone_dob', ...clinicOf(target), addedAt: now } } }
   );
   forgetAccountCache();
   return { status: 'linked', relation: 'other', patientId: String(target._id) };

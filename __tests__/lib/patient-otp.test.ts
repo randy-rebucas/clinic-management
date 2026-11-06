@@ -54,18 +54,34 @@ describe('consumePatientOtp', () => {
     expect(Patient.findOne).not.toHaveBeenCalled();
   });
 
-  it('by record: proves the session record directly', async () => {
+  it("by record: a code sent to the record's own phone proves it", async () => {
     vi.mocked(consumeOtp).mockResolvedValue({ ok: true, phone: PHONE, patientId: OWN });
     vi.mocked(Patient.findOne).mockResolvedValue({ _id: OWN, phone: PHONE } as any);
 
     expect(await consumePatientOtp({ patientId: String(OWN) }, '123456')).toMatchObject({ ok: true });
     expect(consumeOtp).toHaveBeenCalledTimes(1);
+    expect(consumeOtp).toHaveBeenCalledWith({ scope: 'patient', phone: PHONE }, '123456');
+  });
+
+  it('by record: a code sent to a contact number proves nothing', async () => {
+    // A minor with no phone of their own: the code went to the contact number, for this record.
+    vi.mocked(Patient.findOne).mockResolvedValue({ _id: OWN, contacts: { phone: PHONE } } as any);
+
+    expect(await consumePatientOtp({ patientId: String(OWN) }, '123456')).toEqual({ ok: false, reason: 'invalid' });
+    expect(consumeOtp).not.toHaveBeenCalled();
+  });
+
+  it("by record: never looks a challenge up by the record's id", async () => {
+    vi.mocked(consumeOtp).mockResolvedValue({ ok: false, reason: 'invalid', noChallenge: true });
+    vi.mocked(Patient.findOne).mockResolvedValue({ _id: OWN, phone: '09990000000' } as any);
+
+    await consumePatientOtp({ patientId: String(OWN) }, '123456');
+
+    expect(vi.mocked(consumeOtp).mock.calls.every(([selector]) => !('patientId' in selector))).toBe(true);
   });
 
   it("by record: on a shared number, accepts a code sent to the record's own phone for a sibling record", async () => {
-    vi.mocked(consumeOtp)
-      .mockResolvedValueOnce({ ok: false, reason: 'invalid', noChallenge: true })
-      .mockResolvedValueOnce({ ok: true, phone: PHONE, patientId: SIBLING });
+    vi.mocked(consumeOtp).mockResolvedValue({ ok: true, phone: PHONE, patientId: SIBLING });
     vi.mocked(Patient.findOne).mockResolvedValue({ _id: OWN, phone: '09171234567' } as any);
 
     const result = await consumePatientOtp({ patientId: String(OWN) }, '123456');
@@ -74,7 +90,7 @@ describe('consumePatientOtp', () => {
     expect(consumeOtp).toHaveBeenLastCalledWith({ scope: 'patient', phone: PHONE }, '123456');
   });
 
-  it('by record: a wrong code does not fall back to the phone', async () => {
+  it('by record: a wrong code fails after one check', async () => {
     vi.mocked(consumeOtp).mockResolvedValue({ ok: false, reason: 'invalid' });
     vi.mocked(Patient.findOne).mockResolvedValue({ _id: OWN, phone: PHONE } as any);
 

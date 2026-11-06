@@ -158,8 +158,8 @@ async function checkActFor(guardianId: string, dependentId: string): Promise<Fam
   for (const record of records) {
     for (const g of record.guardians ?? []) {
       if (!guardianKeys.has(String(g.patient)) || !guardianshipActive(g, record.dateOfBirth ?? dependent.dateOfBirth)) continue;
-      if (g.source === 'phone') return {};
-      // A staff link counts only at the clinic that made it (legacy links: the record's clinic).
+      if (g.source === 'phone' && !g.tenantId) return {};
+      // A staff or contact-number link counts only at its clinic (legacy staff links: the record's clinic).
       const tenant = g.tenantId ?? record.tenantIds?.[0];
       if (tenant && !clinicScope) clinicScope = String(tenant);
     }
@@ -425,7 +425,7 @@ export async function guardianRecordIds(
 
   // A staff link only hears about the clinic that made it (as familyAccess).
   const inScope = (g: GuardianEntry, r: PersonRecord) => {
-    if (g.source === 'phone') return true;
+    if (g.source === 'phone' && !g.tenantId) return true;
     const linkTenant = g.tenantId ?? r.tenantIds?.[0];
     return !!tenantId && !!linkTenant && String(linkTenant) === String(tenantId);
   };

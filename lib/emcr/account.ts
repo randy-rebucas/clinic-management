@@ -108,9 +108,9 @@ export async function accountAccess(accountId: string, patientId: string): Promi
   return access;
 }
 
-/** The clinic scope a dependent link grants: staff links stay at their clinic. */
+/** The clinic scope a dependent link grants: staff and contact-number links stay at their clinic. */
 function dependentLinkScope(link: Pick<IEmcrDependent, 'source' | 'tenantId'>): FamilyAccess {
-  return link.source === 'clinic' && link.tenantId ? { tid: String(link.tenantId) } : {};
+  return link.tenantId ? { tid: String(link.tenantId) } : {};
 }
 
 /** Drop cached decisions after an account's links change. */
