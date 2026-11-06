@@ -14,6 +14,9 @@ import MobileDevice from '@/models/MobileDevice';
 import { Types } from 'mongoose';
 import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
+import { PATIENT_VISIT_EXCLUDE } from '../me/_lib/visit-fields';
+import { PATIENT_LAB_RESULT_HIDDEN } from '../me/_lib/lab-result-fields';
+import { PATIENT_REFERRAL_FILTER, PATIENT_REFERRAL_SELECT } from '../me/referrals/_lib/referral-view';
 import {
   findRefreshTokenSubject,
   readRefreshTokenFromBody,
@@ -132,6 +135,7 @@ export async function GET(request: NextRequest) {
       }
       
       const visits = await Visit.find(visitQuery)
+        .select(PATIENT_VISIT_EXCLUDE)
         .populate(providerPopulateOptions)
         .sort({ date: -1 })
         .limit(10)
@@ -174,6 +178,7 @@ export async function GET(request: NextRequest) {
       }
       
       const labResults = await LabResult.find(labResultQuery)
+        .select(PATIENT_LAB_RESULT_HIDDEN)
         .sort({ orderDate: -1 })
         .limit(10)
         .lean();
@@ -216,7 +221,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (include.includes('referrals') || include.includes('all')) {
-      const referralQuery: any = { patient: patient._id };
+      const referralQuery: any = { patient: patient._id, ...PATIENT_REFERRAL_FILTER };
       if (patientTenantId) {
         referralQuery.tenantId = patientTenantId;
       } else {
@@ -244,6 +249,7 @@ export async function GET(request: NextRequest) {
       }
       
       const referrals = await Referral.find(referralQuery)
+        .select(PATIENT_REFERRAL_SELECT)
         .populate(referringDoctorPopulateOptions)
         .populate(receivingDoctorPopulateOptions)
         .sort({ referredDate: -1 })
