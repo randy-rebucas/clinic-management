@@ -9,7 +9,7 @@ import { sendSMS } from '@/lib/sms';
 import { getTenantContext } from '@/lib/tenant';
 import { Types } from 'mongoose';
 import { isValidId } from '@/lib/api/tenant-session';
-import { parseBody, isValidationError, zObjectId, zEmail, zPhone, zShortText } from '@/lib/api/validate';
+import { parseBody, isValidationError, zObjectId, zEmail, zPhone, zPersonName, zIsoDate } from '@/lib/api/validate';
 import { normalizePhone } from '@/lib/phone';
 import { phoneVariants } from '@/app/api/patients/auth/shared';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
@@ -23,6 +23,7 @@ import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { getSettings } from '@/lib/settings';
 import {
   ACTIVE_APPOINTMENT_STATUSES,
+  MAX_PENDING_ONLINE_REQUESTS,
   appointmentDayRange,
   findDoctorConflict,
   nextAppointmentCode,
@@ -43,6 +44,9 @@ import {
 
 // Public endpoint for patient online booking (no authentication required)
 export async function GET(request: NextRequest) {
+  const limited = await applyRateLimit(request, rateLimiters.public);
+  if (limited) return limited;
+
   try {
     await connectDB();
     const searchParams = request.nextUrl.searchParams;
@@ -57,12 +61,8 @@ export async function GET(request: NextRequest) {
     const records = await Doctor.find({ status: 'active', tenantId })
       .select('firstName lastName specialization schedule availabilityOverrides')
       .lean<Record<string, any>[]>();
-    // Time-off entries (and their reasons) stay private; the response keeps its old fields.
-    const doctors = records.map((record) => {
-      const doctor = { ...record };
-      delete doctor.availabilityOverrides;
-      return doctor;
-    });
+    // Visitors get computed slots, never a doctor's raw schedule or time-off entries.
+    const doctors = records.map(({ _id, firstName, lastName, specialization }) => ({ _id, firstName, lastName, specialization }));
 
     if (date) {
       if ((doctorId && !isValidId(doctorId)) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -129,14 +129,13 @@ export async function GET(request: NextRequest) {
 const publicBookingSchema = z.object({
   patientEmail: zEmail,
   patientPhone: zPhone,
-  patientFirstName: zShortText.min(1).max(100),
-  patientLastName: zShortText.min(1).max(100),
+  patientFirstName: zPersonName,
+  patientLastName: zPersonName,
   doctorId: zObjectId,
-  appointmentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date'),
+  appointmentDate: zIsoDate,
   appointmentTime: z.string().regex(/^\d{1,2}:\d{2}$/, 'Invalid time'),
   reason: z.string().trim().max(1000).optional(),
-  room: zShortText.optional(),
-  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dateOfBirth: zIsoDate.refine((value) => value <= new Date().toISOString().slice(0, 10), 'Invalid date').optional(),
   sex: z.enum(['male', 'female', 'other']).optional(),
   tenantId: zObjectId.optional(),
   turnstileToken: z.string().max(2048).optional(),
@@ -145,9 +144,6 @@ const publicBookingSchema = z.object({
 });
 
 const SLOT_TAKEN = 'This time slot is already booked. Please choose another time.';
-
-/** Open online requests one phone number may hold at a clinic before staff act on them. */
-const MAX_PENDING_PER_PHONE = 3;
 
 // Public endpoint for patient booking (no authentication required)
 export async function POST(request: NextRequest) {
@@ -231,7 +227,7 @@ export async function POST(request: NextRequest) {
       isWalkIn: false,
       notes: new RegExp(`^Submitted phone: \\+${phone.slice(1)}$`, 'm'),
     });
-    if (pendingForPhone >= MAX_PENDING_PER_PHONE) {
+    if (pendingForPhone >= MAX_PENDING_ONLINE_REQUESTS) {
       return NextResponse.json(
         { success: false, error: 'You already have booking requests waiting for the clinic to confirm. Please contact the clinic.' },
         { status: 429 }
@@ -297,7 +293,6 @@ export async function POST(request: NextRequest) {
         duration: rules.slotMinutes,
         status: 'pending',
         reason: body.reason,
-        room: body.room,
         notes: bookingNote,
         isWalkIn: false,
       });
