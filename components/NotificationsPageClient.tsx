@@ -7,6 +7,7 @@ import { FOCUS_RING, ICON, Svg } from './appointments/shared';
 import { DEFAULT_PAGE_SIZE } from '@/lib/page-size';
 import PageSizeSelect from './ui/PageSizeSelect';
 import SendNotificationDialog from './notifications/SendNotificationDialog';
+import NotificationPreferencesPanel from './notifications/NotificationPreferencesPanel';
 import {
   GROUP_KEYS,
   NOTIFICATION_GROUPS,
@@ -258,6 +259,8 @@ export default function NotificationsPageClient({ canSend = false }: { canSend?:
           </div>
         </header>
         {canSend && <SendNotificationDialog open={composing} onOpenChange={setComposing} />}
+
+        <NotificationPreferencesPanel />
 
         {/* View and kind */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

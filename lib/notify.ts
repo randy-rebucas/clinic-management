@@ -55,17 +55,17 @@ function later(task: () => Promise<unknown>) {
  */
 export function pushNotificationToStaff(
   userIds: string[],
-  n: { title: string; message: string; actionUrl?: string; tenantId: string | null; tag?: string }
+  n: { title: string; message: string; actionUrl?: string; tenantId: string | null; tag?: string; priority?: NotificationPriority }
 ) {
   if (!userIds.length) return;
   later(async () => {
     const { sendPushToUser, sendPushToUserDevices } = await import('@/lib/push-notifications');
-    const payload = { title: n.title, body: n.message.slice(0, 240), url: n.actionUrl ?? '/notifications', tag: n.tag };
+    const payload = { title: n.title, body: n.message.slice(0, 240), url: n.actionUrl ?? '/notifications', tag: n.tag, priority: n.priority };
     for (let i = 0; i < userIds.length; i += 20) {
       await Promise.allSettled(
         userIds.slice(i, i + 20).flatMap((id) => [
           sendPushToUser(id, payload, n.tenantId ?? undefined),
-          sendPushToUserDevices(id, payload),
+          sendPushToUserDevices(id, payload, { honorQuietHours: true }),
         ])
       );
     }
@@ -162,6 +162,7 @@ export async function notifyStaff(opts: NotifyStaffOptions): Promise<{ recipient
       actionUrl: opts.actionUrl,
       tenantId: opts.tenantId,
       tag: `notification-${batchId}`,
+      priority,
     });
   }
   return { recipients: userIds.length, batchId };

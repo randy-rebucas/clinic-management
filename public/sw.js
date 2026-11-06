@@ -69,6 +69,8 @@ self.addEventListener('push', (event) => {
     vibrate: [100, 50, 100],
     tag: data.tag || 'mcs-notification',
     renotify: true,
+    // An urgent alert stays on screen until someone deals with it.
+    requireInteraction: data.priority === 'urgent',
     data: {
       url: data.url || '/dashboard',
       dateOfArrival: Date.now(),
@@ -81,25 +83,38 @@ self.addEventListener('push', (event) => {
 });
 
 // ─── Notification Click ──────────────────────────────────────────────────────
+// Only ever open this app: the URL comes from the push payload.
+function notificationTarget(value) {
+  const fallback = new URL('/dashboard', self.location.origin).href;
+  try {
+    const url = new URL(value || fallback, self.location.origin);
+    return url.origin === self.location.origin ? url.href : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+// Bring the app forward on the right page: reuse a window already there, else move an open
+// one, else open a new one. A window this worker doesn't control can't be moved.
+async function openNotificationTarget(targetUrl) {
+  const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  const appWindows = windows.filter((client) => new URL(client.url).origin === self.location.origin);
+
+  const exact = appWindows.find((client) => client.url === targetUrl);
+  if (exact) return exact.focus();
+
+  for (const client of appWindows) {
+    try {
+      const focused = await client.focus();
+      return await focused.navigate(targetUrl);
+    } catch {
+      // Try the next window.
+    }
+  }
+  return self.clients.openWindow(targetUrl);
+}
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-
-  const targetUrl = event.notification.data?.url || '/dashboard';
-
-  event.waitUntil(
-    self.clients
-      .matchAll({ type: 'window', includeUncontrolled: true })
-      .then((clientList) => {
-        // Focus an existing window if one is open on that URL
-        for (const client of clientList) {
-          if (client.url.includes(targetUrl) && 'focus' in client) {
-            return client.focus();
-          }
-        }
-        // Otherwise open a new window
-        if (self.clients.openWindow) {
-          return self.clients.openWindow(targetUrl);
-        }
-      })
-  );
+  event.waitUntil(openNotificationTarget(notificationTarget(event.notification.data?.url)));
 });

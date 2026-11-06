@@ -213,6 +213,9 @@ export type { IAuditLog, AuditAction, AuditResource } from './AuditLog';
 export { default as Notification } from './Notification';
 export type { INotification, NotificationType, NotificationPriority } from './Notification';
 
+export { default as NotificationPreference } from './NotificationPreference';
+export type { INotificationPreference } from './NotificationPreference';
+
 // ============================================================
 // MODEL REGISTRATION HELPER
 // ============================================================
@@ -320,6 +323,7 @@ export function registerAllModels(): void {
   require('./PlatformInvoice');
   require('./PaymentAccount');
   require('./PushSubscription');
+  require('./NotificationPreference');
   require('./MobileDevice');
   require('./RefreshToken');
   require('./HealthSummaryShareLink');
@@ -388,6 +392,7 @@ const models = {
   PlatformInvoice: require('./PlatformInvoice').default,
   PaymentAccount: require('./PaymentAccount').default,
   PushSubscription: require('./PushSubscription').default,
+  NotificationPreference: require('./NotificationPreference').default,
   MobileDevice: require('./MobileDevice').default,
   RefreshToken: require('./RefreshToken').default,
   HealthSummaryShareLink: require('./HealthSummaryShareLink').default,
