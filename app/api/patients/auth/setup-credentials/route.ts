@@ -6,6 +6,7 @@ import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { isFreshOtpSession } from '@/app/lib/dal';
+import { applyPatientPasswordChange } from '@/lib/emcr/password';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import {
   checkPhoneProof,
@@ -171,6 +172,7 @@ export async function POST(request: NextRequest) {
       { _id: patient._id },
       phoneProven ? { $set: updates, $unset: { passwordTenantId: 1 } } : { $set: updates }
     );
+    await applyPatientPasswordChange(session, newPassword, { phoneProven });
 
     // Any previously issued token (other devices, leaked tokens) stops working. The caller's
     // fresh token keeps its clinic scope unless the phone was proven.

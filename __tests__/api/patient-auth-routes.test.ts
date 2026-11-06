@@ -18,6 +18,7 @@ vi.mock('@/app/lib/patient-auth', async () => {
   };
 });
 vi.mock('@/models/Patient', () => ({ default: { findById: vi.fn(), updateOne: vi.fn() } }));
+vi.mock('@/lib/emcr/password', () => ({ applyPatientPasswordChange: vi.fn() }));
 vi.mock('@/models/MobileDevice', () => ({ default: { updateOne: vi.fn(), updateMany: vi.fn() } }));
 vi.mock('@/app/lib/refresh-tokens', () => ({
   consumeRefreshToken: vi.fn(),
@@ -52,6 +53,7 @@ vi.mock('@/app/api/patients/auth/shared', async (importOriginal) => {
 import bcrypt from 'bcryptjs';
 import Patient from '@/models/Patient';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
+import { applyPatientPasswordChange } from '@/lib/emcr/password';
 import { issuePatientToken } from '@/app/lib/dal';
 import {
   consumeRefreshToken,
@@ -185,6 +187,16 @@ describe('POST /api/patients/me/change-password', () => {
     const res = await call({ newPassword: 'brand-new-pw', otp: '123456' });
     expect(res.status).toBe(200);
     expect(checkPhoneProof).toHaveBeenCalled();
+  });
+
+  it('changes the account password with it, and not when the change is refused', async () => {
+    as({ amr: 'password', iat: now() });
+    patientWith(hash);
+    await call({ currentPassword: 'nope', newPassword: 'brand-new-pw' });
+    expect(applyPatientPasswordChange).not.toHaveBeenCalled();
+
+    await call({ currentPassword: 'old-password', newPassword: 'brand-new-pw' });
+    expect(vi.mocked(applyPatientPasswordChange).mock.calls[0].slice(1)).toEqual(['brand-new-pw', { phoneProven: false }]);
   });
 
   it('a correct current password keeps the session clinic scope', async () => {

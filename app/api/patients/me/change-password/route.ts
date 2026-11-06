@@ -7,6 +7,7 @@ import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { isFreshOtpSession } from '@/app/lib/dal';
+import { applyPatientPasswordChange } from '@/lib/emcr/password';
 import {
   checkPhoneProof,
   otpFailureResponse,
@@ -29,6 +30,9 @@ const MIN_PASSWORD_LENGTH = 8;
  *   proof (fresh OTP sign-in or `otp`), else 400 OTP_REQUIRED, so a QR holder can't take over
  *   the account.
  *
+ * The account's mobile-number password and the person's other records change with it, and those
+ * records are signed out, unless a clinic-scoped session keeps this to its clinic
+ * (applyPatientPasswordChange).
  * Every other session, the login QR and other devices' push registrations are revoked; the
  * caller gets a new token pair (+ `expiresIn`). `deviceId` keeps this device's push registration.
  */
@@ -120,6 +124,7 @@ export async function POST(request: NextRequest) {
       { _id: patient._id },
       phoneProven ? { $set: { password: hashed }, $unset: { passwordTenantId: 1 } } : { $set: { password: hashed } }
     );
+    await applyPatientPasswordChange(session, newPassword, { phoneProven });
 
     // Sign out every other device; the caller gets a fresh token (same clinic scope unless the
     // phone was proven, which grants the patient's full access).

@@ -4,8 +4,10 @@ import bcrypt from 'bcryptjs';
 import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import EmcrAccount from '@/models/EmcrAccount';
-import { dummyPasswordHash } from '@/app/api/patients/auth/shared';
-import { forgetAccountCache, type EmcrAccountLean } from '@/lib/emcr/account';
+import Patient from '@/models/Patient';
+import { dummyPasswordHash, revokeAllPatientAccess } from '@/app/api/patients/auth/shared';
+import { personRecordIds } from '@/lib/patient-family';
+import { findAccountForSession, forgetAccountCache, type EmcrAccountLean } from '@/lib/emcr/account';
 import { ensureLoginId } from '@/lib/emcr/login-id';
 
 /**
@@ -68,6 +70,67 @@ export async function setAccountPassword(
   );
   forgetAccountCache();
   await ensureLoginId(accountId, tenantId);
+}
+
+type CredentialSession = Parameters<typeof findAccountForSession>[0] & { tid?: string };
+
+/**
+ * One person can sign in three ways: the account's password (mobile number or login ID), and the
+ * patient password on each clinic record (email). A change has to reach all of them, or the old
+ * password keeps working somewhere.
+ *
+ * A clinic-scoped session that didn't prove the phone only ever reaches its own clinic: it may
+ * replace only passwords tied to that clinic, the tie stays, and other clinics' sessions stay.
+ */
+function confinedToClinic(session: Pick<CredentialSession, 'tid'>, phoneProven: boolean): string | null {
+  return session.tid && !phoneProven ? session.tid : null;
+}
+
+/** Replace the person's patient passwords, skipping `exceptId`. Records with none stay without. */
+export async function replaceRecordPasswords(
+  holderId: unknown,
+  password: string,
+  session: Pick<CredentialSession, 'tid'>,
+  options: { phoneProven: boolean; exceptId?: string }
+): Promise<void> {
+  const clinic = confinedToClinic(session, options.phoneProven);
+  const ids = (await personRecordIds(holderId)).filter((id) => String(id) !== options.exceptId);
+  if (!ids.length) return;
+  const hashed = await bcrypt.hash(password, 12);
+  await Patient.updateMany(
+    { _id: { $in: ids }, password: { $exists: true }, ...(clinic ? { passwordTenantId: new Types.ObjectId(clinic) } : {}) },
+    options.phoneProven ? { $set: { password: hashed }, $unset: { passwordTenantId: 1 } } : { $set: { password: hashed } }
+  );
+}
+
+/** End every session on the person's other records. The caller's own record is rotated separately. */
+export async function signOutOtherRecords(
+  patientId: string,
+  session: Pick<CredentialSession, 'tid'>,
+  options: { phoneProven: boolean }
+): Promise<void> {
+  if (confinedToClinic(session, options.phoneProven)) return;
+  const ids = (await personRecordIds(patientId)).filter((id) => String(id) !== patientId);
+  await Promise.all(ids.map((id) => revokeAllPatientAccess(String(id))));
+}
+
+/**
+ * After a change to the session record's patient password: replace the account's password and the
+ * person's other patient passwords, and sign out their other records. An account with no password
+ * stays without one.
+ */
+export async function applyPatientPasswordChange(
+  session: CredentialSession & { patientId: string },
+  password: string,
+  options: { phoneProven: boolean }
+): Promise<void> {
+  const clinic = confinedToClinic(session, options.phoneProven);
+  const account = await findAccountForSession(session);
+  if (account?.passwordSetAt && (!clinic || String(account.passwordTenantId ?? '') === clinic)) {
+    await setAccountPassword(account._id, password, 'user', undefined, options);
+  }
+  await replaceRecordPasswords(session.patientId, password, session, { ...options, exceptId: session.patientId });
+  await signOutOtherRecords(session.patientId, session, options);
 }
 
 /**

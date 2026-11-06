@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn() }));
-vi.mock('@/models/Patient', () => ({ default: { find: vi.fn(), findById: vi.fn(), updateMany: vi.fn() } }));
+vi.mock('@/models/Patient', () => ({ default: { find: vi.fn(), findById: vi.fn(), updateMany: vi.fn(), updateOne: vi.fn() } }));
 vi.mock('@/models/Tenant', () => ({ default: { find: vi.fn() } }));
 vi.mock('@/models/EmcrAccount', () => ({ default: { findById: vi.fn(), updateOne: vi.fn() } }));
 vi.mock('@/models/EmcrAccessRequest', () => ({ default: { updateOne: vi.fn() } }));
@@ -129,10 +129,39 @@ describe('claimProfile', () => {
     account({ _id: ACCOUNT, phone: PHONE, selfPatientId: PARENT, dependents: [] });
     const result = await claimProfile({ accountId: String(ACCOUNT), phone: PHONE, relation: 'other', firstName: 'Juan', dateOfBirth: '2016-06-01', now: NOW });
     expect(result.status).toBe('linked');
-    const [filter, update] = vi.mocked(Patient.updateMany).mock.calls.at(-1) as any[];
-    expect(filter._id.$in).toEqual([CHILD]);
+    const [filter, update] = vi.mocked(Patient.updateOne).mock.calls.at(-1) as any[];
+    expect(filter._id).toEqual(CHILD);
     expect(update.$push.guardians).toMatchObject({ patient: PARENT, source: 'phone' });
+    expect(update.$push.guardians.tenantId).toBeUndefined();
     expect(EmcrAccount.updateOne).not.toHaveBeenCalled();
+  });
+
+  describe('a minor who only lists the number as a contact', () => {
+    const contactChild = { _id: CHILD, firstName: 'Juan', lastName: 'Santos', dateOfBirth: new Date('2016-06-01T00:00:00Z'), tenantIds: [TENANT] };
+
+    it("links a guardian-only account at the record's clinic only", async () => {
+      onPhone([contactChild]);
+      account({ _id: ACCOUNT, phone: PHONE, dependents: [] });
+      const result = await claimProfile({ accountId: String(ACCOUNT), phone: PHONE, relation: 'other', firstName: 'Juan', dateOfBirth: '2016-06-01', now: NOW });
+      expect(result.status).toBe('linked');
+      const [, update] = vi.mocked(EmcrAccount.updateOne).mock.calls[0] as any[];
+      expect(update.$push.dependents).toMatchObject({ source: 'phone_dob', tenantId: TENANT });
+    });
+
+    it('links a holder per record, each at its clinic, still lapsing at 18, and merges nothing', async () => {
+      const other = new Types.ObjectId('507f1f77bcf86cd799439077');
+      const tenantB = new Types.ObjectId('507f1f77bcf86cd799439088');
+      onPhone([contactChild, { ...contactChild, _id: other, tenantIds: [tenantB] }]);
+      account({ _id: ACCOUNT, phone: PHONE, selfPatientId: PARENT, dependents: [] });
+      const result = await claimProfile({ accountId: String(ACCOUNT), phone: PHONE, relation: 'other', firstName: 'Juan', dateOfBirth: '2016-06-01', now: NOW });
+      expect(result.status).toBe('linked');
+      expect(Patient.updateMany).not.toHaveBeenCalled();
+      const pushes = vi.mocked(Patient.updateOne).mock.calls.map((c) => (c as any[])[1].$push.guardians);
+      expect(pushes).toEqual([
+        expect.objectContaining({ source: 'phone', tenantId: TENANT }),
+        expect.objectContaining({ source: 'phone', tenantId: tenantB }),
+      ]);
+    });
   });
 
   it('sends an adult someone else’s to the clinic instead of linking it', async () => {

@@ -9,7 +9,7 @@ vi.mock('@/app/lib/dal', () => ({ verifyPatientSession: vi.fn() }));
 
 import Patient from '@/models/Patient';
 import { verifyPatientSession } from '@/app/lib/dal';
-import { adulthoodDate, canActFor, guardianshipActive, isMinor } from '@/lib/patient-family';
+import { adulthoodDate, canActFor, familyAccess, guardianshipActive, isMinor } from '@/lib/patient-family';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 
 const GUARDIAN = '507f1f77bcf86cd799439011';
@@ -57,6 +57,29 @@ describe('canActFor', () => {
   it('refuses acting for yourself through the header path', async () => {
     vi.mocked(Patient.findById).mockImplementation((() => lean({ _id: GUARDIAN, tenantIds: [] })) as any);
     expect(await canActFor(GUARDIAN, GUARDIAN)).toBe(false);
+  });
+});
+
+describe('familyAccess', () => {
+  const TENANT = '507f1f77bcf86cd799439066';
+  const records = (holder: string, child: string, link: Record<string, unknown>) =>
+    vi.mocked(Patient.findById).mockImplementation(((id: string) =>
+      String(id) === holder
+        ? lean({ _id: id, tenantIds: [] })
+        : lean({ _id: child, dateOfBirth: new Date('2016-01-01'), tenantIds: [TENANT], guardians: [{ patient: holder, ...link }] })) as any);
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('a phone link from the own number reaches every clinic', async () => {
+    const [holder, child] = ['507f1f77bcf86cd799439a01', '507f1f77bcf86cd799439a02'];
+    records(holder, child, { source: 'phone' });
+    expect(await familyAccess(holder, child)).toEqual({});
+  });
+
+  it('a contact-number link stays at its clinic', async () => {
+    const [holder, child] = ['507f1f77bcf86cd799439a03', '507f1f77bcf86cd799439a04'];
+    records(holder, child, { source: 'phone', tenantId: TENANT });
+    expect(await familyAccess(holder, child)).toEqual({ tid: TENANT });
   });
 });
 

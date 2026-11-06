@@ -92,7 +92,8 @@ export async function sendPatientOtp(
 /**
  * Verify and spend a patient code, then load the record it opens. By phone for sign-in, or by
  * record for phone proof in a session. The record must still be active and, by phone, must still
- * carry that number.
+ * carry that number. By record, only a code sent to the record's own phone counts: a code sent to
+ * a minor's contact number opens one clinic at sign-in, and must not prove the record's phone.
  */
 export async function consumePatientOtp(
   target: { phone: string; tenantId?: Types.ObjectId } | { patientId: string },
@@ -101,16 +102,13 @@ export async function consumePatientOtp(
   await connectDB();
 
   if ('patientId' in target) {
-    let result = await consumeOtp({ scope: 'patient', patientId: target.patientId }, otp);
     const patient = await Patient.findOne({ _id: target.patientId, active: { $ne: false } });
-    if (!result.ok && result.noChallenge && patient?.phone) {
-      // otp/request picks the newest record on a shared number, which may not be this one. A code
-      // sent to this record's own phone still proves that phone.
-      const own = normalizePhone(patient.phone);
-      if (own) result = await consumeOtp({ scope: 'patient', phone: own }, otp);
-    }
-    if (!result.ok) return result;
-    return patient ? { ok: true, patient } : { ok: false, reason: 'invalid' };
+    const own = patient?.phone ? normalizePhone(patient.phone) : null;
+    if (!own) return { ok: false, reason: 'invalid' };
+    // By number, not by the challenge's patientId: otp/request picks the newest record on a shared
+    // number, which may not be this one, and a contact-number code stores this record's id.
+    const result = await consumeOtp({ scope: 'patient', phone: own }, otp);
+    return result.ok ? { ok: true, patient } : result;
   }
 
   const phone = normalizePhone(target.phone);
