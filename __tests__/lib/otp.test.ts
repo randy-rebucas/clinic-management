@@ -130,6 +130,7 @@ describe('lib/otp', () => {
 
       warn.mockClear();
       vi.stubEnv('NODE_ENV', 'production');
+      process.env.OTP_PROVIDER = 'local';
       expect(await startOtp({ scope: 'emcr', phone: PHONE, message })).toBe(false);
       expect(warn).not.toHaveBeenCalled();
       warn.mockRestore();
@@ -191,6 +192,43 @@ describe('lib/otp', () => {
     });
   });
 
+  describe('provider choice', () => {
+    beforeEach(() => {
+      twilio.start.mockResolvedValue({ status: 'pending' });
+    });
+
+    it('uses Verify in production when OTP_PROVIDER is unset, and never texts its own code', async () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      expect(await startOtp({ scope: 'emcr', phone: PHONE, message })).toBe(true);
+      expect(twilio.start).toHaveBeenCalledWith({ to: PHONE, channel: 'sms' });
+      expect(sms.send).not.toHaveBeenCalled();
+      expect(store.rows[0].provider).toBe('verify');
+    });
+
+    it('does not fall back to local on an unknown OTP_PROVIDER in production', async () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      process.env.OTP_PROVIDER = 'Verify';
+      await startOtp({ scope: 'emcr', phone: PHONE, message });
+      expect(sms.send).not.toHaveBeenCalled();
+    });
+
+    it('OTP_PROVIDER=local is the rollback in production', async () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      process.env.OTP_PROVIDER = 'local';
+      await startOtp({ scope: 'emcr', phone: PHONE, message });
+      expect(twilio.start).not.toHaveBeenCalled();
+      expect(sms.send).toHaveBeenCalled();
+    });
+
+    it('stays local in development unless asked for Verify', async () => {
+      await startOtp({ scope: 'emcr', phone: PHONE, message });
+      expect(twilio.start).not.toHaveBeenCalled();
+      process.env.OTP_PROVIDER = 'verify';
+      await startOtp({ scope: 'emcr', phone: PHONE, message });
+      expect(twilio.start).toHaveBeenCalled();
+    });
+  });
+
   describe('otpAvailable', () => {
     it('needs a Verify service for verify', () => {
       process.env.OTP_PROVIDER = 'verify';
@@ -199,10 +237,18 @@ describe('lib/otp', () => {
       expect(otpAvailable()).toBe(false);
     });
 
+    it('in production, a missing Verify service refuses even with an SMS sender set', () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      sms.configured.mockReturnValue(true);
+      delete process.env.TWILIO_VERIFY_SERVICE_SID;
+      expect(otpAvailable()).toBe(false);
+    });
+
     it('in production, local needs SMS configured; in development it does not', () => {
       sms.configured.mockReturnValue(false);
       expect(otpAvailable()).toBe(true);
       vi.stubEnv('NODE_ENV', 'production');
+      process.env.OTP_PROVIDER = 'local';
       expect(otpAvailable()).toBe(false);
       sms.configured.mockReturnValue(true);
       expect(otpAvailable()).toBe(true);

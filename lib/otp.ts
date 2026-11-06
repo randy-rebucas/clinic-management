@@ -9,9 +9,10 @@ import OtpChallenge, { type OtpProvider, type OtpScope } from '@/models/OtpChall
 import { getTwilioClient, isSMSConfigured, sendSMS, smsSent } from '@/lib/sms';
 
 /**
- * Phone codes for every flow. `OTP_PROVIDER=verify` sends and checks through Twilio Verify; the
- * default `local` hashes a code and texts it with sendSMS, which also prints it to the dev server
- * console when Twilio isn't set up.
+ * Phone codes for every flow. Production sends and checks through Twilio Verify. Development
+ * defaults to `local`, which hashes a code and texts it with sendSMS, or prints it to the dev server
+ * console when Twilio isn't set up. `OTP_PROVIDER` (`verify` or `local`) overrides either default;
+ * in production, `local` is only a rollback.
  */
 
 /** Verify's fixed lifetime; `local` matches it so both behave the same. */
@@ -24,7 +25,9 @@ const TWILIO_NOT_FOUND = 404;
 const TWILIO_MAX_CHECK_ATTEMPTS = 60202;
 
 function activeProvider(): OtpProvider {
-  return process.env.OTP_PROVIDER === 'verify' ? 'verify' : 'local';
+  const configured = process.env.OTP_PROVIDER;
+  if (configured === 'verify' || configured === 'local') return configured;
+  return process.env.NODE_ENV === 'production' ? 'verify' : 'local';
 }
 
 /**

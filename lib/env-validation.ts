@@ -29,10 +29,10 @@ const envConfig: EnvConfig = {
     'TWILIO_AUTH_TOKEN',
     'TWILIO_MESSAGING_SERVICE_SID', // Registered alphanumeric sender; takes priority over TWILIO_PHONE_NUMBER
     'TWILIO_PHONE_NUMBER',
-    'TWILIO_VERIFY_SERVICE_SID', // Twilio Verify service (VA...) used when OTP_PROVIDER=verify
+    'TWILIO_VERIFY_SERVICE_SID', // Twilio Verify service (VA...); phone codes need it in production
     'SMS_POLICY_MODE', // "enforce" blocks texts; anything else only logs what would be blocked
     'REQUIRE_PUBLIC_PHONE_VERIFICATION', // "true" makes online booking and registration confirm the phone by code
-    'OTP_PROVIDER', // "verify" for Twilio Verify; anything else sends codes through sendSMS
+    'OTP_PROVIDER', // Unset: Twilio Verify in production, sendSMS in development. "local" in production is a rollback
     'SMTP_HOST',
     'SMTP_PORT',
     'SMTP_USER',
@@ -102,6 +102,11 @@ export function validateEnv(): { valid: boolean; errors: string[] } {
 
   // Not fatal, but each leaves a protection off in production; say so at every start.
   if (isProduction) {
+    if (process.env.OTP_PROVIDER === 'local') {
+      console.warn('Security: OTP_PROVIDER=local; phone codes are not going through Twilio Verify.');
+    } else if (!process.env.TWILIO_VERIFY_SERVICE_SID || !process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
+      console.warn('Security: Twilio Verify is not fully configured; phone code sign-in will answer 503.');
+    }
     if (!redisRestEnv().url) {
       console.warn('Security: UPSTASH_REDIS_REST_* (or KV_REST_API_*) unset; login and OTP rate limits are per serverless instance.');
     }

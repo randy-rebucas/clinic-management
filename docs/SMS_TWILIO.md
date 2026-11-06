@@ -7,7 +7,7 @@ How texts and sign-in codes work, and how to take them live.
 - **Outbound texts** go through `sendSMS` (`lib/sms.ts`). Each call names its clinic, a `category` and a `template`.
 - **Clinic rules** live in `lib/sms-policy.ts`, in this order: clinic and subscription active, the clinic's text switch, plan feature, opt-out, promotional consent, monthly quota.
 - **Categories:** `auth` (codes; never blocked or counted), `transactional`, `promotional` (needs consent, stops at 80% of quota, carries a stop link).
-- **Phone codes** live in `lib/otp.ts`. `OtpChallenge` records what a code is for, because Twilio Verify only knows the number.
+- **Phone codes** live in `lib/otp.ts` and go through Twilio Verify in production. `OtpChallenge` records what a code is for, because Verify only knows the number.
 - **Delivery log:** `SmsMessage`, kept 60 days, with no message bodies. Only failures are written back, so `sent` means no failure was reported.
 - **Preferences:** `SmsPreference`, kept by phone number. No clinic on a row means every clinic.
 
@@ -19,8 +19,8 @@ Patients can't reply to an alphanumeric sender. They stop texts through the link
 |---|---|
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` | Account credentials. The token also checks webhook signatures |
 | `TWILIO_MESSAGING_SERVICE_SID` | Messaging Service holding the registered sender. Wins over `TWILIO_PHONE_NUMBER` |
-| `TWILIO_VERIFY_SERVICE_SID` | Verify Service, 6-digit codes |
-| `OTP_PROVIDER` | `verify`, or unset to send codes through `sendSMS` |
+| `TWILIO_VERIFY_SERVICE_SID` | Verify Service, 6-digit codes. Required in production |
+| `OTP_PROVIDER` | Unset: Verify in production, `sendSMS` in development. `local` in production is a rollback; `verify` in development tests real Verify |
 | `SMS_POLICY_MODE` | `enforce`, or unset to only log what would be blocked |
 | `REQUIRE_PUBLIC_PHONE_VERIFICATION` | `true` makes `/book` and `/onboard` confirm the phone by code |
 | `NEXT_PUBLIC_APP_URL` | Must be the public `https://` URL, for delivery callbacks and stop links |
@@ -33,23 +33,23 @@ Run these in order. Each env change can be reverted on its own.
 
 1. `pnpm prod db:indexes` to see what is missing, then `pnpm prod db:indexes --apply`. Production doesn't build indexes by itself, and the quota depends on the unique index on `SmsUsage`: without it, monthly usage is not capped. The `OtpChallenge` TTL index also needs it.
 2. `pnpm prod db:migrate:sms-enabled`, check the count, then again with `--apply`.
+3. Create a Verify Service with 6-digit codes, and set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_VERIFY_SERVICE_SID` in production. Without them, phone code sign-in answers 503 and the app shows its maintenance screen. To send through `sendSMS` for now, set `OTP_PROVIDER=local`.
 
 **After deploying**
 
-3. Sign in with a code on the web and in the app. Codes last 10 minutes now.
-4. Leave `SMS_POLICY_MODE` unset for a few days. Search the logs for `SMS policy would block`, grouped by `reason`.
-5. Set plan quotas in `lib/subscription-packages.ts` (`maxSmsPerMonth`) from the confirmed Philippine rate. The current numbers are placeholders.
-6. Tell clinics that promotional texts need consent, then set `SMS_POLICY_MODE=enforce`.
+4. Sign in with a code on the web and in the app, on Globe, Smart and DITO handsets. Codes last 10 minutes. If they don't arrive, set `OTP_PROVIDER=local` to roll back.
+5. Leave `SMS_POLICY_MODE` unset for a few days. Search the logs for `SMS policy would block`, grouped by `reason`.
+6. Set plan quotas in `lib/subscription-packages.ts` (`maxSmsPerMonth`) from the confirmed Philippine rate. The current numbers are placeholders.
+7. Tell clinics that promotional texts need consent, then set `SMS_POLICY_MODE=enforce`.
 
 **Once the sender is approved**
 
-7. Set `TWILIO_MESSAGING_SERVICE_SID`, then test on Globe, Smart and DITO handsets.
-8. Set `OTP_PROVIDER=verify` and `TWILIO_VERIFY_SERVICE_SID`, and repeat the tests.
+8. Set `TWILIO_MESSAGING_SERVICE_SID`, then test on Globe, Smart and DITO handsets.
 9. Turn on Turnstile and Upstash if they aren't already, then set `REQUIRE_PUBLIC_PHONE_VERIFICATION=true`.
 
 ## Later cleanup
 
-After `OTP_PROVIDER=verify` has run cleanly, remove `otp`, `otpExpiry` and `otpAttempts` from `Patient` and `EmcrAccount`, and `$unset` them off-peak. Keep the names in the `lib/backups.ts` and `lib/patient-erasure.ts` lists.
+After Verify has run cleanly, remove `otp`, `otpExpiry` and `otpAttempts` from `Patient` and `EmcrAccount`, and `$unset` them off-peak. Keep the names in the `lib/backups.ts` and `lib/patient-erasure.ts` lists.
 
 ## To confirm with real Twilio traffic
 
