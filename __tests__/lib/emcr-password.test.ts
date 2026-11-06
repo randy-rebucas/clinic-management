@@ -4,22 +4,121 @@ import bcrypt from 'bcryptjs';
 vi.mock('server-only', () => ({}));
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn() }));
 vi.mock('@/models/EmcrAccount', () => ({ default: { findOne: vi.fn(), findById: vi.fn(), updateOne: vi.fn() } }));
-vi.mock('@/lib/emcr/account', () => ({ forgetAccountCache: vi.fn() }));
+vi.mock('@/lib/emcr/account', () => ({ forgetAccountCache: vi.fn(), findAccountForSession: vi.fn() }));
 vi.mock('@/lib/emcr/login-id', () => ({ ensureLoginId: vi.fn() }));
+vi.mock('@/models/Patient', () => ({ default: { updateMany: vi.fn() } }));
+vi.mock('@/lib/patient-family', () => ({ personRecordIds: vi.fn() }));
+vi.mock('@/app/api/patients/auth/shared', () => ({
+  dummyPasswordHash: () => '$2a$04$abcdefghijklmnopqrstuu1Yq0xqQ2oS0mGk0n7u5qk1m3X3vZb0a',
+  revokeAllPatientAccess: vi.fn(),
+}));
 
 import { Types } from 'mongoose';
 import EmcrAccount from '@/models/EmcrAccount';
+import { findAccountForSession } from '@/lib/emcr/account';
+import Patient from '@/models/Patient';
+import { personRecordIds } from '@/lib/patient-family';
+import { revokeAllPatientAccess } from '@/app/api/patients/auth/shared';
 import {
   authenticateAccountPassword,
   cancelClinicPassword,
   generateTempPassword,
   passwordProblem,
+  applyPatientPasswordChange,
+  replaceRecordPasswords,
   setAccountPassword,
 } from '@/lib/emcr/password';
 
 const PHONE = '+639171234567';
 const CLINIC = new Types.ObjectId();
 const selectLean = (value: unknown) => ({ select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(value) }) });
+
+describe('applyPatientPasswordChange', () => {
+  const ACCOUNT = new Types.ObjectId();
+  const OWN = new Types.ObjectId();
+  const SIBLING = new Types.ObjectId();
+  const session = { patientId: String(OWN) };
+  const hasAccount = (extra: Record<string, unknown> = {}) =>
+    vi.mocked(findAccountForSession).mockResolvedValue({ _id: ACCOUNT, passwordSetAt: new Date(), ...extra } as any);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(personRecordIds).mockResolvedValue([OWN, SIBLING]);
+  });
+
+  it("replaces the person's other patient passwords and signs those records out", async () => {
+    hasAccount();
+    await applyPatientPasswordChange(session, 'brand-new-pw', { phoneProven: false });
+    const [filter, update] = vi.mocked(Patient.updateMany).mock.calls[0] as any[];
+    expect(filter._id.$in).toEqual([SIBLING]);
+    expect(filter.password).toEqual({ $exists: true });
+    expect(await bcrypt.compare('brand-new-pw', update.$set.password)).toBe(true);
+    expect(update.$unset).toBeUndefined();
+    expect(vi.mocked(revokeAllPatientAccess).mock.calls).toEqual([[String(SIBLING)]]);
+  });
+
+  it("keeps a clinic-scoped session to its clinic's records and sessions", async () => {
+    hasAccount();
+    await applyPatientPasswordChange({ ...session, tid: String(CLINIC) }, 'brand-new-pw', { phoneProven: false });
+    const [filter] = vi.mocked(Patient.updateMany).mock.calls[0] as any[];
+    expect(String(filter.passwordTenantId)).toBe(String(CLINIC));
+    expect(revokeAllPatientAccess).not.toHaveBeenCalled();
+  });
+
+  it('proving the phone lifts the scope and the ties', async () => {
+    hasAccount();
+    await applyPatientPasswordChange({ ...session, tid: String(CLINIC) }, 'brand-new-pw', { phoneProven: true });
+    const [filter, update] = vi.mocked(Patient.updateMany).mock.calls[0] as any[];
+    expect(filter.passwordTenantId).toBeUndefined();
+    expect(update.$unset).toEqual({ passwordTenantId: 1 });
+    expect(revokeAllPatientAccess).toHaveBeenCalledTimes(1);
+  });
+
+  it('a person with one record has nothing else to change', async () => {
+    vi.mocked(personRecordIds).mockResolvedValue([OWN]);
+    await replaceRecordPasswords(OWN, 'brand-new-pw', {}, { phoneProven: false, exceptId: String(OWN) });
+    expect(Patient.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("replaces the account's password, so the phone sign-in doesn't keep the old one", async () => {
+    hasAccount();
+    await applyPatientPasswordChange(session, 'brand-new-pw', { phoneProven: false });
+    const [filter, update] = vi.mocked(EmcrAccount.updateOne).mock.calls[0] as any[];
+    expect(filter._id).toBe(ACCOUNT);
+    expect(await bcrypt.compare('brand-new-pw', update.$set.password)).toBe(true);
+    expect(update.$unset).toBeUndefined();
+  });
+
+  it('lifts the clinic tie once the phone is proven', async () => {
+    hasAccount({ passwordTenantId: CLINIC });
+    await applyPatientPasswordChange({ ...session, tid: String(CLINIC) }, 'brand-new-pw', { phoneProven: true });
+    expect((vi.mocked(EmcrAccount.updateOne).mock.calls[0] as any[])[1].$unset).toEqual({ passwordTenantId: 1 });
+  });
+
+  it('gives an account without a password none', async () => {
+    vi.mocked(findAccountForSession).mockResolvedValue({ _id: ACCOUNT } as any);
+    await applyPatientPasswordChange(session, 'brand-new-pw', { phoneProven: true });
+    expect(EmcrAccount.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('a clinic-scoped session cannot replace a password that reaches every clinic', async () => {
+    hasAccount();
+    await applyPatientPasswordChange({ ...session, tid: String(CLINIC) }, 'brand-new-pw', { phoneProven: false });
+    expect(EmcrAccount.updateOne).not.toHaveBeenCalled();
+  });
+
+  it("a clinic-scoped session cannot replace another clinic's password", async () => {
+    hasAccount({ passwordTenantId: new Types.ObjectId() });
+    await applyPatientPasswordChange({ ...session, tid: String(CLINIC) }, 'brand-new-pw', { phoneProven: false });
+    expect(EmcrAccount.updateOne).not.toHaveBeenCalled();
+  });
+
+  it("a clinic-scoped session replaces its own clinic's password and keeps the tie", async () => {
+    hasAccount({ passwordTenantId: CLINIC });
+    await applyPatientPasswordChange({ ...session, tid: String(CLINIC) }, 'brand-new-pw', { phoneProven: false });
+    expect((vi.mocked(EmcrAccount.updateOne).mock.calls[0] as any[])[1].$unset).toBeUndefined();
+  });
+});
 
 describe('eMCR account passwords', () => {
   beforeEach(() => vi.clearAllMocks());
