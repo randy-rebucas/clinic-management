@@ -123,10 +123,21 @@ const defaultRolePermissions = BUILT_IN;
 type PermissionSubject = { userId?: string; role?: string; roleId?: string; tenantId?: string } | null;
 
 /**
- * Load every Permission document granted to this user or role in one query.
- * Memoized per request, so many checks in one render cost a single round-trip.
+ * How long a server instance may reuse someone's granted permissions. Every staff API call checks
+ * them, so without this each poll costs a read. A change clears this instance at once
+ * (forgetGrantedPermissions); other instances catch up within this time. A session's role is keyed
+ * in, so moving someone to another role doesn't wait for it.
  */
-const loadGrantedPermissions = cache(async (userId: string, roleId: string, tenantId: string): Promise<Set<string>> => {
+const GRANTED_TTL_MS = 60 * 1000;
+const GRANTED_MAX = 5000;
+const grantedCache = new Map<string, { at: number; value: Promise<Set<string>> }>();
+
+/** Call after writing Permission documents. */
+export function forgetGrantedPermissions(): void {
+  grantedCache.clear();
+}
+
+async function readGrantedPermissions(userId: string, roleId: string, tenantId: string): Promise<Set<string>> {
   const owners: Record<string, Types.ObjectId>[] = [];
   if (userId && Types.ObjectId.isValid(userId)) owners.push({ user: new Types.ObjectId(userId) });
   if (roleId && Types.ObjectId.isValid(roleId)) owners.push({ role: new Types.ObjectId(roleId) });
@@ -146,6 +157,24 @@ const loadGrantedPermissions = cache(async (userId: string, roleId: string, tena
     for (const action of doc.actions || []) granted.add(`${doc.resource}:${action}`);
   }
   return granted;
+}
+
+/**
+ * Every Permission document granted to this user or role, in one query, reused for GRANTED_TTL_MS.
+ * Memoized per request too, so many checks in one render cost at most a single round-trip.
+ */
+const loadGrantedPermissions = cache((userId: string, roleId: string, tenantId: string): Promise<Set<string>> => {
+  const key = `${userId}|${roleId}|${tenantId}`;
+  const now = Date.now();
+  const hit = grantedCache.get(key);
+  if (hit && now - hit.at < GRANTED_TTL_MS) return hit.value;
+  if (grantedCache.size >= GRANTED_MAX) grantedCache.clear();
+  const value = readGrantedPermissions(userId, roleId, tenantId);
+  grantedCache.set(key, { at: now, value });
+  value.catch(() => {
+    if (grantedCache.get(key)?.value === value) grantedCache.delete(key);
+  });
+  return value;
 });
 
 /**

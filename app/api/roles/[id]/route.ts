@@ -4,7 +4,7 @@ import connectDB from '@/lib/mongodb';
 import mongoose from 'mongoose';
 import Role from '@/models/Role';
 import Permission from '@/models/Permission'; // Import to register model for populate
-import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess, forgetGrantedPermissions } from '@/app/lib/auth-helpers';
 import { createAuditLog } from '@/lib/audit';
 import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zShortText } from '@/lib/api/validate';
@@ -190,6 +190,7 @@ export async function DELETE(
 
     await Role.deleteOne(tenantFilter(tenantId, { _id: id }));
     await Permission.deleteMany(tenantFilter(tenantId, { role: role._id }));
+    forgetGrantedPermissions();
 
     await createAuditLog({
       userId: session.userId,

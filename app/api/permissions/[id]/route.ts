@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Permission from '@/models/Permission';
-import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess, forgetGrantedPermissions } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 
@@ -86,6 +86,7 @@ export async function PUT(
         { success: false, error: 'Invalid permission data' },
         { status: 400 }
       );
+    forgetGrantedPermissions();
     }
     return NextResponse.json(
       { success: false, error: 'Failed to update permission' },
@@ -130,6 +131,7 @@ export async function DELETE(
     }
 
     await Permission.deleteOne(tenantFilter(tenantId, { _id: id }));
+    forgetGrantedPermissions();
 
     return NextResponse.json({ success: true, data: {} });
   } catch (error: any) {

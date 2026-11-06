@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Permission from '@/models/Permission';
-import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
+import { isAdmin, refuseAccess, forgetGrantedPermissions } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zObjectId, asString } from '@/lib/api/validate';
 
@@ -102,6 +102,7 @@ export async function POST(request: NextRequest) {
     }
 
     const permission = await Permission.create({ ...body, tenantId: tenantObjectId });
+    forgetGrantedPermissions();
     await permission.populate('user', 'name email');
     await permission.populate('role', 'name displayName');
 
