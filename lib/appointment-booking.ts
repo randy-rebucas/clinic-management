@@ -101,6 +101,9 @@ export async function nextWalkInNumber(tenantId: string | Types.ObjectId, tz: st
   });
 }
 
+/** Open online requests one person may hold at a clinic: a pending request blocks its slot for everyone else. */
+export const MAX_PENDING_ONLINE_REQUESTS = 3;
+
 /** True for a duplicate-key error on the doctor/time slot index (as opposed to a code collision). */
 export function isSlotDuplicateError(error: any): boolean {
   if (error?.code !== 11000) return false;

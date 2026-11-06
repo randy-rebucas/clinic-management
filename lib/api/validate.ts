@@ -43,6 +43,16 @@ export const zPhone = z.string().trim().min(7).max(20).regex(/^[+0-9 ()-]+$/, 'I
 export const zShortText = z.string().trim().max(200);
 export const zLongText = z.string().max(20000);
 export const zMoney = z.number().finite().min(0).max(100_000_000);
+/**
+ * A single-line name. Line breaks are refused, including U+2028/9, which `^` in a multiline
+ * RegExp also treats as a new line: names are written into line-based notes that code reads back.
+ */
+export const zPersonName = z.string().trim().min(1).max(100).regex(/^[^\p{Cc}\p{Zl}\p{Zp}]+$/u, 'Invalid name');
+/** A yyyy-MM-dd date that exists. `new Date('2026-02-31')` would quietly roll over into March. */
+export const zIsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date').refine((value) => {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}, 'Invalid date');
 
 /**
  * Reject anything that isn't a plain string. Use when a value from the request goes

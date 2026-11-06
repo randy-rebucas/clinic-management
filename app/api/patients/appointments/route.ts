@@ -17,6 +17,7 @@ import { weekSummary } from '@/lib/doctors';
 import { getSettings } from '@/lib/settings';
 import {
   ACTIVE_APPOINTMENT_STATUSES,
+  MAX_PENDING_ONLINE_REQUESTS,
   appointmentDayRange,
   nextAppointmentCode,
   normalizeTime,
@@ -231,6 +232,15 @@ export async function POST(request: NextRequest) {
     const slot = await checkPatientSlot({ tenantId, doctor, patientId: patient._id, appointmentDate, appointmentTime });
     if (slot instanceof NextResponse) return slot;
     const { tz, rules } = slot;
+
+    // A pending request holds its slot, so one account can't sit on a doctor's whole day.
+    const pending = await Appointment.countDocuments({ tenantId, patient: patient._id, status: 'pending' });
+    if (pending >= MAX_PENDING_ONLINE_REQUESTS) {
+      return NextResponse.json(
+        { success: false, error: 'You already have booking requests waiting for the clinic to confirm. Please contact the clinic.' },
+        { status: 429 }
+      );
+    }
 
     const limitCheck = await checkSubscriptionLimit(tenantId, 'createAppointment');
     if (!limitCheck.allowed) {

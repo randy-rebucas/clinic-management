@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { NextRequest } from 'next/server';
-import { parseBody, isValidationError, asString, escapeRegex, roundMoney, zObjectId } from '@/lib/api/validate';
+import { parseBody, isValidationError, asString, escapeRegex, roundMoney, zObjectId, zPersonName, zIsoDate } from '@/lib/api/validate';
 
 const jsonRequest = (body: string) =>
   new NextRequest('http://localhost/api/x', {
@@ -66,5 +66,34 @@ describe('roundMoney', () => {
   it('rounds to centavos', () => {
     expect(roundMoney(1.005)).toBe(1.01);
     expect(roundMoney(0.1 + 0.2)).toBe(0.3);
+  });
+});
+
+describe('zPersonName', () => {
+  it('keeps real names and trims them', () => {
+    expect(zPersonName.parse("  María O'Brien-Dela Cruz ")).toBe("María O'Brien-Dela Cruz");
+  });
+
+  it('refuses control characters and every kind of line break', () => {
+    for (const name of ['a\nb', 'a\rb', 'a\tb', 'a\u0000b', 'a\u2028b', 'a\u2029b']) {
+      expect(zPersonName.safeParse(name).success).toBe(false);
+    }
+  });
+
+  it('refuses blank and overlong names', () => {
+    expect(zPersonName.safeParse('   ').success).toBe(false);
+    expect(zPersonName.safeParse('a'.repeat(101)).success).toBe(false);
+  });
+});
+
+describe('zIsoDate', () => {
+  it('takes real dates, leap days included', () => {
+    expect(zIsoDate.safeParse('2028-02-29').success).toBe(true);
+  });
+
+  it('refuses dates that do not exist and other formats', () => {
+    for (const date of ['2027-02-29', '2026-02-31', '2026-13-01', '2026-00-10', '2026-1-1', '2026-01-01T00:00:00Z']) {
+      expect(zIsoDate.safeParse(date).success).toBe(false);
+    }
   });
 });
