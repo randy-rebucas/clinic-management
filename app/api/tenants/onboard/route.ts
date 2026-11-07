@@ -501,7 +501,7 @@ export async function POST(request: NextRequest) {
 
     const delivery = await sendSetPasswordEmail({ email: adminEmail, name: admin.name.trim(), token: invite.token, tenantId: tenant._id, kind: 'invite' });
     if (delivery !== 'sent' && process.env.NODE_ENV !== 'production') {
-      // Local setups often have no SMTP; the link is the only way into the new clinic.
+      // Local setups often have no email; the link is the only way into the new clinic.
       console.info(`[onboard] Set-password link for the new clinic admin: ${buildSetPasswordUrl(invite.token, tenant.subdomain)}`);
     }
 

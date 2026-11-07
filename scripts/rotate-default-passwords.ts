@@ -7,7 +7,7 @@
  *   npx tsx scripts/rotate-default-passwords.ts --apply    # rotate + email invites
  *
  * On --apply each affected user gets a random unusable password, mustSetPassword=true, a fresh
- * 72h invite token, and all sessions revoked; then the invite email is sent. If SMTP is not
+ * 72h invite token, and all sessions revoked; then the invite email is sent. If email is not
  * configured the accounts stay locked and admins re-send invites via POST /api/users/:id/invite.
  *
  * Output never contains passwords or tokens; emails are masked.
@@ -165,7 +165,7 @@ async function main() {
   if (APPLY) {
     console.log(`  Rotated:                  ${counts.rotated}`);
     console.log(`  Invites sent:             ${deliveries.sent}`);
-    console.log(`  Not sent (no SMTP):       ${deliveries['not-configured']}`);
+    console.log(`  Not sent (no email):      ${deliveries['not-configured']}`);
     console.log(`  Send failures:            ${deliveries.failed}`);
     if (deliveries['not-configured'] || deliveries.failed) {
       console.log('  Accounts without a delivered invite stay locked; re-send via POST /api/users/:id/invite.');

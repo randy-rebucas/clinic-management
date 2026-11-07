@@ -24,7 +24,7 @@
 
 ## Conventions & Integration
 - **Environment:** Secrets in `.env.local` (never commit); template in `.env.example`.
-- **External Services:** Cloudinary (see `lib/cloudinary.ts`), Twilio (SMS, `lib/sms.ts`), SMTP (email, `lib/email.ts`), Sentry (monitoring), n8n (automation in `n8n_automation/`).
+- **External Services:** Cloudinary (see `lib/cloudinary.ts`), Twilio (SMS, `lib/sms.ts`), Resend (email, `lib/email.ts`), Sentry (monitoring), n8n (automation in `n8n_automation/`).
 - **API:** Use RESTful patterns, return JSON, validate input, handle errors with proper status codes. See `app/api/` for examples.
 - **Security:** JWT auth, PH DPA compliance, audit logging, encryption (see `lib/encryption.ts`).
 - **UI:** Use modular, explicit React components. Prefer client/server separation as in `*PageClient.tsx` and `*Form.tsx` patterns.

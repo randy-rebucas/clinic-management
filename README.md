@@ -45,7 +45,7 @@ A comprehensive, modern clinic management application built with Next.js 16 and 
 - **Authentication**: JWT-based session management
 - **File Storage**: Cloudinary integration
 - **SMS**: Twilio integration
-- **Email**: SMTP support
+- **Email**: Resend
 
 ## User Interface
 
@@ -185,11 +185,8 @@ This project uses Next.js environment variables. According to the [Next.js docum
 - `TWILIO_VERIFY_SERVICE_SID`, `OTP_PROVIDER`, `SMS_POLICY_MODE`, `REQUIRE_PUBLIC_PHONE_VERIFICATION` - see [docs/SMS_TWILIO.md](docs/SMS_TWILIO.md)
 
 #### Email
-- `SMTP_HOST` - SMTP server host
-- `SMTP_PORT` - SMTP server port
-- `SMTP_USER` - SMTP username
-- `SMTP_PASS` - SMTP password
-- `SMTP_FROM` - Default sender email address
+- `RESEND_API_KEY` - Resend API key
+- `EMAIL_FROM` - Sender address, on a domain verified in Resend
 
 #### Cloudinary (Document Storage)
 - `CLOUDINARY_CLOUD_NAME` - Cloudinary cloud name
@@ -218,7 +215,7 @@ dropped and Session Replay is not enabled. Browser events are posted to the same
 
 **Notes:**
 - SMS functionality will work without Twilio credentials but will only log messages. To enable actual SMS sending, sign up at [Twilio](https://www.twilio.com) and add your credentials.
-- Email functionality requires SMTP configuration. Without it, emails will only be logged.
+- Email requires `RESEND_API_KEY` and `EMAIL_FROM`. Without them, no email is sent.
 - Cloudinary is used for document storage and image management. Without it, document uploads may be limited.
 
 ## MongoDB Setup

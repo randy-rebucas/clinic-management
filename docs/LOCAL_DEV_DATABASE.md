@@ -11,7 +11,7 @@ Local development runs against MongoDB in Docker, loaded from a production backu
 
 Both files are gitignored (`.env*.local`). The production file is deliberately **not** called `.env.production.local`, because `next build` / `next start` load that one automatically.
 
-`.env.local` also has its own `SESSION_SECRET` and `ENCRYPTION_KEY`, and leaves SMTP, PayPal and web push unset. Nothing in local dev can email, charge or notify a real person, and a production secret left in the data can't be decrypted locally.
+`.env.local` also has its own `SESSION_SECRET` and `ENCRYPTION_KEY`, and leaves Resend, PayPal and web push unset. Nothing in local dev can email, charge or notify a real person, and a production secret left in the data can't be decrypted locally.
 
 ## First-time setup
 

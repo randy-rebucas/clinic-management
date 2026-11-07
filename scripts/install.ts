@@ -130,12 +130,9 @@ MONGODB_URI=mongodb://localhost:27017/myclinicsoft
 # Session Secret (generate with: openssl rand -base64 32)
 SESSION_SECRET=your-session-secret-here-minimum-32-characters-long
 
-# Optional: Email Configuration (SMTP)
-# SMTP_HOST=smtp.gmail.com
-# SMTP_PORT=587
-# SMTP_USER=your-email@gmail.com
-# SMTP_PASS=your-app-password
-# SMTP_FROM=noreply@clinic.com
+# Optional: Email Configuration (Resend)
+# RESEND_API_KEY=re_your_api_key
+# EMAIL_FROM=noreply@your-verified-domain.com
 
 # Optional: SMS Configuration (Twilio)
 # TWILIO_ACCOUNT_SID=your-account-sid

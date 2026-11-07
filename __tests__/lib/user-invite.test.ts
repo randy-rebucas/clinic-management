@@ -134,7 +134,7 @@ describe('sendSetPasswordEmail', () => {
     error.mockRestore();
   });
 
-  it('does not send and logs only a masked email (no token) when SMTP is not configured', async () => {
+  it('does not send and logs only a masked email (no token) when email is not configured', async () => {
     isEmailConfigured.mockReturnValue(false);
     const { token } = generateInviteToken();
     const result = await sendSetPasswordEmail({ email: 'juan@clinic.ph', name: 'Juan', token });

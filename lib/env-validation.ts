@@ -33,11 +33,8 @@ const envConfig: EnvConfig = {
     'SMS_POLICY_MODE', // "enforce" blocks texts; anything else only logs what would be blocked
     'REQUIRE_PUBLIC_PHONE_VERIFICATION', // "true" makes online booking and registration confirm the phone by code
     'OTP_PROVIDER', // Unset: Twilio Verify in production, sendSMS in development. "local" in production is a rollback
-    'SMTP_HOST',
-    'SMTP_PORT',
-    'SMTP_USER',
-    'SMTP_PASS',
-    'SMTP_FROM',
+    'RESEND_API_KEY',
+    'EMAIL_FROM', // Sender on a domain verified in Resend, e.g. "MyClinicSoft <noreply@example.com>"
     'CLOUDINARY_CLOUD_NAME',
     'CLOUDINARY_API_KEY',
     'CLOUDINARY_API_SECRET',
@@ -157,12 +154,7 @@ export function isFeatureEnabled(feature: 'sms' | 'email' | 'cloudinary'): boole
         (process.env.TWILIO_MESSAGING_SERVICE_SID || process.env.TWILIO_PHONE_NUMBER)
       );
     case 'email':
-      return !!(
-        process.env.SMTP_HOST &&
-        process.env.SMTP_PORT &&
-        process.env.SMTP_USER &&
-        process.env.SMTP_PASS
-      );
+      return !!(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
     case 'cloudinary':
       return !!(
         process.env.CLOUDINARY_CLOUD_NAME &&
