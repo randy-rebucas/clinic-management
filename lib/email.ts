@@ -1,41 +1,27 @@
-// Email service using Nodemailer
-// Set environment variables: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
+// Email service using Resend
+// Set environment variables: RESEND_API_KEY, EMAIL_FROM (on a domain verified in Resend)
 
-import nodemailer, { type Transporter } from 'nodemailer';
+import { Resend } from 'resend';
 
-let transporter: Transporter | null = null;
+/** Cron and broadcast loops send back to back, so they can outrun Resend's per-second limit. */
+const RATE_LIMIT_RETRIES = 3;
+const MAX_RETRY_WAIT_MS = 2000;
 
-function getEmailTransporter(): Transporter | null {
-  if (transporter) {
-    return transporter;
-  }
+let client: Resend | null = null;
 
-  const host = process.env.SMTP_HOST;
-  const port = process.env.SMTP_PORT;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@clinic.com';
-
-  if (!host || !port || !user || !pass) {
-    console.warn('SMTP credentials not configured. Email sending will be disabled.');
+function getEmailClient(): Resend | null {
+  if (!isEmailConfigured()) {
+    console.warn('Resend not configured. Email sending will be disabled.');
     return null;
   }
+  client ??= new Resend(process.env.RESEND_API_KEY);
+  return client;
+}
 
-  try {
-    transporter = nodemailer.createTransport({
-      host,
-      port: parseInt(port, 10),
-      secure: port === '465', // true for 465, false for other ports
-      auth: {
-        user,
-        pass,
-      },
-    });
-    return transporter;
-  } catch (error) {
-    console.warn('Failed to create email transporter:', error);
-    return null;
-  }
+function retryWaitMs(headers: Record<string, string> | null, attempt: number): number {
+  const seconds = Number(headers?.['retry-after']);
+  const wait = seconds > 0 ? seconds * 1000 : 500 * 2 ** attempt;
+  return Math.min(wait, MAX_RETRY_WAIT_MS);
 }
 
 export interface EmailOptions {
@@ -47,7 +33,9 @@ export interface EmailOptions {
   bcc?: string | string[];
   attachments?: Array<{
     filename: string;
+    /** A string is the file's text, not base64. */
     content?: string | Buffer;
+    /** A URL Resend can fetch, not a local file. */
     path?: string;
     contentType?: string;
   }>;
@@ -64,34 +52,56 @@ export function escapeHtml(value: unknown): string {
 }
 
 export async function sendEmail(options: EmailOptions): Promise<{ success: boolean; messageId?: string; error?: string; skipped?: boolean }> {
-  const emailTransporter = getEmailTransporter();
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@clinic.com';
+  const emailClient = getEmailClient();
 
-  if (!emailTransporter) {
+  if (!emailClient) {
     // Nothing went out: callers must not record this as delivered.
     return {
       success: false,
       skipped: true,
-      error: 'SMTP not configured - email not sent',
+      error: 'Resend not configured - email not sent',
     };
   }
 
   try {
-    const result = await emailTransporter.sendMail({
-      from,
-      to: Array.isArray(options.to) ? options.to.join(', ') : options.to,
+    const message = {
+      from: process.env.EMAIL_FROM!,
+      to: options.to,
       subject: options.subject,
       html: options.html,
       text: options.text || (options.html ? options.html.replace(/<[^>]*>/g, '') : ''),
-      cc: options.cc ? (Array.isArray(options.cc) ? options.cc.join(', ') : options.cc) : undefined,
-      bcc: options.bcc ? (Array.isArray(options.bcc) ? options.bcc.join(', ') : options.bcc) : undefined,
-      attachments: options.attachments,
-    });
-
-    return {
-      success: true,
-      messageId: result.messageId,
+      cc: options.cc,
+      bcc: options.bcc,
+      // Resend reads a string as base64.
+      attachments: options.attachments?.map((attachment) => ({
+        ...attachment,
+        content: typeof attachment.content === 'string' ? Buffer.from(attachment.content) : attachment.content,
+      })),
     };
+
+    for (let attempt = 0; ; attempt++) {
+      // Resend reports a failed send in the result; it doesn't throw.
+      const { data, error, headers } = await emailClient.emails.send(message);
+
+      if (!error) {
+        return {
+          success: true,
+          messageId: data.id,
+        };
+      }
+
+      // Only the per-second limit clears by waiting. The daily and monthly quotas are also 429s.
+      if (error.name === 'rate_limit_exceeded' && attempt < RATE_LIMIT_RETRIES) {
+        await new Promise((resolve) => setTimeout(resolve, retryWaitMs(headers, attempt)));
+        continue;
+      }
+
+      console.error('Error sending email:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to send email',
+      };
+    }
   } catch (error: any) {
     console.error('Error sending email:', error);
     return {
@@ -102,12 +112,7 @@ export async function sendEmail(options: EmailOptions): Promise<{ success: boole
 }
 
 export function isEmailConfigured(): boolean {
-  return !!(
-    process.env.SMTP_HOST &&
-    process.env.SMTP_PORT &&
-    process.env.SMTP_USER &&
-    process.env.SMTP_PASS
-  );
+  return !!(process.env.RESEND_API_KEY && process.env.EMAIL_FROM);
 }
 
 // Email template helpers

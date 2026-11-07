@@ -150,7 +150,7 @@ async function loadTenant(tenantId: Types.ObjectId | string | null | undefined) 
 export type InviteDelivery = 'sent' | 'not-configured' | 'failed';
 
 /**
- * Email the set-password link. Never throws. When SMTP is not configured the invite stays
+ * Email the set-password link. Never throws. When email is not configured the invite stays
  * valid and can be re-sent with POST /api/users/:id/invite once email works.
  */
 export async function sendSetPasswordEmail(options: {
@@ -163,7 +163,7 @@ export async function sendSetPasswordEmail(options: {
   const masked = maskEmail(options.email);
   try {
     if (!isEmailConfigured()) {
-      console.warn(`[invite] SMTP not configured; set-password email for ${masked} was not sent (re-send it from staff management).`);
+      console.warn(`[invite] Email not configured; set-password email for ${masked} was not sent (re-send it from staff management).`);
       return 'not-configured';
     }
     const tenant = await loadTenant(options.tenantId);

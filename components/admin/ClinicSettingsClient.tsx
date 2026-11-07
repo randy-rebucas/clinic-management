@@ -1319,7 +1319,7 @@ function AutomationsSection({
 
 function ServicesSection({ services }: { services: ClinicSettingsPageData['services'] }) {
   const rows = [
-    { key: 'email', label: 'Email', ok: services.email, means: 'Reminders, receipts, results and invites by email.', vars: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM (optional)'] },
+    { key: 'email', label: 'Email', ok: services.email, means: 'Reminders, receipts, results and invites by email.', vars: ['RESEND_API_KEY', 'EMAIL_FROM'] },
     { key: 'sms', label: 'Text messages', ok: services.sms, means: 'Reminders and notices by SMS through Twilio.', vars: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_MESSAGING_SERVICE_SID'] },
     { key: 'files', label: 'File storage', ok: services.files, means: 'Documents and images kept on Cloudinary; without it, files are stored in the database.', vars: ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'] },
   ];
