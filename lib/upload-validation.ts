@@ -26,8 +26,12 @@ export const DOCUMENT_UPLOAD_TYPES: readonly string[] = [...ALLOWED_UPLOAD_TYPES
 /** Types that are safe to render inline in the browser (everything else downloads). */
 export const INLINE_SAFE_TYPES = new Set<string>(ALLOWED_UPLOAD_TYPES);
 
-/** Files stored inline as data URLs live inside a MongoDB document (16MB cap incl. base64 overhead). */
-export const MAX_INLINE_UPLOAD_BYTES = 5 * 1024 * 1024;
+/**
+ * Largest file any upload route accepts, wherever it is stored. Vercel Functions refuse request
+ * bodies over 4.5 MB (multipart framing included) before the route runs, so the cap sits below
+ * that; it also keeps inline (data URL) files well inside MongoDB's 16 MB document limit.
+ */
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 
 function startsWith(buf: Uint8Array, sig: number[], offset = 0) {
   if (buf.length < offset + sig.length) return false;
@@ -99,7 +103,7 @@ export async function validateUpload(
   if (!file || typeof (file as any).arrayBuffer !== 'function') {
     return { ok: false, error: 'No file provided', status: 400 };
   }
-  const maxBytes = opts.maxBytes ?? MAX_INLINE_UPLOAD_BYTES;
+  const maxBytes = Math.min(opts.maxBytes ?? MAX_UPLOAD_BYTES, MAX_UPLOAD_BYTES);
   if (file.size <= 0) return { ok: false, error: 'File is empty', status: 400 };
   if (file.size > maxBytes) {
     return { ok: false, error: `File too large. Maximum size is ${Math.floor(maxBytes / (1024 * 1024))}MB`, status: 413 };

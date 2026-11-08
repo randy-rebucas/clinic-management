@@ -3,10 +3,11 @@
 import { useId, useRef, useState, type ReactNode } from 'react';
 import { FIELD, FOCUS_RING, Svg } from '../appointments/shared';
 import { fileSize } from './labels';
+import { MAX_UPLOAD_BYTES } from '@/lib/upload-validation';
 
-/** What the upload routes accept (lib/upload-validation ALLOWED_UPLOAD_TYPES, 5 MB inline cap). */
+/** What the upload routes accept (lib/upload-validation ALLOWED_UPLOAD_TYPES and MAX_UPLOAD_BYTES). */
 export const UPLOAD_ACCEPT = 'image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain';
-export const UPLOAD_MAX = 5 * 1024 * 1024;
+export const UPLOAD_MAX = MAX_UPLOAD_BYTES;
 
 const CLIP = 'M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13';
 
@@ -39,7 +40,7 @@ export default function AttachForm({
       return;
     }
     if (f && f.size > UPLOAD_MAX) {
-      setProblem(`${f.name} is ${fileSize(f.size)}. Files attached to a ${noun} can be up to 5 MB.`);
+      setProblem(`${f.name} is ${fileSize(f.size)}. Files attached to a ${noun} can be up to 4 MB.`);
       setFile(null);
       return;
     }
@@ -93,7 +94,7 @@ export default function AttachForm({
         </button>
       </div>
       <p id={`${ids}-hint`} className={`text-sm ${problem ? 'font-medium text-red-700' : 'text-gray-500'}`} role={problem ? 'alert' : undefined}>
-        {problem ?? 'JPEG, PNG, GIF or WebP images, PDFs and text files, up to 5 MB each.'}
+        {problem ?? 'JPEG, PNG, GIF or WebP images, PDFs and text files, up to 4 MB each.'}
       </p>
     </form>
   );

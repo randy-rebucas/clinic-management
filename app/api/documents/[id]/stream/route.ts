@@ -46,8 +46,8 @@ export async function GET(
       description: `Opened document ${document.documentCode ?? id}`,
     }));
 
-    return new NextResponse(new Uint8Array(file.buffer), {
-      headers: fileResponseHeaders(file.contentType, document.originalFilename || document.filename, { size: file.buffer.length }),
+    return new NextResponse(file.body, {
+      headers: fileResponseHeaders(file.contentType, document.originalFilename || document.filename, { size: file.size }),
     });
   } catch (error: any) {
     console.error('Error streaming document:', error);

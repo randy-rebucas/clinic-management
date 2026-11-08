@@ -38,6 +38,7 @@ const envConfig: EnvConfig = {
     'CLOUDINARY_CLOUD_NAME',
     'CLOUDINARY_API_KEY',
     'CLOUDINARY_API_SECRET',
+    'CLOUDINARY_ROOT_FOLDER', // Top folder in the shared Cloudinary account (default "myclinicsoft")
     'SENTRY_DSN', // Sentry DSN for error tracking and monitoring
     'NEXT_PUBLIC_VAPID_PUBLIC_KEY', // PWA push notifications
     'VAPID_PRIVATE_KEY', // PWA push notifications

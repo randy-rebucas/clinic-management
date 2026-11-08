@@ -9,7 +9,7 @@ import { getDocumentType, inferDocumentCategory } from '@/lib/document-utils';
 import { uploadDocumentToCloudinary, isCloudinaryConfigured } from '@/lib/cloudinary';
 import { Types } from 'mongoose';
 import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
-import { validateUpload, DOCUMENT_UPLOAD_TYPES, MAX_INLINE_UPLOAD_BYTES } from '@/lib/upload-validation';
+import { validateUpload, DOCUMENT_UPLOAD_TYPES } from '@/lib/upload-validation';
 import { withStreamUrls } from '@/lib/document-file';
 import {
   DOCUMENT_CATEGORIES,
@@ -21,7 +21,8 @@ import {
 import { nextSequence, formatCode, maxCodeSeed } from '@/lib/counters';
 import { escapeRegex } from '@/lib/api/validate';
 import { createAuditLog } from '@/lib/audit';
-import { EXPIRING_DAYS, MAX_DOCUMENT_BYTES } from '@/lib/documents';
+import { EXPIRING_DAYS } from '@/lib/documents';
+import { getTenantSubdomain } from '@/lib/tenant';
 
 export async function GET(request: NextRequest) {
   const ctx = await requireTenantSession();
@@ -171,11 +172,7 @@ export async function POST(request: NextRequest) {
     }
 
     const useCloudinary = isCloudinaryConfigured();
-    const check = await validateUpload(file instanceof File ? file : null, {
-      allowed: DOCUMENT_UPLOAD_TYPES,
-      // Inline (MongoDB) storage is limited by the document size cap.
-      maxBytes: useCloudinary ? MAX_DOCUMENT_BYTES : MAX_INLINE_UPLOAD_BYTES,
-    });
+    const check = await validateUpload(file instanceof File ? file : null, { allowed: DOCUMENT_UPLOAD_TYPES });
     if (!check.ok) {
       return NextResponse.json({ success: false, error: check.error }, { status: check.status });
     }
@@ -218,9 +215,9 @@ export async function POST(request: NextRequest) {
 
     if (useCloudinary) {
       const uploadFile = new File([new Uint8Array(check.buffer)], check.filename, { type: check.contentType });
-      const uploadResult = await uploadDocumentToCloudinary(uploadFile, finalCategory, tenantId, {
+      const owner = { tenantId, tenantSlug: await getTenantSubdomain(tenantId) };
+      const uploadResult = await uploadDocumentToCloudinary(uploadFile, finalCategory, owner, {
         resourceType: documentType === 'image' ? 'image' : 'raw',
-        contentType: check.contentType,
         tags,
       });
 

@@ -20,10 +20,7 @@ export async function POST(request: NextRequest) {
     const file = formData.get('file');
     const documentId = formData.get('documentId');
 
-    const check = await validateUpload(file instanceof File ? file : null, {
-      allowed: DOCUMENT_UPLOAD_TYPES,
-      maxBytes: 10 * 1024 * 1024,
-    });
+    const check = await validateUpload(file instanceof File ? file : null, { allowed: DOCUMENT_UPLOAD_TYPES });
     if (!check.ok) {
       return NextResponse.json({ success: false, error: check.error }, { status: check.status });
     }

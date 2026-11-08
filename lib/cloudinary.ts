@@ -1,7 +1,7 @@
 // Cloudinary configuration and utilities
 // Set environment variables: CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
 
-import { v2 as cloudinary } from 'cloudinary';
+import { v2 as cloudinary, type UploadApiResponse } from 'cloudinary';
 
 // Configure Cloudinary
 if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
@@ -13,6 +13,9 @@ if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && proce
   });
 }
 
+/** How long an upload or a download may take before it is given up. */
+const CLOUDINARY_TIMEOUT_MS = 60_000;
+
 export interface UploadOptions {
   folder?: string; // Folder path in Cloudinary
   publicId?: string; // Custom public ID
@@ -22,7 +25,6 @@ export interface UploadOptions {
    * and must be fetched with a short-lived signed URL (see getPrivateDownloadUrl).
    */
   deliveryType?: 'authenticated' | 'private' | 'upload';
-  contentType?: string; // MIME type of the file, for the data URI
   format?: string; // Force format conversion
   transformation?: any; // Image transformations
   tags?: string[]; // Tags for organization
@@ -43,12 +45,19 @@ export interface UploadResult {
 }
 
 /**
- * Upload file to Cloudinary
+ * Upload file to Cloudinary. The bytes are streamed to the upload API as they are, not
+ * re-encoded as a base64 data URI (a third bigger, and a second copy in memory).
  */
 export async function uploadToCloudinary(
   file: File | Buffer,
-  options: UploadOptions = {}
+  options: UploadOptions & { folder: string }
 ): Promise<{ success: boolean; data?: UploadResult; error?: string }> {
+  // The account is shared: nothing of this app may land outside its own root (see ownedUploadOptions).
+  if (!options.folder.startsWith(`${CLOUDINARY_ROOT_FOLDER}/`)) {
+    console.error(`Refusing a Cloudinary upload outside ${CLOUDINARY_ROOT_FOLDER}/: ${options.folder}`);
+    return { success: false, error: 'Failed to upload file' };
+  }
+
   // Check if Cloudinary is configured
   if (!isCloudinaryConfigured()) {
     return {
@@ -58,43 +67,27 @@ export async function uploadToCloudinary(
   }
 
   try {
-    // Convert File to buffer if needed
-    let buffer: Buffer;
-    if (file instanceof File) {
-      const arrayBuffer = await file.arrayBuffer();
-      buffer = Buffer.from(arrayBuffer);
-    } else {
-      buffer = file;
-    }
+    const buffer = file instanceof File ? Buffer.from(await file.arrayBuffer()) : file;
 
-    // Convert buffer to base64
-    const base64 = buffer.toString('base64');
-    const mime = options.contentType || (file instanceof File ? file.type : '') || 'application/octet-stream';
-    const dataUri = `data:${mime};base64,${base64}`;
-
-    // Upload options
-    const uploadOptions: any = {
-      folder: options.folder || 'clinic-documents',
+    const uploadOptions: Record<string, unknown> = {
+      folder: options.folder,
       resource_type: options.resourceType || 'auto',
       type: options.deliveryType || 'authenticated',
       tags: options.tags || [],
       context: options.context || {},
+      timeout: CLOUDINARY_TIMEOUT_MS,
     };
+    if (options.publicId) uploadOptions.public_id = options.publicId;
+    if (options.format) uploadOptions.format = options.format;
+    if (options.transformation) uploadOptions.transformation = options.transformation;
 
-    if (options.publicId) {
-      uploadOptions.public_id = options.publicId;
-    }
-
-    if (options.format) {
-      uploadOptions.format = options.format;
-    }
-
-    if (options.transformation) {
-      uploadOptions.transformation = options.transformation;
-    }
-
-    // Upload to Cloudinary
-    const result = await cloudinary.uploader.upload(dataUri, uploadOptions);
+    const result = await new Promise<UploadApiResponse>((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(uploadOptions, (error, res) => {
+        if (error || !res) reject(error ?? new Error('Cloudinary returned no upload result'));
+        else resolve(res);
+      });
+      stream.end(buffer);
+    });
 
     return {
       success: true,
@@ -107,7 +100,7 @@ export async function uploadToCloudinary(
         height: result.height,
         bytes: result.bytes,
         resource_type: result.resource_type,
-        type: (result as any).type || uploadOptions.type,
+        type: result.type || String(uploadOptions.type),
         created_at: result.created_at,
       },
     };
@@ -126,30 +119,72 @@ export function safeFolderSegment(value: string | undefined | null, fallback = '
   return cleaned.replace(/^_+|_+$/g, '') || fallback;
 }
 
+// ── Folder layout ──────────────────────────────────────────────────────────────
+//
+// The Cloudinary account is shared with other apps, so everything this app stores lives under
+// one root folder, then one folder per clinic, then one per kind of file:
+//
+//   {root}/{tenant_slug}/{type}/{asset}      e.g. myclinicsoft/sunrise-clinic/visit-files/abc123
+//
+// The clinic folder is its subdomain (Tenant.subdomain: lowercase letters, digits and hyphens,
+// unique, never changed by the app). Every asset is also tagged with the clinic's id
+// (tenantTag), which still identifies the owner if a deleted clinic's subdomain is reused.
+// Patient identifiers never appear in folders or tags: both show in URLs and the console.
+
+/** This app's top folder in the shared account (CLOUDINARY_ROOT_FOLDER, default "myclinicsoft"). */
+export const CLOUDINARY_ROOT_FOLDER = safeFolderSegment(process.env.CLOUDINARY_ROOT_FOLDER, 'myclinicsoft');
+
+/** The kinds of file, one folder each. */
+export const ASSET_TYPES = ['documents', 'patient-files', 'visit-files', 'lab-result-files', 'display-ads'] as const;
+export type AssetType = (typeof ASSET_TYPES)[number];
+
 /**
- * Upload a clinic document as an authenticated (non-public) asset, organised by
- * tenant and category. Patient identifiers are deliberately kept out of folder names
- * and tags, which are visible in asset URLs and the Cloudinary console.
+ * Stands in for the clinic in the folder of a file whose clinic is unknown (only possible for
+ * very old patient attachments). Subdomains can't contain "_", so it can't be a real clinic's.
+ */
+export const NO_CLINIC_SLUG = 'no_clinic';
+
+/** The folder that holds everything of one clinic, without a trailing slash. */
+export function tenantFolder(tenantSlug: string): string {
+  return `${CLOUDINARY_ROOT_FOLDER}/${safeFolderSegment(tenantSlug, NO_CLINIC_SLUG)}`;
+}
+
+/** The folder for one kind of file of one clinic. */
+export function assetFolder(tenantSlug: string, type: AssetType): string {
+  return `${tenantFolder(tenantSlug)}/${type}`;
+}
+
+/** The tag every asset of a clinic carries. */
+export function tenantTag(tenantId: string): string {
+  return `tenant_${safeFolderSegment(tenantId, 'unknown')}`;
+}
+
+/** Who a file belongs to: the clinic's id (for the tag) and subdomain (for the folder). */
+export interface AssetOwner {
+  tenantId: string;
+  tenantSlug: string;
+}
+
+/** Folder and tags for a new upload of a clinic, plus any extra tags. */
+export function ownedUploadOptions(owner: AssetOwner, type: AssetType, extraTags: string[] = []): { folder: string; tags: string[] } {
+  const tags = extraTags.map((t) => safeFolderSegment(t, '')).filter(Boolean).slice(0, 20);
+  return { folder: assetFolder(owner.tenantSlug, type), tags: [tenantTag(owner.tenantId), type, ...tags] };
+}
+
+/**
+ * Upload a clinic document as an authenticated (non-public) asset into the clinic's documents
+ * folder. The category and the staff's own tags go on as tags, not folders.
  */
 export async function uploadDocumentToCloudinary(
   file: File,
   category: string,
-  tenantId?: string,
+  owner: AssetOwner,
   options: UploadOptions = {}
 ): Promise<{ success: boolean; data?: UploadResult; error?: string }> {
-  const safeCategory = safeFolderSegment(category);
-  const folderParts = ['clinic-documents'];
-  if (tenantId) folderParts.push(safeFolderSegment(tenantId, 'tenant'));
-  folderParts.push(safeCategory);
-
-  const tags = (options.tags || []).map((t) => safeFolderSegment(t, '')).filter(Boolean).slice(0, 20);
-  tags.push(safeCategory);
-
   return uploadToCloudinary(file, {
     ...options,
     deliveryType: options.deliveryType || 'authenticated',
-    folder: folderParts.join('/'),
-    tags,
+    ...ownedUploadOptions(owner, 'documents', [safeFolderSegment(category), ...(options.tags || [])]),
   });
 }
 
@@ -193,6 +228,16 @@ export function parseCloudinaryUrl(url: string | undefined | null): CloudinaryAs
     : { publicId: path, resourceType, deliveryType };
 }
 
+/**
+ * The ad image as an asset of this account in the clinic's ad folder (the one public kind of
+ * upload), or null when it is anything else.
+ */
+export function ownAdImageRef(url: string | undefined | null, tenantSlug: string): CloudinaryAssetRef | null {
+  const ref = parseCloudinaryUrl(url);
+  if (!ref || ref.resourceType !== 'image' || ref.deliveryType !== 'upload') return null;
+  return ref.publicId.startsWith(`${assetFolder(tenantSlug, 'display-ads')}/`) ? ref : null;
+}
+
 const RESOURCE_TYPES: ReadonlyArray<CloudinaryAssetRef['resourceType']> = ['image', 'video', 'raw'];
 const DELIVERY_TYPES: ReadonlyArray<CloudinaryAssetRef['deliveryType']> = ['authenticated', 'private', 'upload'];
 
@@ -233,19 +278,25 @@ export function getPrivateDownloadUrl(ref: CloudinaryAssetRef, expiresInSeconds 
 }
 
 /**
- * Fetch a stored asset's bytes server-side, so files are proxied through the app with
- * its own headers instead of redirecting the browser to a long-lived public URL.
+ * Open a stored asset for the app to pass on to the browser. The body is streamed through
+ * as it arrives rather than read into memory first, so the browser never sees a Cloudinary
+ * URL and a large file doesn't sit whole in the function. `size` is only given when the
+ * byte count is known to match what is streamed (no transfer encoding in between).
  */
-export async function fetchCloudinaryAsset(ref: CloudinaryAssetRef): Promise<{ buffer: Buffer; contentType: string } | null> {
+export async function openCloudinaryAsset(
+  ref: CloudinaryAssetRef
+): Promise<{ body: ReadableStream<Uint8Array>; contentType: string; size?: number } | null> {
   const signedUrl = getPrivateDownloadUrl(ref, 120);
   if (!signedUrl) return null;
   try {
-    const res = await fetch(signedUrl, { redirect: 'follow', signal: AbortSignal.timeout(30000) });
-    if (!res.ok) return null;
-    return {
-      buffer: Buffer.from(await res.arrayBuffer()),
-      contentType: res.headers.get('content-type') || 'application/octet-stream',
-    };
+    const res = await fetch(signedUrl, { redirect: 'follow', signal: AbortSignal.timeout(CLOUDINARY_TIMEOUT_MS) });
+    if (!res.ok || !res.body) {
+      await res.body?.cancel().catch(() => {});
+      return null;
+    }
+    const length = Number(res.headers.get('content-length'));
+    const size = !res.headers.get('content-encoding') && Number.isFinite(length) && length > 0 ? length : undefined;
+    return { body: res.body, contentType: res.headers.get('content-type') || 'application/octet-stream', size };
   } catch (error) {
     console.error('Error fetching Cloudinary asset:', error);
     return null;
@@ -253,62 +304,13 @@ export async function fetchCloudinaryAsset(ref: CloudinaryAssetRef): Promise<{ b
 }
 
 /**
- * Generate thumbnail URL from Cloudinary
- */
-export function getThumbnailUrl(publicId: string, width: number = 300, height?: number): string {
-  if (!isCloudinaryConfigured()) {
-    return '';
-  }
-
-  const transformation: any = {
-    width,
-    height: height || width,
-    crop: 'fill',
-    quality: 'auto',
-    format: 'auto',
-  };
-
-  return cloudinary.url(publicId, {
-    transformation: [transformation],
-    secure: true,
-  });
-}
-
-/**
- * Generate optimized image URL
- */
-export function getOptimizedImageUrl(
-  publicId: string,
-  width?: number,
-  height?: number,
-  quality: string = 'auto',
-  format?: string
-): string {
-  if (!isCloudinaryConfigured()) {
-    return '';
-  }
-
-  const transformation: any = {
-    quality,
-    format: format || 'auto',
-  };
-
-  if (width) transformation.width = width;
-  if (height) transformation.height = height;
-
-  return cloudinary.url(publicId, {
-    transformation: [transformation],
-    secure: true,
-  });
-}
-
-/**
- * Delete file from Cloudinary
+ * Delete file from Cloudinary. An asset that is already gone counts as deleted: the goal
+ * (the file no longer exists) is met, and retries of an earlier removal must not fail.
  */
 export async function deleteFromCloudinary(
   publicId: string,
   opts: { resourceType?: string; deliveryType?: string } = {}
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; alreadyGone?: boolean; error?: string }> {
   if (!isCloudinaryConfigured()) {
     return {
       success: false,
@@ -320,16 +322,13 @@ export async function deleteFromCloudinary(
     const result = await cloudinary.uploader.destroy(publicId, {
       ...(opts.resourceType ? { resource_type: opts.resourceType } : {}),
       ...(opts.deliveryType ? { type: opts.deliveryType } : {}),
+      invalidate: true,
     });
-    
-    if (result.result === 'ok') {
-      return { success: true };
-    } else {
-      return {
-        success: false,
-        error: result.result || 'Failed to delete from Cloudinary',
-      };
-    }
+
+    if (result.result === 'ok') return { success: true };
+    if (result.result === 'not found') return { success: true, alreadyGone: true };
+    console.error(`Cloudinary did not delete ${publicId}: ${result.result}`);
+    return { success: false, error: result.result || 'Failed to delete from Cloudinary' };
   } catch (error: any) {
     console.error('Error deleting from Cloudinary:', error);
     return {
@@ -340,20 +339,38 @@ export async function deleteFromCloudinary(
 }
 
 /**
- * Extract public ID from Cloudinary URL
+ * Delete every asset under a folder prefix (`{ prefix }`, one delivery type) or carrying a tag
+ * (`{ tag }`). Cloudinary removes at most 1000 per call and says when more are left (a cursor,
+ * or `partial`), so this keeps calling until none is.
  */
-export function extractPublicIdFromUrl(url: string): string | null {
+export async function deleteCloudinaryAssets(
+  match: { prefix: string; deliveryType: 'authenticated' | 'private' | 'upload' } | { tag: string },
+  resourceType: 'image' | 'video' | 'raw'
+): Promise<{ deleted: number; error?: string }> {
+  if (!isCloudinaryConfigured()) return { deleted: 0, error: 'Cloudinary is not configured' };
+  // Never a bare root or clinic-less prefix: that would empty more than one clinic.
+  if ('prefix' in match && match.prefix.split('/').filter(Boolean).length < 2) {
+    return { deleted: 0, error: `refusing to delete by the broad prefix "${match.prefix}"` };
+  }
+  let deleted = 0;
+  let cursor: string | undefined;
   try {
-    const ref = parseCloudinaryUrl(url);
-    if (ref) return ref.publicId;
-    // Cloudinary URL format: https://res.cloudinary.com/{cloud_name}/{resource_type}/upload/{version}/{public_id}.{format}
-    const match = url.match(/\/(?:upload|authenticated|private)\/(?:s--[^/]+--\/)?(?:v\d+\/)?(.+?)(?:\.[^.]+)?$/);
-    if (match && match[1]) {
-      return match[1];
+    // A safety stop well past any real folder (1000 per round).
+    for (let round = 0; round < 1000; round++) {
+      const opts = { resource_type: resourceType, invalidate: true, ...(cursor ? { next_cursor: cursor } : {}) };
+      const res =
+        'prefix' in match
+          ? await cloudinary.api.delete_resources_by_prefix(match.prefix, { ...opts, type: match.deliveryType })
+          : await cloudinary.api.delete_resources_by_tag(match.tag, opts);
+      const removedNow = Object.values(res.deleted ?? {}).filter((v) => v === 'deleted').length;
+      deleted += removedNow;
+      cursor = res.next_cursor;
+      // `partial` without a cursor: the next call starts over on what is left.
+      if (!cursor && !(res.partial && removedNow > 0)) return { deleted };
     }
-    return null;
-  } catch (error) {
-    return null;
+    return { deleted, error: 'stopped after 1000 rounds; run again' };
+  } catch (error: any) {
+    return { deleted, error: error?.error?.message ?? error?.message ?? 'failed' };
   }
 }
 
@@ -367,24 +384,3 @@ export function isCloudinaryConfigured(): boolean {
     process.env.CLOUDINARY_API_SECRET
   );
 }
-
-/**
- * Get a file URL (for download/view). Signed and short-lived; prefer
- * fetchCloudinaryAsset so the browser never receives a Cloudinary URL at all.
- */
-export function getCloudinaryFileUrl(
-  publicId: string,
-  format?: string,
-  opts: { resourceType?: CloudinaryAssetRef['resourceType']; deliveryType?: CloudinaryAssetRef['deliveryType'] } = {}
-): string {
-  if (!isCloudinaryConfigured()) {
-    return '';
-  }
-  return getPrivateDownloadUrl({
-    publicId,
-    format,
-    resourceType: opts.resourceType || 'image',
-    deliveryType: opts.deliveryType || 'authenticated',
-  });
-}
-

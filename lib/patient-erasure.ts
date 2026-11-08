@@ -20,8 +20,7 @@ import Survey from '@/models/Survey';
 import SmsMessage from '@/models/SmsMessage';
 import Visit from '@/models/Visit';
 import WaitlistEntry from '@/models/WaitlistEntry';
-import { cloudinaryRefForDocument } from '@/lib/document-file';
-import { deleteFromCloudinary } from '@/lib/cloudinary';
+import { removeDocumentFile } from '@/lib/document-file';
 import { deleteStoredAttachment } from '@/lib/attachment-file';
 
 /**
@@ -125,19 +124,38 @@ export interface ErasureResult {
   filesNotRemoved: string[];
 }
 
-/** Remove the clinic's uploaded documents for the patient from Cloudinary, then their records. */
+/**
+ * Remove the clinic's uploaded documents for the patient from Cloudinary, then their records.
+ * A record whose file could not be removed is kept, emptied of everything about the patient and
+ * unlinked from them, but still marked with where its file is, so storage cleanup
+ * (retryPendingFileRemovals) can finish the job. Its public id is returned for follow-up.
+ */
 async function deleteDocuments(tenantId: Types.ObjectId, patientId: Types.ObjectId): Promise<string[]> {
-  const docs = await DocumentModel.find({ tenantId, patient: patientId }).select('url metadata').lean<{ url?: string; metadata?: unknown }[]>();
+  const docs = await DocumentModel.find({ tenantId, patient: patientId }).select('_id url metadata').lean<{ _id: Types.ObjectId; url?: string; metadata?: unknown }[]>();
   const failed: string[] = [];
+  const keep: Types.ObjectId[] = [];
   for (const doc of docs) {
-    const ref = cloudinaryRefForDocument(doc);
-    if (!ref) continue;
-    const result = await deleteFromCloudinary(ref.publicId, { resourceType: ref.resourceType, deliveryType: ref.deliveryType });
-    if (!result.success) failed.push(ref.publicId);
+    const { gone, fields } = await removeDocumentFile(doc);
+    if (gone) continue;
+    keep.push(doc._id);
+    failed.push(String(fields['metadata.cloudinaryPublicId']));
+    await DocumentModel.updateOne(
+      { _id: doc._id },
+      {
+        $set: { status: 'deleted', url: 'removed:', title: 'Removed', filename: 'removed', originalFilename: 'removed', ...fields },
+        $unset: Object.fromEntries(STRIPPED_DOCUMENT_FIELDS.map((f) => [f, 1])),
+      }
+    );
   }
-  await DocumentModel.deleteMany({ tenantId, patient: patientId });
+  await DocumentModel.deleteMany({ tenantId, patient: patientId, _id: { $nin: keep } });
   return failed;
 }
+
+/** What a kept record of an erased patient's document loses: anything that says who or what it was about. */
+const STRIPPED_DOCUMENT_FIELDS = [
+  'patient', 'visit', 'appointment', 'labResult', 'invoice', 'description', 'notes', 'tags', 'ocrText', 'thumbnailUrl',
+  'referral', 'imaging', 'medicalCertificate', 'labResultMetadata', 'expiryDate',
+];
 
 /** Copy the buyer onto the clinic's invoices for the patient before their name and address go. */
 async function snapshotBuyer(tenantId: Types.ObjectId, patientId: Types.ObjectId) {

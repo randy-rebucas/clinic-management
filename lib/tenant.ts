@@ -193,6 +193,23 @@ export async function getTenantId(): Promise<string | null> {
   return context.tenantId;
 }
 
+/** Subdomains by clinic id. A subdomain never changes once the clinic exists, so this never goes stale. */
+const subdomainById = new Map<string, string>();
+
+/**
+ * The clinic's subdomain, which names its folder in file storage (lib/cloudinary.ts). Throws
+ * when the clinic doesn't exist: a file must never be stored without its owner's folder.
+ */
+export async function getTenantSubdomain(tenantId: string): Promise<string> {
+  const known = subdomainById.get(tenantId);
+  if (known) return known;
+  await connectDB();
+  const tenant = await Tenant.findById(tenantId).select('subdomain').lean<{ subdomain?: string } | null>();
+  if (!tenant?.subdomain) throw new Error(`Clinic ${tenantId} has no subdomain`);
+  subdomainById.set(tenantId, tenant.subdomain);
+  return tenant.subdomain;
+}
+
 export async function getTenantBySlug(slug: string): Promise<ITenant | null> {
   try {
     await connectDB();

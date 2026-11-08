@@ -325,7 +325,6 @@ async function createBaseSettings(): Promise<boolean> {
         sessionTimeoutMinutes: 480, // 8 hours
       },
       integrationSettings: {
-        cloudinaryEnabled: false,
         twilioEnabled: false,
         smtpEnabled: false,
       },

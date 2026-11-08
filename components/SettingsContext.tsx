@@ -58,7 +58,6 @@ export interface Settings {
     sessionTimeoutMinutes: number;
   };
   integrationSettings: {
-    cloudinaryEnabled: boolean;
     twilioEnabled: boolean;
     smtpEnabled: boolean;
   };
@@ -135,7 +134,6 @@ const defaultSettings: Settings = {
     sessionTimeoutMinutes: 480,
   },
   integrationSettings: {
-    cloudinaryEnabled: false,
     twilioEnabled: false,
     smtpEnabled: false,
   },

@@ -3,12 +3,14 @@ import { NextResponse } from 'next/server';
 import type { Model } from 'mongoose';
 import {
   deleteFromCloudinary,
-  fetchCloudinaryAsset,
+  openCloudinaryAsset,
   isCloudinaryConfigured,
+  ownedUploadOptions,
   parseCloudinaryUrl,
-  safeFolderSegment,
   uploadToCloudinary,
+  type AssetType,
 } from '@/lib/cloudinary';
+import { getTenantSubdomain } from '@/lib/tenant';
 import { INLINE_SAFE_TYPES } from '@/lib/upload-validation';
 
 /**
@@ -26,6 +28,13 @@ export const INLINE_BUDGET_BYTES = 10 * 1024 * 1024;
 
 export type AttachmentKind = 'patient' | 'visit' | 'lab-result';
 
+/** The storage folder each kind of attachment goes into (lib/cloudinary.ts folder layout). */
+export const ATTACHMENT_ASSET_TYPE: Record<AttachmentKind, AssetType> = {
+  patient: 'patient-files',
+  visit: 'visit-files',
+  'lab-result': 'lab-result-files',
+};
+
 export class AttachmentStoreError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -41,12 +50,12 @@ export async function storeAttachment(
   opts: { tenantId: string; kind: AttachmentKind; parent: { model: Model<any>; filter: Record<string, unknown> } }
 ): Promise<string> {
   if (isCloudinaryConfigured()) {
+    const tenantSlug = await getTenantSubdomain(opts.tenantId);
     const result = await uploadToCloudinary(file.buffer, {
-      // Tenant and kind only: patient identifiers stay out of folder names, which show in URLs.
-      folder: `clinic-attachments/${safeFolderSegment(opts.tenantId, 'tenant')}/${opts.kind}`,
+      // Clinic and kind only: patient identifiers stay out of folder names, which show in URLs.
+      ...ownedUploadOptions({ tenantId: opts.tenantId, tenantSlug }, ATTACHMENT_ASSET_TYPE[opts.kind]),
       resourceType: file.contentType.startsWith('image/') ? 'image' : 'raw',
       deliveryType: 'authenticated',
-      contentType: file.contentType,
     });
     if (!result.success || !result.data) throw new AttachmentStoreError('The file could not be stored. Try again.', 502);
     return result.data.secure_url;
@@ -85,30 +94,36 @@ export async function attachmentResponse(
 ): Promise<NextResponse | null> {
   const { download } = opts;
   const url = file.url ?? '';
-  let bytes: Buffer;
+  let body: BodyInit;
+  let size: number | undefined;
   let type: string;
 
   const inline = /^data:([^;,]+);base64,([\s\S]*)$/.exec(url);
   if (inline) {
     type = inline[1].toLowerCase();
-    bytes = Buffer.from(inline[2], 'base64');
+    const bytes = new Uint8Array(Buffer.from(inline[2], 'base64'));
+    body = bytes;
+    size = bytes.length;
   } else if (url.startsWith('/api/documents/') && /^\/api\/documents\/[a-f0-9]{24}\/stream$/.test(url)) {
     // Moved to a Document by scripts/migrate-cloudinary-private.ts; that route checks access itself.
     return NextResponse.redirect(new URL(url, opts.origin));
   } else {
     const ref = parseCloudinaryUrl(url);
     if (!ref) return null;
-    const fetched = await fetchCloudinaryAsset(ref);
+    // Streamed through as it arrives, not read into memory first.
+    const fetched = await openCloudinaryAsset(ref);
     if (!fetched) return null;
     // The type recorded at upload (validated then) wins over whatever the CDN reports.
     type = (file.contentType || fetched.contentType).toLowerCase();
-    bytes = fetched.buffer;
+    body = fetched.body;
+    size = fetched.size;
   }
 
   const showInline = !download && INLINE_SAFE_TYPES.has(type);
   const name = (file.filename || 'file').replace(/["\r\n]/g, '');
-  return new NextResponse(new Uint8Array(bytes), {
+  return new NextResponse(body, {
     headers: {
+      ...(size !== undefined ? { 'Content-Length': String(size) } : {}),
       'Content-Type': showInline ? type : 'application/octet-stream',
       'Content-Disposition': `${showInline ? 'inline' : 'attachment'}; filename="${name.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(name)}`,
       'X-Content-Type-Options': 'nosniff',

@@ -67,6 +67,12 @@ export interface ISettings extends Document {
     displayVideos: string[];
     /** Ad image addresses the waiting-room screen shows. */
     displayAds: string[];
+    /**
+     * Every ad image stored on Cloudinary for the clinic, shown or not yet saved, with its size:
+     * counted in storage use, and removed from Cloudinary once it leaves displayAds. Written by
+     * the ad upload route and the settings route only, never from the settings form.
+     */
+    displayAdFiles?: { url: string; bytes: number; uploadedAt: Date }[];
     /** How much of a patient's name the waiting-room screen shows. */
     displayNames: 'first-initial' | 'initials' | 'number';
     /** Group the waiting-room screen by doctor. */
@@ -87,7 +93,6 @@ export interface ISettings extends Document {
 
   // Integration Settings
   integrationSettings: {
-    cloudinaryEnabled: boolean;
     twilioEnabled: boolean;
     smtpEnabled: boolean;
   };
@@ -244,6 +249,10 @@ const SettingsSchema = new Schema<ISettings>(
       patientSelfCheckIn: { type: Boolean, default: false },
       displayVideos: { type: [String], default: [] },
       displayAds: { type: [String], default: [] },
+      displayAdFiles: {
+        type: [new Schema({ url: { type: String, required: true }, bytes: { type: Number, default: 0 }, uploadedAt: { type: Date, default: Date.now } }, { _id: false })],
+        default: undefined,
+      },
       displayNames: { type: String, enum: ['first-initial', 'initials', 'number'], default: 'first-initial' },
       displayByDoctor: { type: Boolean, default: false },
       displayTicker: { type: String, default: '' },
@@ -259,7 +268,6 @@ const SettingsSchema = new Schema<ISettings>(
     },
 
     integrationSettings: {
-      cloudinaryEnabled: { type: Boolean, default: false },
       twilioEnabled: { type: Boolean, default: false },
       smtpEnabled: { type: Boolean, default: false },
     },

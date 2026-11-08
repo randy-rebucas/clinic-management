@@ -9,13 +9,22 @@ vi.mock('@/app/lib/auth-helpers', () => ({
 vi.mock('@/lib/api/tenant-session', () => ({
   requireTenantSession: vi.fn(async () => ({ session: { role: 'admin' }, tenantId: '507f1f77bcf86cd799439011' })),
   isTenantSessionError: (v: unknown) => v instanceof NextResponse,
+  tenantFilter: (tenantId: string) => ({ tenantId }),
 }));
-vi.mock('@/lib/cloudinary', () => ({ isCloudinaryConfigured: vi.fn(), uploadToCloudinary: vi.fn() }));
+vi.mock('@/lib/cloudinary', () => ({
+  isCloudinaryConfigured: vi.fn(),
+  uploadToCloudinary: vi.fn(),
+  ownedUploadOptions: (o: { tenantSlug: string; tenantId: string }, type: string) => ({ folder: `myclinicsoft/${o.tenantSlug}/${type}`, tags: [`tenant_${o.tenantId}`] }),
+}));
+vi.mock('@/lib/tenant', () => ({ getTenantSubdomain: vi.fn(async () => 'sunrise-clinic') }));
+vi.mock('@/lib/mongodb', () => ({ default: vi.fn() }));
+vi.mock('@/models/Settings', () => ({ default: { updateOne: vi.fn() } }));
 vi.mock('@/lib/storage-tracking', () => ({ checkStorageLimit: vi.fn() }));
 
 import { isAdmin } from '@/app/lib/auth-helpers';
 import { isCloudinaryConfigured, uploadToCloudinary } from '@/lib/cloudinary';
 import { checkStorageLimit } from '@/lib/storage-tracking';
+import Settings from '@/models/Settings';
 import { POST } from '@/app/api/queue/display/ads/route';
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
@@ -33,7 +42,7 @@ describe('POST /api/queue/display/ads', () => {
     vi.mocked(isAdmin).mockReturnValue(true);
     vi.mocked(isCloudinaryConfigured).mockReturnValue(true);
     vi.mocked(checkStorageLimit).mockResolvedValue({ allowed: true } as never);
-    vi.mocked(uploadToCloudinary).mockResolvedValue({ success: true, data: { secure_url: 'https://res.cloudinary.com/demo/image/upload/v1/a.png' } } as never);
+    vi.mocked(uploadToCloudinary).mockResolvedValue({ success: true, data: { secure_url: 'https://res.cloudinary.com/demo/image/upload/v1/a.png', bytes: 1234 } } as never);
   });
 
   it('is for admins only', async () => {
@@ -62,6 +71,14 @@ describe('POST /api/queue/display/ads', () => {
   it('stores it publicly under the clinic and returns the address', async () => {
     const res = await send(png());
     expect(await res.json()).toEqual({ success: true, data: { url: 'https://res.cloudinary.com/demo/image/upload/v1/a.png' } });
-    expect(vi.mocked(uploadToCloudinary).mock.calls[0][1]).toMatchObject({ folder: 'queue-display-ads/507f1f77bcf86cd799439011', deliveryType: 'upload', resourceType: 'image' });
+    expect(vi.mocked(uploadToCloudinary).mock.calls[0][1]).toMatchObject({ folder: 'myclinicsoft/sunrise-clinic/display-ads', tags: ['tenant_507f1f77bcf86cd799439011'], deliveryType: 'upload', resourceType: 'image' });
+  });
+
+  it('records the stored file and its size without touching the settings version', async () => {
+    await send(png());
+    const [filter, update, opts] = vi.mocked(Settings.updateOne).mock.calls[0] as any[];
+    expect(filter).toEqual({ tenantId: '507f1f77bcf86cd799439011' });
+    expect(update.$push['queueSettings.displayAdFiles']).toMatchObject({ url: 'https://res.cloudinary.com/demo/image/upload/v1/a.png', bytes: 1234 });
+    expect(opts).toEqual({ timestamps: false });
   });
 });
