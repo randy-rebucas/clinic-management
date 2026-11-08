@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import LabResult from '@/models/LabResult';
 import logger from '@/lib/logger';
 import { ownedRecordContext, isOwnedRecordError, recordNotFound } from '../../_lib/owned-record';
-import { PATIENT_LAB_RESULT_HIDDEN } from '../../_lib/lab-result-fields';
+import { PATIENT_LAB_RESULT_HIDDEN, PATIENT_LAB_RESULT_VISIBLE } from '../../_lib/lab-result-fields';
 
 /**
  * GET /api/patients/me/lab-results/[id]
@@ -17,7 +17,7 @@ export async function GET(
     const ctx = await ownedRecordContext(request, id, 'Lab result', 'records');
     if (isOwnedRecordError(ctx)) return ctx;
 
-    const labResult = await LabResult.findOne(ctx.filter).select(PATIENT_LAB_RESULT_HIDDEN).lean();
+    const labResult = await LabResult.findOne({ ...ctx.filter, ...PATIENT_LAB_RESULT_VISIBLE }).select(PATIENT_LAB_RESULT_HIDDEN).lean();
     if (!labResult) return recordNotFound('Lab result');
 
     return NextResponse.json({ success: true, data: labResult });

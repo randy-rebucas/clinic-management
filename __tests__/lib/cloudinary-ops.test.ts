@@ -21,6 +21,7 @@ import {
   deleteCloudinaryAssets,
   deleteFromCloudinary,
   openCloudinaryAsset,
+  fetchCloudinaryAsset,
   ownAdImageRef,
   ownedUploadOptions,
   tenantFolder,
@@ -152,6 +153,15 @@ describe('openCloudinaryAsset', () => {
 
     fetchMock.mockResolvedValueOnce(new Response('nope', { status: 404 }));
     expect(await openCloudinaryAsset({ publicId: 'a', resourceType: 'raw', deliveryType: 'authenticated' })).toBeNull();
+
+    // Gone (404) and failing (5xx, network) are told apart for the route's 404 vs 502.
+    const ref = { publicId: 'a', resourceType: 'raw', deliveryType: 'authenticated' } as const;
+    fetchMock.mockResolvedValueOnce(new Response('nope', { status: 404 }));
+    expect(await fetchCloudinaryAsset(ref)).toEqual({ ok: false, reason: 'missing' });
+    fetchMock.mockResolvedValueOnce(new Response('down', { status: 503 }));
+    expect(await fetchCloudinaryAsset(ref)).toEqual({ ok: false, reason: 'upstream' });
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+    expect(await fetchCloudinaryAsset(ref)).toEqual({ ok: false, reason: 'upstream' });
     fetchMock.mockRestore();
   });
 });

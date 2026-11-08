@@ -84,6 +84,7 @@ describe('patient visit feedback', () => {
       _id: VISIT_ID,
       patient: { $in: [new Types.ObjectId(PATIENT_ID)] },
       tenantId: { $in: [TENANT_A] },
+      status: { $ne: 'draft' },
       feedbackRequested: true,
     });
     expect(Survey.create).not.toHaveBeenCalled();

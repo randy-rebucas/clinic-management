@@ -8,6 +8,7 @@ import { getTenantTimezone } from '@/lib/clinic-timezone';
 import { formatInTz } from '@/lib/tz';
 import { getSettings } from '@/lib/settings';
 import { withPatientTeleconsult } from '@/lib/teleconsult';
+import { withDoctorSummary } from '../../_lib/doctor-summary';
 import {
   ACTIVE_APPOINTMENT_STATUSES,
   appointmentDayRange,
@@ -29,7 +30,8 @@ export const slotTaken = () => NextResponse.json({ success: false, error: SLOT_T
 export function toPatientBooking(appointment: { toObject?: () => Record<string, any> } & Record<string, any>, tz: string) {
   const { notes: _notes, createdBy: _createdBy, ...rest } =
     typeof appointment.toObject === 'function' ? appointment.toObject() : appointment;
-  return withPatientTeleconsult(rest, { tz, displayName: rest.patient?.firstName });
+  // Same doctor shape as the appointment list/detail ({ firstName, lastName, specialization }).
+  return withPatientTeleconsult(withDoctorSummary(rest), { tz, displayName: rest.patient?.firstName });
 }
 
 /** Video visits are offered when the clinic turned them on and its plan includes them. */

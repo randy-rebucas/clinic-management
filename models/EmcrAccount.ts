@@ -74,6 +74,12 @@ export interface IEmcrAccount extends Document {
   };
   activationHistory: IEmcrActivationEntry[];
   disabled?: boolean;
+  /**
+   * Bumped to end the account's guardian sessions (password set/reset, "sign out everywhere");
+   * guardian tokens and refresh chains carry the value they were issued with (`av`).
+   * Missing on older documents = 0.
+   */
+  sessionVersion?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -126,6 +132,7 @@ const EmcrAccountSchema = new Schema<IEmcrAccount>(
     },
     activationHistory: { type: [ActivationEntrySchema], default: [] },
     disabled: { type: Boolean },
+    sessionVersion: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

@@ -12,6 +12,7 @@ import {
 } from '../../shared';
 import { linkRecordsByVerifiedPhone } from '../../../me/_lib/linked-records';
 import { otpSignInScope } from '../../otp-scope';
+import { jsonObject } from '@/lib/api/validate';
 
 /**
  * Verify OTP and issue patient_session cookie
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest) {
   try {
     let body: { phone?: unknown; otp?: unknown; tenantId?: unknown };
     try {
-      body = await request.json();
+      body = jsonObject(await request.json());
     } catch {
       return NextResponse.json(
         { success: false, error: 'Invalid request format' },

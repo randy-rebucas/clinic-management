@@ -3,13 +3,14 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
-import { issuePatientToken, PATIENT_TOKEN_TTL_SECONDS } from '@/app/lib/dal';
+import { emcrAccountSessionVersion, issuePatientToken, PATIENT_TOKEN_TTL_SECONDS } from '@/app/lib/dal';
 import {
   consumeRefreshToken,
   issueRefreshToken,
   revokeRefreshFamily,
   REFRESH_TOKEN_TTL_SECONDS,
 } from '@/app/lib/refresh-tokens';
+import { jsonObject } from '@/lib/api/validate';
 
 /**
  * POST /api/patients/auth/refresh
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
 
   let body: { refreshToken?: unknown };
   try {
-    body = await request.json();
+    body = jsonObject(await request.json());
   } catch {
     return NextResponse.json({ success: false, error: 'Invalid request format' }, { status: 400 });
   }
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest) {
   try {
     const consumed = await consumeRefreshToken(body.refreshToken, 'patient');
     if (!consumed.ok) return invalid(consumed.code);
-    const { subjectId, sessionVersion, family, tid, acc, rel } = consumed.value;
+    const { subjectId, sessionVersion, family, tid, acc, rel, av } = consumed.value;
 
     await connectDB();
     const patient = await Patient.findById(subjectId).select('active patientCode email sessionVersion');
@@ -61,8 +62,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const token = await issuePatientToken(patient, { tid, acc, rel });
-    const refreshToken = await issueRefreshToken('patient', patient._id, sessionVersion, family, { tid, acc, rel });
+    // A guardian chain also dies when its eMCR account's session version moves on (account
+    // password set/reset, "sign out everywhere"): no Patient.sessionVersion bump reaches it.
+    const accountVersion = acc ? await emcrAccountSessionVersion(acc) : undefined;
+    if (rel === 'guardian' && (av ?? 0) !== accountVersion) {
+      await revokeRefreshFamily(family);
+      return invalid('REFRESH_INVALID');
+    }
+
+    const token = await issuePatientToken(patient, { tid, acc, rel, av: accountVersion });
+    const refreshToken = await issueRefreshToken('patient', patient._id, sessionVersion, family, { tid, acc, rel, av: accountVersion });
 
     return NextResponse.json({
       success: true,

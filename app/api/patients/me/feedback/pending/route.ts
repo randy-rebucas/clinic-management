@@ -11,6 +11,7 @@ import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { FEEDBACK_WINDOW_MS, feedbackProviderName } from '@/lib/visit-feedback';
 import { tenantScopeFilter } from '../../_lib/patient-scope';
 import { linkedRecords } from '../../_lib/linked-records';
+import { PATIENT_VISIT_VISIBLE } from '../../_lib/visit-fields';
 
 /** At most this many visits are offered at once (the app shows the newest). */
 const MAX_PENDING = 5;
@@ -43,6 +44,7 @@ export async function GET(request: NextRequest) {
       patient: { $in: linked.patientIds },
       ...tenantScopeFilter(linked.tenantIds, session),
       feedbackRequested: true,
+      ...PATIENT_VISIT_VISIBLE,
       date: { $gte: new Date(Date.now() - FEEDBACK_WINDOW_MS) },
     })
       .select('_id date visitType provider tenantId')

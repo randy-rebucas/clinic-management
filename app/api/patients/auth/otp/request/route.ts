@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
@@ -15,6 +15,7 @@ import {
   phoneVariants,
   sendPatientOtp,
 } from '../../shared';
+import { jsonObject } from '@/lib/api/validate';
 
 /**
  * Request an OTP sent to the patient's registered phone number
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
   try {
     let body: { phone?: unknown; tenantId?: unknown };
     try {
-      body = await request.json();
+      body = jsonObject(await request.json());
     } catch {
       return NextResponse.json(
         { success: false, error: 'Invalid request format' },
@@ -96,15 +97,23 @@ export async function POST(request: NextRequest) {
       return genericResponse;
     }
 
-    await sendPatientOtp(
-      normalizedPhone,
-      patient._id,
-      (code, minutes) => `Your clinic login code is: ${code}. It expires in ${minutes} minutes. Do not share this code.`
-    );
-
-    logger.info('Patient OTP requested', {
-      patientId: patient._id.toString(),
-      phone: maskPhone(normalizedPhone),
+    // Sent after the response: storing the code and the SMS round trip would otherwise make a
+    // number on file answer measurably slower (or fail with a 500) than one that isn't.
+    const patientId = patient._id;
+    after(async () => {
+      try {
+        await sendPatientOtp(
+          normalizedPhone,
+          patientId,
+          (code, minutes) => `Your clinic login code is: ${code}. It expires in ${minutes} minutes. Do not share this code.`
+        );
+        logger.info('Patient OTP requested', {
+          patientId: patientId.toString(),
+          phone: maskPhone(normalizedPhone),
+        });
+      } catch (error) {
+        logger.error('Error sending patient OTP', error as Error, { patientId: patientId.toString() });
+      }
     });
 
     return genericResponse;

@@ -7,7 +7,7 @@ import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { parsePagination, resolveTenantFilter } from '../_lib/patient-scope';
 import { linkedRecords } from '../_lib/linked-records';
-import { PATIENT_VISIT_EXCLUDE } from '../_lib/visit-fields';
+import { PATIENT_VISIT_EXCLUDE, PATIENT_VISIT_VISIBLE } from '../_lib/visit-fields';
 
 /**
  * GET /api/patients/me/visits
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     const tenant = resolveTenantFilter(linked.tenantIds, session, searchParams.get('tenantId'));
     if (!tenant.ok) return tenant.response;
 
-    const visitQuery: any = { patient: { $in: linked.patientIds }, ...tenant.filter };
+    const visitQuery: any = { patient: { $in: linked.patientIds }, ...tenant.filter, ...PATIENT_VISIT_VISIBLE };
 
     const [visits, total] = await Promise.all([
       Visit.find(visitQuery)

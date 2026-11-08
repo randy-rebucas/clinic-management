@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import EmcrAccount from '@/models/EmcrAccount';
 import EmcrAccessRequest from '@/models/EmcrAccessRequest';
-import { issuePatientToken, PATIENT_TOKEN_TTL_SECONDS } from '@/app/lib/dal';
+import { emcrAccountSessionVersion, issuePatientToken, PATIENT_TOKEN_TTL_SECONDS } from '@/app/lib/dal';
 import { issueRefreshToken, REFRESH_TOKEN_TTL_SECONDS } from '@/app/lib/refresh-tokens';
 import { consumeOtp, OTP_EXPIRY_MINUTES, startOtp } from '@/lib/otp';
 import { accountSessionSubject, type EmcrAccountLean } from '@/lib/emcr/account';
@@ -86,8 +86,10 @@ export async function accountSessionFields(
   const { patient, rel } = subject;
   const acc = String(account._id);
   const tid = amr === 'password' && account.passwordTenantId ? String(account.passwordTenantId) : undefined;
-  const token = await issuePatientToken(patient, { tid, amr, acc, rel });
-  const refreshToken = await issueRefreshToken('patient', patient._id, patient.sessionVersion ?? 0, undefined, { tid, acc, rel });
+  // The account's session version goes on both, so a later bump ends this guardian session.
+  const av = await emcrAccountSessionVersion(acc);
+  const token = await issuePatientToken(patient, { tid, amr, acc, rel, av });
+  const refreshToken = await issueRefreshToken('patient', patient._id, patient.sessionVersion ?? 0, undefined, { tid, acc, rel, av });
   return {
     token,
     tokenType: 'Bearer',

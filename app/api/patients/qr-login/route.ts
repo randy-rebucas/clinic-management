@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { patientLoginResponse, readLoginQrToken, redeemPatientLoginQr } from '../auth/shared';
+import { jsonObject } from '@/lib/api/validate';
 
 /**
  * Patient QR Code Login
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
   try {
     let body: Record<string, unknown>;
     try {
-      body = await request.json();
+      body = jsonObject(await request.json());
     } catch {
       return NextResponse.json({ success: false, error: 'Invalid request format' }, { status: 400 });
     }

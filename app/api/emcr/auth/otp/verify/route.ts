@@ -6,6 +6,7 @@ import { phoneRateKey } from '@/app/api/patients/auth/shared';
 import { linkRecordsByVerifiedPhone } from '@/app/api/patients/me/_lib/linked-records';
 import { countPeopleOnPhone, issueClaimToken } from '@/lib/emcr/claim';
 import { accountSessionFields, accountView, consumeAccountOtp, otpFailure } from '@/lib/emcr/session';
+import { jsonObject } from '@/lib/api/validate';
 
 /**
  * POST /api/emcr/auth/otp/verify
@@ -22,7 +23,7 @@ import { accountSessionFields, accountView, consumeAccountOtp, otpFailure } from
 export async function POST(request: NextRequest) {
   let body: { phone?: unknown; otp?: unknown };
   try {
-    body = await request.json();
+    body = jsonObject(await request.json());
   } catch {
     return NextResponse.json({ success: false, error: 'Invalid request format' }, { status: 400 });
   }

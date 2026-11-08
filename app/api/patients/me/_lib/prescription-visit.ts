@@ -1,4 +1,5 @@
 import '@/models/Visit';
+import { PATIENT_VISIT_VISIBLE } from './visit-fields';
 
 /**
  * The visit fields a patient's prescription carries, so the app can group
@@ -13,7 +14,8 @@ export function prescriptionVisitPopulate(patientId: unknown, tenantFilter: Reco
   return {
     path: 'visit',
     select: 'date visitType visitCode',
-    match: { patient: Array.isArray(patientId) ? { $in: patientId } : patientId, ...tenantFilter },
+    // A draft visit's header stays hidden (null) like the visits routes hide it.
+    match: { patient: Array.isArray(patientId) ? { $in: patientId } : patientId, ...tenantFilter, ...PATIENT_VISIT_VISIBLE },
   };
 }
 

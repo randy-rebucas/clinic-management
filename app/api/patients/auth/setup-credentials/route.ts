@@ -15,6 +15,7 @@ import {
   otpRequiredResponse,
   rotatePatientSessionAfterPasswordChange,
 } from '../shared';
+import { jsonObject } from '@/lib/api/validate';
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest) {
 
     let body: { email?: string; password?: string; currentPassword?: string; otp?: unknown; deviceId?: unknown };
     try {
-      body = await request.json();
+      body = jsonObject(await request.json());
     } catch {
       return NextResponse.json(
         { success: false, error: 'Invalid request format' },

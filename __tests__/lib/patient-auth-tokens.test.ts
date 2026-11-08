@@ -6,6 +6,7 @@ vi.mock('@/models/Patient', () => ({
   default: { findById: vi.fn(), findOneAndUpdate: vi.fn(), updateOne: vi.fn(), find: vi.fn(), exists: vi.fn() },
 }));
 vi.mock('@/models/MobileDevice', () => ({ default: { updateMany: vi.fn() } }));
+vi.mock('@/models/EmcrAccount', () => ({ default: { findById: vi.fn(), findByIdAndUpdate: vi.fn() } }));
 vi.mock('@/models/RefreshToken', () => ({
   default: { create: vi.fn(), findOneAndUpdate: vi.fn(), findOne: vi.fn(), updateMany: vi.fn() },
 }));
@@ -13,7 +14,8 @@ vi.mock('@/models/RefreshToken', () => ({
 import { SignJWT } from 'jose';
 import Patient from '@/models/Patient';
 import RefreshToken from '@/models/RefreshToken';
-import { isFreshOtpSession, issuePatientToken, verifyPatientSession } from '@/app/lib/dal';
+import EmcrAccount from '@/models/EmcrAccount';
+import { isFreshOtpSession, issuePatientToken, revokeEmcrAccountSessions, verifyPatientSession } from '@/app/lib/dal';
 import { consumeRefreshToken, issueRefreshToken } from '@/app/lib/refresh-tokens';
 import {
   authenticatePatientPassword,
@@ -72,6 +74,49 @@ describe('patient token claims (tid / amr)', () => {
     expect(isFreshOtpSession({ amr: 'otp', iat: now - 16 * 60 })).toBe(false);
     expect(isFreshOtpSession({ amr: 'qr', iat: now })).toBe(false);
     expect(isFreshOtpSession({ iat: now })).toBe(false);
+  });
+});
+
+describe('guardian sessions follow the eMCR account session version (av)', () => {
+  beforeEach(() => vi.clearAllMocks());
+  const ACC = '507f1f77bcf86cd799439077';
+  const accountVersion = (sessionVersion: number) =>
+    vi.mocked(EmcrAccount.findById).mockReturnValue({ select: vi.fn().mockReturnValue(lean({ sessionVersion })) } as any);
+
+  it("ends guardian tokens on a bump, keeps the holder's own, and reads a token without av as 0", async () => {
+    patientState({ active: true, sessionVersion: 2 });
+    accountVersion(0);
+    const guardian = await issuePatientToken(subject, { acc: ACC, rel: 'guardian' });
+    const own = await issuePatientToken(subject, { acc: ACC });
+    const key = new TextEncoder().encode('default-secret-key-change-in-production-dev-only');
+    const legacy = await new SignJWT({ typ: 'patient', type: 'patient', patientId: PATIENT_ID, pv: 2, acc: ACC, rel: 'guardian' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(key);
+    expect(await verifyPatientSession(guardian)).toMatchObject({ rel: 'guardian', av: 0 });
+    expect(await verifyPatientSession(legacy)).not.toBeNull();
+
+    vi.mocked(EmcrAccount.findByIdAndUpdate).mockReturnValue(lean({ sessionVersion: 1 }) as any);
+    await revokeEmcrAccountSessions(ACC);
+    accountVersion(1);
+    expect(await verifyPatientSession(guardian)).toBeNull();
+    expect(await verifyPatientSession(legacy)).toBeNull();
+    expect(await verifyPatientSession(own)).not.toBeNull();
+    expect(await verifyPatientSession(await issuePatientToken(subject, { acc: ACC, rel: 'guardian' }))).toMatchObject({ av: 1 });
+  });
+
+  it('accepts a guardian token newer than this instance has cached (bumped elsewhere), then rejects the old one', async () => {
+    const OTHER_ACC = '507f1f77bcf86cd799439088';
+    patientState({ active: true, sessionVersion: 2 });
+    accountVersion(3);
+    const before = await issuePatientToken(subject, { acc: OTHER_ACC, rel: 'guardian' });
+    expect(await verifyPatientSession(before)).toMatchObject({ av: 3 }); // cached at 3
+    // Another instance bumped the account and issued a fresh pair; this one still caches 3.
+    accountVersion(4);
+    const after = await issuePatientToken(subject, { acc: OTHER_ACC, rel: 'guardian' });
+    expect(await verifyPatientSession(after)).toMatchObject({ av: 4 });
+    expect(await verifyPatientSession(before)).toBeNull();
   });
 });
 

@@ -4,6 +4,7 @@ import connectDB from '@/lib/mongodb';
 import MobileDevice from '@/models/MobileDevice';
 import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
+import { jsonObject } from '@/lib/api/validate';
 
 /**
  * POST /api/patients/me/devices
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
 
   let body: Record<string, any>;
   try {
-    body = await request.json();
+    body = jsonObject(await request.json());
   } catch {
     return NextResponse.json({ success: false, error: 'Invalid request format' }, { status: 400 });
   }

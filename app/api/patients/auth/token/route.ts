@@ -17,6 +17,7 @@ import {
   readLoginQrToken,
   redeemPatientLoginQr,
 } from '../shared';
+import { jsonObject } from '@/lib/api/validate';
 
 /**
  * POST /api/patients/auth/token
@@ -56,7 +57,7 @@ import {
 export async function POST(request: NextRequest) {
   let body: Record<string, unknown>;
   try {
-    body = await request.json();
+    body = jsonObject(await request.json());
   } catch {
     return NextResponse.json(
       { success: false, error: 'Invalid request format' },

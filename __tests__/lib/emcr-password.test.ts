@@ -8,6 +8,7 @@ vi.mock('@/lib/emcr/account', () => ({ forgetAccountCache: vi.fn(), findAccountF
 vi.mock('@/lib/emcr/login-id', () => ({ ensureLoginId: vi.fn() }));
 vi.mock('@/models/Patient', () => ({ default: { updateMany: vi.fn() } }));
 vi.mock('@/lib/patient-family', () => ({ personRecordIds: vi.fn() }));
+vi.mock('@/app/lib/dal', () => ({ revokeEmcrAccountSessions: vi.fn() }));
 vi.mock('@/app/api/patients/auth/shared', () => ({
   dummyPasswordHash: () => '$2a$04$abcdefghijklmnopqrstuu1Yq0xqQ2oS0mGk0n7u5qk1m3X3vZb0a',
   revokeAllPatientAccess: vi.fn(),
@@ -19,6 +20,7 @@ import { findAccountForSession } from '@/lib/emcr/account';
 import Patient from '@/models/Patient';
 import { personRecordIds } from '@/lib/patient-family';
 import { revokeAllPatientAccess } from '@/app/api/patients/auth/shared';
+import { revokeEmcrAccountSessions } from '@/app/lib/dal';
 import {
   authenticateAccountPassword,
   cancelClinicPassword,
@@ -44,6 +46,7 @@ describe('applyPatientPasswordChange', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(personRecordIds).mockResolvedValue([OWN, SIBLING]);
+    vi.mocked(EmcrAccount.findById).mockReturnValue(selectLean({ password: 'old-hash' }) as any);
   });
 
   it("replaces the person's other patient passwords and signs those records out", async () => {
@@ -121,7 +124,10 @@ describe('applyPatientPasswordChange', () => {
 });
 
 describe('eMCR account passwords', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(EmcrAccount.findById).mockReturnValue(selectLean({ password: 'old-hash' }) as any);
+  });
 
   it('temporary passwords are 10 readable characters and long enough', () => {
     for (let i = 0; i < 20; i++) {
@@ -142,6 +148,21 @@ describe('eMCR account passwords', () => {
     expect((vi.mocked(EmcrAccount.updateOne).mock.calls[0] as any[])[1].$set).toMatchObject({ passwordSetBy: 'staff', mustChangePassword: true });
     await setAccountPassword(id, 'Mine-12345', 'user');
     expect((vi.mocked(EmcrAccount.updateOne).mock.calls[1] as any[])[1].$set).toMatchObject({ passwordSetBy: 'user', mustChangePassword: false });
+  });
+
+  it("replacing a password ends the account's guardian sessions; so does cancelling a clinic password", async () => {
+    const id = new Types.ObjectId();
+    await setAccountPassword(id, 'Mine-12345', 'user');
+    expect(revokeEmcrAccountSessions).toHaveBeenCalledWith(String(id));
+    await cancelClinicPassword(id);
+    expect(revokeEmcrAccountSessions).toHaveBeenCalledTimes(2);
+  });
+
+  it("a first password keeps the account's guardian sessions (older apps don't ask for a fresh pair)", async () => {
+    vi.mocked(EmcrAccount.findById).mockReturnValue(selectLean({}) as any);
+    await setAccountPassword(new Types.ObjectId(), 'Mine-12345', 'user');
+    expect(EmcrAccount.updateOne).toHaveBeenCalled();
+    expect(revokeEmcrAccountSessions).not.toHaveBeenCalled();
   });
 
   it('a staff-set password is tied to its clinic, and refused without one', async () => {

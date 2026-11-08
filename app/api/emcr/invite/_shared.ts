@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findUsableInvite, parseInviteCode, type InviteLean } from '@/lib/emcr/invite';
+import { jsonObject } from '@/lib/api/validate';
 
 const FAILURES = {
   invalid: { status: 404, code: 'INVITE_INVALID', error: 'This invite code isn’t valid. Check it, or ask your clinic for a new one.' },
@@ -18,7 +19,7 @@ export async function readInvite(
 ): Promise<{ body: Record<string, unknown>; invite: InviteLean } | { response: NextResponse }> {
   let body: Record<string, unknown>;
   try {
-    body = await request.json();
+    body = jsonObject(await request.json());
   } catch {
     return { response: NextResponse.json({ success: false, error: 'Invalid request format' }, { status: 400 }) };
   }

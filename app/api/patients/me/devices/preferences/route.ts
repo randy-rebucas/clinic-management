@@ -4,6 +4,7 @@ import connectDB from '@/lib/mongodb';
 import MobileDevice, { PUSH_CATEGORIES, PushCategory } from '@/models/MobileDevice';
 import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
+import { jsonObject } from '@/lib/api/validate';
 
 type PushPrefs = Record<PushCategory, boolean>;
 
@@ -61,7 +62,7 @@ export async function PATCH(request: NextRequest) {
 
   let body: Record<string, unknown>;
   try {
-    body = await request.json();
+    body = jsonObject(await request.json());
   } catch {
     return NextResponse.json({ success: false, error: 'Invalid request format' }, { status: 400 });
   }
