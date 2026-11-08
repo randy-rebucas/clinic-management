@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
@@ -7,6 +7,7 @@ import { normalizePhone } from '@/lib/phone';
 import { maskPhone, phoneFilter, phoneRateKey } from '@/app/api/patients/auth/shared';
 import { EMCR_OTP_EXPIRY_MINUTES, sendAccountOtp } from '@/lib/emcr/session';
 import { otpAvailable } from '@/lib/otp';
+import { jsonObject } from '@/lib/api/validate';
 
 /**
  * POST /api/emcr/auth/otp/request
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
 
   let body: { phone?: unknown };
   try {
-    body = await request.json();
+    body = jsonObject(await request.json());
   } catch {
     return NextResponse.json({ success: false, error: 'Invalid request format' }, { status: 400 });
   }
@@ -53,8 +54,15 @@ export async function POST(request: NextRequest) {
     const onFile = await Patient.exists({ ...phoneFilter(phone), active: { $ne: false } });
     if (!onFile) return generic;
 
-    await sendAccountOtp(phone);
-    logger.info('eMCR OTP requested', { phone: maskPhone(phone) });
+    // Sent after the response, so a number on file doesn't answer slower (or fail) than one that isn't.
+    after(async () => {
+      try {
+        await sendAccountOtp(phone);
+        logger.info('eMCR OTP requested', { phone: maskPhone(phone) });
+      } catch (error) {
+        logger.error('Error sending eMCR OTP', error as Error, { phone: maskPhone(phone) });
+      }
+    });
     return generic;
   } catch (error) {
     logger.error('Error in eMCR OTP request', error as Error);

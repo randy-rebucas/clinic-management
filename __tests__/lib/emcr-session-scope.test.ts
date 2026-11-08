@@ -4,7 +4,11 @@ vi.mock('server-only', () => ({}));
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn() }));
 vi.mock('@/models/EmcrAccount', () => ({ default: { findOneAndUpdate: vi.fn() } }));
 vi.mock('@/models/EmcrAccessRequest', () => ({ default: {} }));
-vi.mock('@/app/lib/dal', () => ({ issuePatientToken: vi.fn().mockResolvedValue('token'), PATIENT_TOKEN_TTL_SECONDS: 60 }));
+vi.mock('@/app/lib/dal', () => ({
+  issuePatientToken: vi.fn().mockResolvedValue('token'),
+  emcrAccountSessionVersion: vi.fn().mockResolvedValue(3),
+  PATIENT_TOKEN_TTL_SECONDS: 60,
+}));
 vi.mock('@/app/lib/refresh-tokens', () => ({ issueRefreshToken: vi.fn().mockResolvedValue('refresh'), REFRESH_TOKEN_TTL_SECONDS: 60 }));
 vi.mock('@/lib/otp', () => ({ consumeOtp: vi.fn().mockResolvedValue({ ok: true }), OTP_EXPIRY_MINUTES: 5, startOtp: vi.fn() }));
 vi.mock('@/lib/emcr/account', () => ({ accountSessionSubject: vi.fn() }));
@@ -35,6 +39,12 @@ describe('eMCR sessions from a password a clinic knows', () => {
     await accountSessionFields(account, 'password');
     expect(vi.mocked(issuePatientToken).mock.calls[0][1]).toMatchObject({ tid: String(CLINIC), amr: 'password' });
     expect(refreshScope()).toMatchObject({ tid: String(CLINIC) });
+  });
+
+  it("puts the account's session version on the token and the refresh chain", async () => {
+    await accountSessionFields(account, 'otp');
+    expect(vi.mocked(issuePatientToken).mock.calls[0][1]).toMatchObject({ av: 3 });
+    expect(refreshScope()).toMatchObject({ av: 3 });
   });
 
   it('an SMS sign-in is not narrowed', async () => {

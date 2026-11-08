@@ -18,6 +18,7 @@ import { requireActiveEmcr } from '@/lib/emcr/activation';
 import { memberTenantIds } from '../../me/_lib/patient-scope';
 import { linkedRecords } from '../../me/_lib/linked-records';
 import { checkPatientSlot, sendBookingConfirmation, slotTaken, toPatientBooking } from '../_lib/booking';
+import { PATIENT_DOCTOR_POPULATE } from '../../_lib/doctor-summary';
 
 /** Closed out: the patient can neither cancel nor move these. */
 const CLOSED_STATUSES = ['completed', 'cancelled', 'no-show'];
@@ -189,6 +190,11 @@ export async function PATCH(
 
     // Already at that slot (e.g. a retry after the reply was lost): nothing to change.
     if (currentDay === appointmentDate && appointment.appointmentTime === appointmentTime) {
+      // Populated like a real move's reply, so the app gets one shape either way.
+      await Appointment.populate(appointment, [
+        { path: 'patient', select: 'firstName lastName email phone patientCode', match: { tenantIds: tenantId } },
+        { ...PATIENT_DOCTOR_POPULATE, match: { tenantId } },
+      ]);
       return NextResponse.json({
         success: true,
         data: toPatientBooking(appointment, tz),

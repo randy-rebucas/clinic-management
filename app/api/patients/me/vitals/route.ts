@@ -7,6 +7,7 @@ import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { parsePagination, resolveTenantFilter } from '../_lib/patient-scope';
 import { linkedRecords } from '../_lib/linked-records';
+import { PATIENT_VISIT_VISIBLE } from '../_lib/visit-fields';
 import { requireActiveEmcr } from '@/lib/emcr/activation';
 
 /**
@@ -43,6 +44,7 @@ export async function GET(request: NextRequest) {
       patient: { $in: linked.patientIds },
       vitals: { $exists: true },
       ...tenant.filter,
+      ...PATIENT_VISIT_VISIBLE,
     };
 
     const visits = await Visit.find(query)

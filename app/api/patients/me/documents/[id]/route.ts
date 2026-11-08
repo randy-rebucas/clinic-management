@@ -2,7 +2,7 @@ import { NextRequest, NextResponse, after } from 'next/server';
 import Document from '@/models/Document';
 import logger from '@/lib/logger';
 import { createAuditLog } from '@/lib/audit';
-import { loadDocumentFile } from '@/lib/document-file';
+import { fileUpstreamResponse, loadDocumentFile } from '@/lib/document-file';
 import { fileResponseHeaders } from '@/lib/upload-validation';
 import { ownedRecordContext, isOwnedRecordError, recordNotFound } from '../../_lib/owned-record';
 
@@ -51,6 +51,8 @@ export async function GET(
       }),
     });
   } catch (error) {
+    const upstream = fileUpstreamResponse(error);
+    if (upstream) return upstream;
     logger.error('Error fetching patient document file', error as Error);
     return NextResponse.json({ success: false, error: 'Failed to fetch document' }, { status: 500 });
   }

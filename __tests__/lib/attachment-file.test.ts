@@ -4,14 +4,14 @@ vi.mock('server-only', () => ({}));
 vi.mock('@/lib/cloudinary', () => ({
   isCloudinaryConfigured: vi.fn(),
   uploadToCloudinary: vi.fn(),
-  openCloudinaryAsset: vi.fn(),
+  fetchCloudinaryAsset: vi.fn(),
   deleteFromCloudinary: vi.fn(),
   parseCloudinaryUrl: vi.fn(),
   ownedUploadOptions: (o: { tenantSlug: string; tenantId: string }, type: string) => ({ folder: `myclinicsoft/${o.tenantSlug}/${type}`, tags: [`tenant_${o.tenantId}`] }),
 }));
 vi.mock('@/lib/tenant', () => ({ getTenantSubdomain: vi.fn(async () => 'sunrise-clinic') }));
 
-import { isCloudinaryConfigured, uploadToCloudinary, openCloudinaryAsset, parseCloudinaryUrl } from '@/lib/cloudinary';
+import { isCloudinaryConfigured, uploadToCloudinary, fetchCloudinaryAsset, parseCloudinaryUrl } from '@/lib/cloudinary';
 import { storeAttachment, attachmentResponse, AttachmentStoreError, INLINE_BUDGET_BYTES } from '@/lib/attachment-file';
 
 const file = { buffer: Buffer.from('%PDF-1.4 hello'), contentType: 'application/pdf', filename: 'cbc.pdf' };
@@ -51,12 +51,21 @@ describe('attachmentResponse', () => {
 
   it('fetches a Cloudinary file and keeps the recorded type', async () => {
     vi.mocked(parseCloudinaryUrl).mockReturnValue({ publicId: 'a', resourceType: 'raw', deliveryType: 'authenticated' });
-    vi.mocked(openCloudinaryAsset).mockResolvedValue({ body: new Response(new Uint8Array(file.buffer)).body!, contentType: 'application/octet-stream', size: file.buffer.length });
+    vi.mocked(fetchCloudinaryAsset).mockResolvedValue({ ok: true, file: { body: new Response(new Uint8Array(file.buffer)).body!, contentType: 'application/octet-stream', size: file.buffer.length } });
     const res = await attachmentResponse({ filename: 'a.pdf', contentType: 'application/pdf', url: 'https://res.cloudinary.com/c/raw/authenticated/v1/a' }, { download: true, origin });
     expect(res!.headers.get('content-disposition')).toMatch(/^attachment/);
     expect(res!.headers.get('content-length')).toBe(String(file.buffer.length));
     expect(Buffer.from(await res!.arrayBuffer()).equals(file.buffer)).toBe(true);
-    expect(openCloudinaryAsset).toHaveBeenCalled();
+    expect(fetchCloudinaryAsset).toHaveBeenCalled();
+  });
+
+  it('answers 502 when Cloudinary fails to serve the file, and null (404) when it is gone', async () => {
+    vi.mocked(parseCloudinaryUrl).mockReturnValue({ publicId: 'a', resourceType: 'raw', deliveryType: 'authenticated' });
+    const stored = { filename: 'a.pdf', url: 'https://res.cloudinary.com/c/raw/authenticated/v1/a' };
+    vi.mocked(fetchCloudinaryAsset).mockResolvedValueOnce({ ok: false, reason: 'upstream' });
+    expect((await attachmentResponse(stored, { download: false, origin }))!.status).toBe(502);
+    vi.mocked(fetchCloudinaryAsset).mockResolvedValueOnce({ ok: false, reason: 'missing' });
+    expect(await attachmentResponse(stored, { download: false, origin })).toBeNull();
   });
 
   it('sends files moved to a Document to its stream route', async () => {

@@ -6,6 +6,7 @@ import { maskPhone, phoneRateKey } from '@/app/api/patients/auth/shared';
 import { authenticateAccountPassword } from '@/lib/emcr/password';
 import { LOGIN_ID_DOMAIN, parseLoginId } from '@/lib/emcr/login-id';
 import { accountSessionFields, accountView } from '@/lib/emcr/session';
+import { jsonObject } from '@/lib/api/validate';
 
 /**
  * POST /api/emcr/auth/password
@@ -20,7 +21,7 @@ import { accountSessionFields, accountView } from '@/lib/emcr/session';
 export async function POST(request: NextRequest) {
   let body: { login?: unknown; phone?: unknown; password?: unknown };
   try {
-    body = await request.json();
+    body = jsonObject(await request.json());
   } catch {
     return NextResponse.json({ success: false, error: 'Invalid request format' }, { status: 400 });
   }

@@ -3,7 +3,15 @@ import connectDB from '@/lib/mongodb';
 import EmcrAccount from '@/models/EmcrAccount';
 import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
-import { isFreshOtpSession } from '@/app/lib/dal';
+import {
+  emcrAccountSessionVersion,
+  isFreshOtpSession,
+  issuePatientToken,
+  PATIENT_TOKEN_TTL_SECONDS,
+  setPatientSessionCookie,
+} from '@/app/lib/dal';
+import { issueRefreshToken, REFRESH_TOKEN_TTL_SECONDS } from '@/app/lib/refresh-tokens';
+import Patient from '@/models/Patient';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { findAccountForSession, type EmcrAccountLean } from '@/lib/emcr/account';
 import {
@@ -15,6 +23,7 @@ import {
 } from '@/lib/emcr/password';
 import { accountView } from '@/lib/emcr/session';
 import { rotatePatientSessionAfterPasswordChange } from '@/app/api/patients/auth/shared';
+import { jsonObject } from '@/lib/api/validate';
 
 /**
  * POST /api/emcr/account/password (patient sign-in, guardian sessions included)
@@ -34,7 +43,10 @@ import { rotatePatientSessionAfterPasswordChange } from '@/app/api/patients/auth
  *
  * `rotate: true` signs out every other session and returns a new token pair. It is opt-in because
  * app versions up to 1.1.2 ignore new tokens and would sign themselves out. A guardian-only session
- * sits on a record it manages, so it is never rotated: that would sign out the record's own people.
+ * sits on a record it manages, so the record's sessions are never rotated: that would sign out the
+ * record's own people.
+ * Any password set ends every guardian session of the account (EmcrAccount.sessionVersion), the
+ * caller's included; a guardian caller sending `rotate: true` gets a fresh guardian token pair.
  * → { account, token?, expiresIn?, refreshToken?, refreshExpiresIn? }
  */
 export async function POST(request: NextRequest) {
@@ -43,7 +55,7 @@ export async function POST(request: NextRequest) {
 
   let body: { newPassword?: unknown; currentPassword?: unknown; rotate?: unknown; deviceId?: unknown };
   try {
-    body = await request.json();
+    body = jsonObject(await request.json());
   } catch {
     return NextResponse.json({ success: false, error: 'Invalid request format' }, { status: 400 });
   }
@@ -91,9 +103,11 @@ export async function POST(request: NextRequest) {
     }
 
     const rotated =
-      body.rotate === true && session.rel !== 'guardian'
-        ? await rotateAfterChange(request, session, phoneProven, body.deviceId)
-        : null;
+      body.rotate !== true
+        ? null
+        : session.rel === 'guardian'
+          ? await reissueGuardianSession(request, session, phoneProven)
+          : await rotateAfterChange(request, session, phoneProven, body.deviceId);
 
     await connectDB();
     const fresh = await EmcrAccount.findById(account._id).lean<EmcrAccountLean | null>();
@@ -118,4 +132,40 @@ async function rotateAfterChange(
     keepDeviceId: typeof deviceId === 'string' ? deviceId.trim() || undefined : undefined,
     acc: session.acc,
   });
+}
+
+/**
+ * The password change ended the account's guardian sessions (setAccountPassword bumps the
+ * account's session version). Give the calling device a new guardian token pair on the same record
+ * and clinic scope; nothing else is revoked: the record's own sessions belong to other people.
+ */
+async function reissueGuardianSession(
+  request: NextRequest,
+  session: NonNullable<Awaited<ReturnType<typeof verifyPatientAuth>>>,
+  phoneProven: boolean
+) {
+  await connectDB();
+  const patient = await Patient.findById(session.patientId).select('patientCode email sessionVersion');
+  if (!patient || !session.acc) return null;
+  const claims = {
+    tid: phoneProven ? undefined : session.tid,
+    acc: session.acc,
+    rel: 'guardian' as const,
+    av: await emcrAccountSessionVersion(session.acc),
+  };
+  const token = await issuePatientToken(patient, { ...claims, amr: 'password' });
+  if (request.cookies.get('patient_session')?.value) {
+    return {
+      bodyFields: {},
+      apply: (response: NextResponse) => {
+        setPatientSessionCookie(response, token);
+        return response;
+      },
+    };
+  }
+  const refreshToken = await issueRefreshToken('patient', patient._id, patient.sessionVersion ?? 0, undefined, claims);
+  return {
+    bodyFields: { token, tokenType: 'Bearer', expiresIn: PATIENT_TOKEN_TTL_SECONDS, refreshToken, refreshExpiresIn: REFRESH_TOKEN_TTL_SECONDS },
+    apply: (response: NextResponse) => response,
+  };
 }

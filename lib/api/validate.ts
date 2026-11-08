@@ -71,3 +71,16 @@ export function escapeRegex(value: string): string {
 export function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
+
+/**
+ * A parsed JSON request body as a plain object. `request.json()` happily returns `null`, an
+ * array or a primitive for a valid-JSON body, and `body.field` on `null` then throws a TypeError
+ * (a 500). Throws for anything but an object so the caller's existing `try { body =
+ * jsonObject(await request.json()) } catch { 400 }` treats it like malformed JSON.
+ */
+export function jsonObject<T extends object = Record<string, unknown>>(value: unknown): T {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError('Request body must be a JSON object');
+  }
+  return value as T;
+}

@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import type { Model } from 'mongoose';
 import {
   deleteFromCloudinary,
-  openCloudinaryAsset,
+  fetchCloudinaryAsset,
   isCloudinaryConfigured,
   ownedUploadOptions,
   parseCloudinaryUrl,
@@ -111,8 +111,14 @@ export async function attachmentResponse(
     const ref = parseCloudinaryUrl(url);
     if (!ref) return null;
     // Streamed through as it arrives, not read into memory first.
-    const fetched = await openCloudinaryAsset(ref);
-    if (!fetched) return null;
+    const result = await fetchCloudinaryAsset(ref);
+    // Cloudinary failing to serve a file that should be there is a 502, not "not found".
+    if (!result.ok) {
+      return result.reason === 'upstream'
+        ? NextResponse.json({ success: false, code: 'FILE_STORE_UNAVAILABLE', error: 'The file couldn’t be loaded right now. Please try again.' }, { status: 502 })
+        : null;
+    }
+    const fetched = result.file;
     // The type recorded at upload (validated then) wins over whatever the CDN reports.
     type = (file.contentType || fetched.contentType).toLowerCase();
     body = fetched.body;

@@ -9,6 +9,7 @@ import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { scopedTenantIds } from '../_lib/patient-scope';
 import { linkedRecords, recordAtClinic } from '../_lib/linked-records';
+import { PATIENT_VISIT_VISIBLE } from '../_lib/visit-fields';
 
 /**
  * GET /api/patients/me/clinics
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
         .select('name displayName subdomain address phone settings.logo')
         .lean<Record<string, any>[]>(),
       Visit.aggregate<{ _id: Types.ObjectId; lastVisitAt: Date }>([
-        { $match: { patient: { $in: linked.patientIds }, tenantId: { $in: scope } } },
+        { $match: { patient: { $in: linked.patientIds }, tenantId: { $in: scope }, ...PATIENT_VISIT_VISIBLE } },
         { $group: { _id: '$tenantId', lastVisitAt: { $max: '$date' } } },
       ]),
       Patient.find({ _id: { $in: linked.patientIds } }).select('patientCode').lean<{ _id: Types.ObjectId; patientCode?: string }[]>(),

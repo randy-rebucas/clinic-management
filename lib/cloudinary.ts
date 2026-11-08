@@ -285,21 +285,43 @@ export function getPrivateDownloadUrl(ref: CloudinaryAssetRef, expiresInSeconds 
  */
 export async function openCloudinaryAsset(
   ref: CloudinaryAssetRef
-): Promise<{ body: ReadableStream<Uint8Array>; contentType: string; size?: number } | null> {
+): Promise<CloudinaryAssetFile | null> {
+  const result = await fetchCloudinaryAsset(ref);
+  return result.ok ? result.file : null;
+}
+
+export type CloudinaryAssetFile = { body: ReadableStream<Uint8Array>; contentType: string; size?: number };
+
+/**
+ * openCloudinaryAsset, telling a file that isn't there (`missing`: Cloudinary answered 404/410,
+ * or Cloudinary isn't configured) from Cloudinary failing to serve it (`upstream`: 5xx, other
+ * errors, network failure, timeout), so a route can answer 404 or 502.
+ */
+export async function fetchCloudinaryAsset(
+  ref: CloudinaryAssetRef
+): Promise<{ ok: true; file: CloudinaryAssetFile } | { ok: false; reason: 'missing' | 'upstream' }> {
   const signedUrl = getPrivateDownloadUrl(ref, 120);
-  if (!signedUrl) return null;
+  if (!signedUrl) return { ok: false, reason: 'missing' };
+  // The timeout covers only the wait for the response headers. AbortSignal.timeout() on the
+  // fetch would also cut off a large file still streaming to the client after 60 s.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new DOMException('Cloudinary did not answer in time', 'TimeoutError')), CLOUDINARY_TIMEOUT_MS);
   try {
-    const res = await fetch(signedUrl, { redirect: 'follow', signal: AbortSignal.timeout(CLOUDINARY_TIMEOUT_MS) });
+    const res = await fetch(signedUrl, { redirect: 'follow', signal: controller.signal });
+    clearTimeout(timer);
     if (!res.ok || !res.body) {
       await res.body?.cancel().catch(() => {});
-      return null;
+      const missing = res.status === 404 || res.status === 410;
+      if (!missing) console.error(`Cloudinary asset fetch failed: HTTP ${res.status}`);
+      return { ok: false, reason: missing ? 'missing' : 'upstream' };
     }
     const length = Number(res.headers.get('content-length'));
     const size = !res.headers.get('content-encoding') && Number.isFinite(length) && length > 0 ? length : undefined;
-    return { body: res.body, contentType: res.headers.get('content-type') || 'application/octet-stream', size };
+    return { ok: true, file: { body: res.body, contentType: res.headers.get('content-type') || 'application/octet-stream', size } };
   } catch (error) {
+    clearTimeout(timer);
     console.error('Error fetching Cloudinary asset:', error);
-    return null;
+    return { ok: false, reason: 'upstream' };
   }
 }
 

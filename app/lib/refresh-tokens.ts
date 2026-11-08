@@ -31,7 +31,7 @@ export async function issueRefreshToken(
   subjectId: string | Types.ObjectId,
   sessionVersion: number,
   family: string = randomUUID(),
-  scope: { tid?: string | null; acc?: string | null; rel?: 'guardian' | null } = {}
+  scope: { tid?: string | null; acc?: string | null; rel?: 'guardian' | null; av?: number } = {}
 ): Promise<string> {
   await connectDB();
   const token = randomBytes(32).toString('base64url');
@@ -44,6 +44,7 @@ export async function issueRefreshToken(
     ...(scope.tid ? { scopeTenantId: new Types.ObjectId(String(scope.tid)) } : {}),
     ...(scope.acc ? { scopeAccountId: new Types.ObjectId(String(scope.acc)) } : {}),
     ...(scope.acc && scope.rel === 'guardian' ? { scopeRel: 'guardian' } : {}),
+    ...(scope.acc && typeof scope.av === 'number' ? { scopeAccountVersion: scope.av } : {}),
     expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000),
   });
   return token;
@@ -58,6 +59,8 @@ export type ConsumedRefreshToken = {
   /** eMCR account and holder relation the chain was issued with (patients). */
   acc?: string;
   rel?: 'guardian';
+  /** EmcrAccount.sessionVersion the chain was issued with (chains with `acc`; 0 when not recorded). */
+  av?: number;
 };
 
 export type ConsumeResult =
@@ -90,7 +93,7 @@ export async function consumeRefreshToken(
   if (row) return { ok: true, value: consumedValue(row) };
 
   const spent = await RefreshToken.findOne({ tokenHash, subjectType, usedAt: { $ne: null } })
-    .select('family usedAt revokedAt expiresAt subjectId sessionVersion scopeTenantId scopeAccountId scopeRel')
+    .select('family usedAt revokedAt expiresAt subjectId sessionVersion scopeTenantId scopeAccountId scopeRel scopeAccountVersion')
     .lean<(RefreshTokenRow & { usedAt?: Date; revokedAt?: Date; expiresAt?: Date }) | null>();
   if (spent) {
     // The app lost the reply to its last refresh (dropped connection, app killed before it
@@ -119,6 +122,7 @@ type RefreshTokenRow = {
   scopeTenantId?: Types.ObjectId;
   scopeAccountId?: Types.ObjectId;
   scopeRel?: 'guardian';
+  scopeAccountVersion?: number;
 };
 
 function consumedValue(row: RefreshTokenRow): ConsumedRefreshToken {
@@ -127,7 +131,7 @@ function consumedValue(row: RefreshTokenRow): ConsumedRefreshToken {
     sessionVersion: row.sessionVersion ?? 0,
     family: row.family,
     ...(row.scopeTenantId ? { tid: row.scopeTenantId.toString() } : {}),
-    ...(row.scopeAccountId ? { acc: row.scopeAccountId.toString() } : {}),
+    ...(row.scopeAccountId ? { acc: row.scopeAccountId.toString(), av: row.scopeAccountVersion ?? 0 } : {}),
     ...(row.scopeAccountId && row.scopeRel === 'guardian' ? { rel: 'guardian' as const } : {}),
   };
 }
@@ -161,7 +165,7 @@ export async function revokeRefreshToken(
 export async function findRefreshTokenSubject(
   rawToken: unknown,
   subjectType: RefreshSubjectType
-): Promise<{ subjectId: string; sessionVersion: number; rel?: 'guardian' } | null> {
+): Promise<{ subjectId: string; sessionVersion: number; rel?: 'guardian'; acc?: string } | null> {
   if (typeof rawToken !== 'string' || !TOKEN_FORMAT.test(rawToken)) return null;
   await connectDB();
   const row = await RefreshToken.findOne({
@@ -171,10 +175,15 @@ export async function findRefreshTokenSubject(
     revokedAt: null,
     expiresAt: { $gt: new Date() },
   })
-    .select('subjectId sessionVersion scopeRel')
-    .lean<{ subjectId: Types.ObjectId; sessionVersion?: number; scopeRel?: 'guardian' } | null>();
+    .select('subjectId sessionVersion scopeRel scopeAccountId')
+    .lean<{ subjectId: Types.ObjectId; sessionVersion?: number; scopeRel?: 'guardian'; scopeAccountId?: Types.ObjectId } | null>();
   return row
-    ? { subjectId: row.subjectId.toString(), sessionVersion: row.sessionVersion ?? 0, ...(row.scopeRel ? { rel: row.scopeRel } : {}) }
+    ? {
+        subjectId: row.subjectId.toString(),
+        sessionVersion: row.sessionVersion ?? 0,
+        ...(row.scopeRel ? { rel: row.scopeRel } : {}),
+        ...(row.scopeAccountId ? { acc: row.scopeAccountId.toString() } : {}),
+      }
     : null;
 }
 

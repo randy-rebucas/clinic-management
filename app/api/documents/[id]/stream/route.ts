@@ -3,7 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Document from '@/models/Document';
 import { requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
-import { loadDocumentFile } from '@/lib/document-file';
+import { fileUpstreamResponse, loadDocumentFile } from '@/lib/document-file';
 import { fileResponseHeaders } from '@/lib/upload-validation';
 import { createAuditLog } from '@/lib/audit';
 
@@ -50,6 +50,8 @@ export async function GET(
       headers: fileResponseHeaders(file.contentType, document.originalFilename || document.filename, { size: file.size }),
     });
   } catch (error: any) {
+    const upstream = fileUpstreamResponse(error);
+    if (upstream) return upstream;
     console.error('Error streaming document:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to stream document' },

@@ -1,6 +1,7 @@
 import 'server-only';
+import { NextResponse } from 'next/server';
 import DocumentModel from '@/models/Document';
-import { openCloudinaryAsset, cloudinaryRefFromStored, deleteFromCloudinary, isCloudinaryConfigured, CloudinaryAssetRef } from '@/lib/cloudinary';
+import { fetchCloudinaryAsset, cloudinaryRefFromStored, deleteFromCloudinary, isCloudinaryConfigured, CloudinaryAssetRef } from '@/lib/cloudinary';
 
 /**
  * Locate a stored document's bytes. Files live either inline as a data URL or on this
@@ -11,9 +12,28 @@ export function cloudinaryRefForDocument(doc: { url?: string; metadata?: any }):
   return cloudinaryRefFromStored(doc.url, doc.metadata);
 }
 
+/** Cloudinary failed to serve a file that should be there (not the same as the file being gone). */
+export class FileUpstreamError extends Error {
+  constructor() {
+    super('The file store did not serve the file');
+    this.name = 'FileUpstreamError';
+  }
+}
+
+/** The 502 for a FileUpstreamError thrown by loadDocumentFile; null for any other error. */
+export function fileUpstreamResponse(error: unknown): NextResponse | null {
+  if (!(error instanceof FileUpstreamError)) return null;
+  return NextResponse.json(
+    { success: false, code: 'FILE_STORE_UNAVAILABLE', error: 'The file couldn’t be loaded right now. Please try again.' },
+    { status: 502 }
+  );
+}
+
 /**
  * A document's file, ready to hand to a Response. Cloudinary files are streamed through as
  * they arrive; `size` is set only when the byte count is known.
+ * Null when there is no file (answer 404); throws FileUpstreamError when Cloudinary failed to
+ * serve it (answer 502, see fileUpstreamResponse).
  */
 export async function loadDocumentFile(doc: {
   url?: string;
@@ -30,8 +50,12 @@ export async function loadDocumentFile(doc: {
   if (!isCloudinaryConfigured()) return null;
   const ref = cloudinaryRefForDocument(doc);
   if (!ref) return null;
-  const file = await openCloudinaryAsset(ref);
-  if (!file) return null;
+  const result = await fetchCloudinaryAsset(ref);
+  if (!result.ok) {
+    if (result.reason === 'upstream') throw new FileUpstreamError();
+    return null;
+  }
+  const file = result.file;
   // The recorded content type (validated at upload) wins over whatever the CDN reports.
   return { body: file.body, contentType: doc.contentType || file.contentType, size: file.size };
 }

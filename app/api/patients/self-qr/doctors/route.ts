@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { doctorChoices, eligibleRecord, readSelfQrTicket, ticketExpiredResponse } from '../../auth/self-qr';
+import { jsonObject } from '@/lib/api/validate';
 
 /**
  * POST /api/patients/self-qr/doctors
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest) {
 
   let body: { ticket?: unknown; patientId?: unknown };
   try {
-    body = await request.json();
+    body = jsonObject(await request.json());
   } catch {
     return NextResponse.json({ success: false, error: 'Invalid request format' }, { status: 400 });
   }

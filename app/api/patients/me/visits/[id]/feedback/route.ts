@@ -5,6 +5,7 @@ import { createAuditLog } from '@/lib/audit';
 import { applyRateLimit, getClientIp, rateLimiters } from '@/lib/middleware/rate-limit';
 import { feedbackExpired, parseFeedbackInput, submitVisitFeedback } from '@/lib/visit-feedback';
 import { ownedRecordContext, isOwnedRecordError, recordNotFound } from '../../../_lib/owned-record';
+import { PATIENT_VISIT_VISIBLE } from '../../../_lib/visit-fields';
 
 /**
  * POST /api/patients/me/visits/[id]/feedback
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const limited = await applyRateLimit(request, rateLimiters.api, `patient-feedback:${session.guardianId ?? session.patientId}`);
     if (limited) return limited;
 
-    const visit = await Visit.findOne({ ...ctx.filter, feedbackRequested: true })
+    const visit = await Visit.findOne({ ...ctx.filter, ...PATIENT_VISIT_VISIBLE, feedbackRequested: true })
       .select('_id tenantId patient date')
       .lean<{ _id: unknown; tenantId?: unknown; patient?: unknown; date?: Date } | null>();
     if (!visit || feedbackExpired(visit.date)) return recordNotFound('Visit');

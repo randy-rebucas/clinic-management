@@ -14,8 +14,8 @@ import MobileDevice from '@/models/MobileDevice';
 import { Types } from 'mongoose';
 import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
-import { PATIENT_VISIT_EXCLUDE } from '../me/_lib/visit-fields';
-import { PATIENT_LAB_RESULT_HIDDEN } from '../me/_lib/lab-result-fields';
+import { PATIENT_VISIT_EXCLUDE, PATIENT_VISIT_VISIBLE } from '../me/_lib/visit-fields';
+import { PATIENT_LAB_RESULT_HIDDEN, PATIENT_LAB_RESULT_VISIBLE } from '../me/_lib/lab-result-fields';
 import { PATIENT_REFERRAL_FILTER, PATIENT_REFERRAL_SELECT } from '../me/referrals/_lib/referral-view';
 import {
   findRefreshTokenSubject,
@@ -23,6 +23,7 @@ import {
   revokeRefreshToken,
 } from '@/app/lib/refresh-tokens';
 import { revokeAllPatientAccess } from '../auth/shared';
+import { revokeEmcrAccountSessions } from '@/app/lib/dal';
 
 // Ensure Doctor model is registered for populate calls
 void Doctor;
@@ -117,7 +118,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (include.includes('visits') || include.includes('all')) {
-      const visitQuery: any = { patient: patient._id };
+      const visitQuery: any = { patient: patient._id, ...PATIENT_VISIT_VISIBLE };
       if (patientTenantId) {
         visitQuery.tenantId = patientTenantId;
       } else {
@@ -170,7 +171,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (include.includes('labResults') || include.includes('all')) {
-      const labResultQuery: any = { patient: patient._id };
+      const labResultQuery: any = { patient: patient._id, ...PATIENT_LAB_RESULT_VISIBLE };
       if (patientTenantId) {
         labResultQuery.tenantId = patientTenantId;
       } else {
@@ -290,11 +291,14 @@ export async function DELETE(request: NextRequest) {
   // A guardian-only eMCR session is signed in on a record it manages: "everywhere" would sign
   // that person out on their own devices too.
   let guardian = false;
+  // The caller's eMCR account: "everywhere" also ends its guardian sessions on records it manages.
+  let accountId: string | undefined;
   if (all || deviceId) {
     const session = await verifyPatientAuth(request, { profile: 'ignore' });
     if (session) {
       patientId = session.patientId;
       guardian = session.rel === 'guardian';
+      accountId = session.acc;
     }
   }
   if (all && !patientId && refreshToken) {
@@ -319,7 +323,10 @@ export async function DELETE(request: NextRequest) {
           const patient = await Patient.findById(owner.subjectId)
             .select('sessionVersion')
             .lean<{ sessionVersion?: number } | null>();
-          if (patient && (patient.sessionVersion ?? 0) === owner.sessionVersion) patientId = owner.subjectId;
+          if (patient && (patient.sessionVersion ?? 0) === owner.sessionVersion) {
+            patientId = owner.subjectId;
+            accountId = owner.acc;
+          }
         }
       }
       await revokeRefreshToken(refreshToken, 'patient');
@@ -343,6 +350,7 @@ export async function DELETE(request: NextRequest) {
       }
       if (all) {
         await revokeAllPatientAccess(patientId);
+        if (accountId) await revokeEmcrAccountSessions(accountId);
       }
     } catch (error) {
       logger.error('Error signing patient out', error as Error);

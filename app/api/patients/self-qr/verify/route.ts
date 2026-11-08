@@ -11,6 +11,7 @@ import {
   phoneRateKey,
 } from '../../auth/shared';
 import { createSelfQrTicket, selfServePeople } from '../../auth/self-qr';
+import { jsonObject } from '@/lib/api/validate';
 
 /**
  * POST /api/patients/self-qr/verify
@@ -23,7 +24,7 @@ import { createSelfQrTicket, selfServePeople } from '../../auth/self-qr';
 export async function POST(request: NextRequest) {
   let body: { phone?: unknown; otp?: unknown; tenantId?: unknown };
   try {
-    body = await request.json();
+    body = jsonObject(await request.json());
   } catch {
     return NextResponse.json({ success: false, error: 'Invalid request format' }, { status: 400 });
   }

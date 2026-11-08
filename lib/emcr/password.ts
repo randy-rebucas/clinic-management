@@ -9,6 +9,7 @@ import { dummyPasswordHash, revokeAllPatientAccess } from '@/app/api/patients/au
 import { personRecordIds } from '@/lib/patient-family';
 import { findAccountForSession, forgetAccountCache, type EmcrAccountLean } from '@/lib/emcr/account';
 import { ensureLoginId } from '@/lib/emcr/login-id';
+import { revokeEmcrAccountSessions } from '@/app/lib/dal';
 
 /**
  * eMCR sign-in credential: the account's mobile number + a password. Patients have none until
@@ -55,6 +56,7 @@ export async function setAccountPassword(
 ): Promise<void> {
   if (by === 'staff' && !tenantId) throw new Error('A staff-set password needs its clinic');
   await connectDB();
+  const previous = await EmcrAccount.findById(accountId).select('+password').lean<{ password?: string } | null>();
   await EmcrAccount.updateOne(
     { _id: accountId },
     {
@@ -68,6 +70,12 @@ export async function setAccountPassword(
       ...(by === 'user' && options.phoneProven ? { $unset: { passwordTenantId: 1 } } : {}),
     }
   );
+  // Changing or resetting a password ends the account's guardian sessions everywhere (a caller on
+  // one is given a fresh one by the password route). A first password has no password-started
+  // sessions to end, and app builds before 1.1.3 don't ask for a fresh pair: a guardian creating
+  // their first password there must not be signed out. The holder's own sessions are rotated by
+  // the callers.
+  if (previous?.password) await revokeEmcrAccountSessions(String(accountId));
   forgetAccountCache();
   await ensureLoginId(accountId, tenantId);
 }
@@ -144,6 +152,10 @@ export async function cancelClinicPassword(accountId: Types.ObjectId | string): 
     { _id: accountId },
     { $unset: { password: 1, passwordSetAt: 1, passwordSetBy: 1, mustChangePassword: 1, passwordTenantId: 1 } }
   );
+  // Every guardian session of the account ends here, not only those started with the clinic's
+  // password (a token doesn't record how it began). It happens once: the clinic password is gone
+  // afterwards. The caller's new session is issued after this, with the new version.
+  await revokeEmcrAccountSessions(String(accountId));
   forgetAccountCache();
 }
 

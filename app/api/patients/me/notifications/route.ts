@@ -13,6 +13,8 @@ import { parsePagination, tenantScopeFilter } from '../_lib/patient-scope';
 import { notificationId } from '../_lib/notification-id';
 import { linkedRecords, type LinkedRecords } from '../_lib/linked-records';
 import { invoiceBalance } from '../_lib/invoice-balance';
+import { PATIENT_LAB_RESULT_VISIBLE } from '../_lib/lab-result-fields';
+import { jsonObject } from '@/lib/api/validate';
 
 /**
  * Patient notification types derived from clinical activity
@@ -79,8 +81,10 @@ async function buildPatientNotifications(
       patient: patientId,
       ...tenantFilter,
       updatedAt: { $gte: since },
-      // Results the patient can act on: entered (completed) or signed off (reviewed).
+      // Results the patient can act on: entered (completed) or signed off (reviewed), and not
+      // lab-completed results still waiting for a clinician's review.
       status: { $in: ['completed', 'reviewed'] },
+      ...PATIENT_LAB_RESULT_VISIBLE,
     })
       .select('request.testType status abnormalFlags orderDate updatedAt')
       .sort({ updatedAt: -1 })
@@ -317,7 +321,7 @@ export async function PATCH(request: NextRequest) {
 
     let body: { ids?: string[]; markAllRead?: boolean };
     try {
-      body = await request.json();
+      body = jsonObject(await request.json());
     } catch {
       return NextResponse.json(
         { success: false, error: 'Invalid request format' },

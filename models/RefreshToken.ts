@@ -22,6 +22,8 @@ export interface IRefreshToken extends Document {
   /** Patient tokens only: the eMCR account (`acc`) and holder relation (`rel`) of the sign-in. */
   scopeAccountId?: Types.ObjectId;
   scopeRel?: 'guardian';
+  /** Patient tokens with an account only: EmcrAccount.sessionVersion at issue (missing = 0). */
+  scopeAccountVersion?: number;
   expiresAt: Date;
   usedAt?: Date;
   revokedAt?: Date;
@@ -39,6 +41,7 @@ const RefreshTokenSchema = new Schema<IRefreshToken>(
     scopeTenantId: { type: Schema.Types.ObjectId },
     scopeAccountId: { type: Schema.Types.ObjectId },
     scopeRel: { type: String, enum: ['guardian'] },
+    scopeAccountVersion: { type: Number },
     expiresAt: { type: Date, required: true },
     usedAt: { type: Date },
     revokedAt: { type: Date },

@@ -631,6 +631,11 @@ export interface PatientSessionPayload {
    * patient record of their own). Credential actions on that record are refused.
    */
   rel?: 'guardian';
+  /**
+   * EmcrAccount.sessionVersion at issue time (tokens with `acc`). Checked for guardian sessions,
+   * which no Patient.sessionVersion bump reaches; a token without it counts as version 0.
+   */
+  av?: number;
   iat?: number;
   /**
    * Set (never signed into a token) when the request acts for a family member: `patientId` is the
@@ -644,6 +649,8 @@ export interface PatientTokenClaims {
   amr?: PatientAuthMethod;
   acc?: string | null;
   rel?: 'guardian' | null;
+  /** EmcrAccount.sessionVersion to embed; read from the account when omitted (and `acc` is set). */
+  av?: number;
 }
 
 interface PatientTokenSubject {
@@ -665,6 +672,7 @@ export async function issuePatientToken(
   if (tid && !OBJECT_ID_FORMAT.test(tid)) throw new Error('Invalid tid claim');
   const acc = claims.acc ? String(claims.acc) : undefined;
   if (acc && !OBJECT_ID_FORMAT.test(acc)) throw new Error('Invalid acc claim');
+  const av = acc ? claims.av ?? (await emcrAccountSessionVersion(acc)) : undefined;
   return new SignJWT({
     typ: 'patient',
     type: 'patient',
@@ -676,6 +684,7 @@ export async function issuePatientToken(
     ...(claims.amr ? { amr: claims.amr } : {}),
     ...(acc ? { acc } : {}),
     ...(acc && claims.rel === 'guardian' ? { rel: 'guardian' } : {}),
+    ...(acc ? { av } : {}),
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
@@ -696,9 +705,9 @@ export function setPatientSessionCookie(response: NextResponse, token: string): 
 
 const patientStateCache = new Map<string, { state: { active: boolean; sessionVersion: number } | null; expires: number }>();
 
-async function loadPatientSessionState(patientId: string) {
+async function loadPatientSessionState(patientId: string, options: { fresh?: boolean } = {}) {
   const cached = patientStateCache.get(patientId);
-  if (cached && cached.expires > Date.now()) return cached.state;
+  if (!options.fresh && cached && cached.expires > Date.now()) return cached.state;
   await connectDB();
   const Patient = (await import('@/models/Patient')).default;
   const patient = await Patient.findById(patientId)
@@ -715,22 +724,53 @@ async function loadPatientSessionState(patientId: string) {
   return state;
 }
 
-const emcrAccountCache = new Map<string, { ok: boolean; expires: number }>();
+type EmcrAccountState = { ok: boolean; sessionVersion: number };
+const emcrAccountCache = new Map<string, { state: EmcrAccountState; expires: number }>();
 
-/** An eMCR account still exists and is not disabled (cached like the patient state). */
-async function emcrAccountUsable(accountId: string): Promise<boolean> {
+/**
+ * Whether an eMCR account still exists and is not disabled, and its session version (cached like
+ * the patient state; another instance may serve a bumped version for up to SESSION_CHECK_TTL_MS).
+ */
+async function loadEmcrAccountState(accountId: string, options: { fresh?: boolean } = {}): Promise<EmcrAccountState> {
   const cached = emcrAccountCache.get(accountId);
-  if (cached && cached.expires > Date.now()) return cached.ok;
+  if (!options.fresh && cached && cached.expires > Date.now()) return cached.state;
   await connectDB();
   const EmcrAccount = (await import('@/models/EmcrAccount')).default;
-  const account = await EmcrAccount.findById(accountId).select('disabled').lean<{ disabled?: boolean } | null>();
-  const ok = !!account && !account.disabled;
-  emcrAccountCache.set(accountId, { ok, expires: Date.now() + SESSION_CHECK_TTL_MS });
+  const account = await EmcrAccount.findById(accountId)
+    .select('disabled sessionVersion')
+    .lean<{ disabled?: boolean; sessionVersion?: number } | null>();
+  const state = { ok: !!account && !account.disabled, sessionVersion: account?.sessionVersion ?? 0 };
+  emcrAccountCache.set(accountId, { state, expires: Date.now() + SESSION_CHECK_TTL_MS });
   if (emcrAccountCache.size > 5000) {
     const now = Date.now();
     for (const [key, entry] of emcrAccountCache) if (entry.expires < now) emcrAccountCache.delete(key);
   }
-  return ok;
+  return state;
+}
+
+/** The account's current session version, read fresh (for issuing tokens; never cached). */
+export async function emcrAccountSessionVersion(accountId: string): Promise<number> {
+  await connectDB();
+  const EmcrAccount = (await import('@/models/EmcrAccount')).default;
+  const account = await EmcrAccount.findById(accountId).select('sessionVersion').lean<{ sessionVersion?: number } | null>();
+  return account?.sessionVersion ?? 0;
+}
+
+/**
+ * End every guardian session (and refresh chain) of this eMCR account: account password set or
+ * reset, "sign out everywhere". Guardian sessions sit on records the account manages, so the
+ * Patient.sessionVersion bumps of those flows never reach them. Returns the new version.
+ */
+export async function revokeEmcrAccountSessions(accountId: string): Promise<number> {
+  await connectDB();
+  const EmcrAccount = (await import('@/models/EmcrAccount')).default;
+  const updated = await EmcrAccount.findByIdAndUpdate(
+    accountId,
+    { $inc: { sessionVersion: 1 } },
+    { new: true, projection: { sessionVersion: 1 } }
+  ).lean<{ sessionVersion?: number } | null>();
+  emcrAccountCache.delete(String(accountId));
+  return updated?.sessionVersion ?? 0;
 }
 
 /** Invalidate every patient token issued so far (e.g. after a password change). Returns the new version. */
@@ -775,15 +815,33 @@ export async function verifyPatientSession(
     if (p.amr !== undefined && p.amr !== 'password' && p.amr !== 'otp' && p.amr !== 'qr') return null;
     if (p.acc !== undefined && (typeof p.acc !== 'string' || !OBJECT_ID_FORMAT.test(p.acc))) return null;
     if (p.rel !== undefined && (p.rel !== 'guardian' || p.acc === undefined)) return null;
+    if (p.av !== undefined && (typeof p.av !== 'number' || !Number.isInteger(p.av))) return null;
     // Older tokens were issued for 30 days; cap every token at the current TTL.
     if (typeof payload.iat === 'number' && Date.now() / 1000 - payload.iat > PATIENT_TOKEN_TTL_SECONDS) {
       return null;
     }
 
-    const state = await loadPatientSessionState(p.patientId);
+    // Versions only go up. A token newer than this instance's cached version was minted after a
+    // bump another instance made (a rotated pair): read the version again instead of rejecting it.
+    const pv = typeof p.pv === 'number' ? p.pv : 0;
+    let state = await loadPatientSessionState(p.patientId);
+    if (state && state.active && pv > state.sessionVersion) {
+      state = await loadPatientSessionState(p.patientId, { fresh: true });
+    }
     if (!state || !state.active) return null;
-    if ((typeof p.pv === 'number' ? p.pv : 0) !== state.sessionVersion) return null;
-    if (typeof p.acc === 'string' && !(await emcrAccountUsable(p.acc))) return null;
+    if (pv !== state.sessionVersion) return null;
+    if (typeof p.acc === 'string') {
+      let account = await loadEmcrAccountState(p.acc);
+      if (!account.ok) return null;
+      // Only guardian sessions are versioned by the account: the holder's own sessions follow
+      // their Patient.sessionVersion (rotated or revoked by those same flows). Tokens from before
+      // `av` existed count as version 0, which every account starts at.
+      if (p.rel === 'guardian') {
+        const av = typeof p.av === 'number' ? p.av : 0;
+        if (av > account.sessionVersion) account = await loadEmcrAccountState(p.acc, { fresh: true });
+        if (!account.ok || av !== account.sessionVersion) return null;
+      }
+    }
 
     return payload as unknown as PatientSessionPayload;
   } catch {

@@ -5,6 +5,7 @@ import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { ensureAccountForSession } from '@/lib/emcr/account';
 import { activationView, forgetActivationCache, redeemActivationCode } from '@/lib/emcr/activation';
+import { jsonObject } from '@/lib/api/validate';
 
 const MESSAGES = {
   invalid: 'That code isn’t valid. Check the code on your voucher and try again.',
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
 
   let body: { code?: unknown };
   try {
-    body = await request.json();
+    body = jsonObject(await request.json());
   } catch {
     return NextResponse.json({ success: false, error: 'Invalid request format' }, { status: 400 });
   }

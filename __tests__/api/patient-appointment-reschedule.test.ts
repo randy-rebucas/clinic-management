@@ -33,7 +33,7 @@ vi.mock('@/lib/appointment-booking', async (orig) => ({
 vi.mock('@/models/Patient', () => ({ default: { findById: vi.fn() } }));
 vi.mock('@/models/Doctor', () => ({ default: { findOne: vi.fn() } }));
 vi.mock('@/models/User', () => ({ default: { find: vi.fn() } }));
-vi.mock('@/models/Appointment', () => ({ default: { findOne: vi.fn(), findOneAndUpdate: vi.fn() } }));
+vi.mock('@/models/Appointment', () => ({ default: { findOne: vi.fn(), findOneAndUpdate: vi.fn(), populate: vi.fn() } }));
 
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
 import { linkedRecords } from '@/app/api/patients/me/_lib/linked-records';

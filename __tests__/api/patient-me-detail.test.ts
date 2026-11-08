@@ -84,6 +84,8 @@ describe('patient /me detail routes', () => {
       _id: RECORD_ID,
       patient: OWN_RECORD,
       tenantId: { $in: [TENANT_A] },
+      // Lab-completed results wait for a clinician's review before the patient sees them.
+      awaitingReview: { $ne: true },
     });
   });
 
@@ -99,6 +101,8 @@ describe('patient /me detail routes', () => {
       _id: RECORD_ID,
       patient: OWN_RECORD,
       tenantId: { $in: [TENANT_B] },
+      // Lab-completed results wait for a clinician's review before the patient sees them.
+      awaitingReview: { $ne: true },
     });
   });
 
@@ -122,6 +126,8 @@ describe('patient /me detail routes', () => {
       _id: RECORD_ID,
       patient: { $in: [new Types.ObjectId(PATIENT_ID), LINKED_ID] },
       tenantId: { $in: [TENANT_A, TENANT_B] },
+      // Lab-completed results wait for a clinician's review before the patient sees them.
+      awaitingReview: { $ne: true },
     });
   });
 

@@ -34,7 +34,12 @@ vi.mock('@/app/lib/refresh-tokens', () => ({
 }));
 vi.mock('@/app/lib/dal', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/app/lib/dal')>();
-  return { ...actual, issuePatientToken: vi.fn().mockResolvedValue('new-access') };
+  return {
+    ...actual,
+    issuePatientToken: vi.fn().mockResolvedValue('new-access'),
+    emcrAccountSessionVersion: vi.fn().mockResolvedValue(0),
+    revokeEmcrAccountSessions: vi.fn(),
+  };
 });
 vi.mock('@/app/api/patients/auth/shared', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/app/api/patients/auth/shared')>();
@@ -54,7 +59,7 @@ import bcrypt from 'bcryptjs';
 import Patient from '@/models/Patient';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
 import { applyPatientPasswordChange } from '@/lib/emcr/password';
-import { issuePatientToken } from '@/app/lib/dal';
+import { emcrAccountSessionVersion, issuePatientToken, revokeEmcrAccountSessions } from '@/app/lib/dal';
 import {
   consumeRefreshToken,
   findRefreshTokenSubject,
@@ -118,6 +123,36 @@ describe('POST /api/patients/auth/refresh', () => {
     const res = await refresh(post('/api/patients/auth/refresh', { refreshToken: 'x' }));
     expect(res.status).toBe(401);
     expect(await res.json()).toMatchObject({ code: 'REFRESH_INVALID' });
+  });
+
+  const ACC = '507f1f77bcf86cd799439044';
+  it("401 REFRESH_INVALID for a guardian chain after its account's session version moved on", async () => {
+    vi.mocked(consumeRefreshToken).mockResolvedValue({
+      ok: true,
+      value: { subjectId: PATIENT_ID, sessionVersion: 3, family: 'fam', acc: ACC, rel: 'guardian', av: 0 },
+    });
+    vi.mocked(emcrAccountSessionVersion).mockResolvedValueOnce(1);
+    patientDoc();
+    const res = await refresh(post('/api/patients/auth/refresh', { refreshToken: 'x' }));
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ code: 'REFRESH_INVALID' });
+    expect(issuePatientToken).not.toHaveBeenCalled();
+  });
+
+  it('a guardian chain from before account versions (none recorded) counts as version 0', async () => {
+    vi.mocked(consumeRefreshToken).mockResolvedValue({
+      ok: true,
+      value: { subjectId: PATIENT_ID, sessionVersion: 3, family: 'fam', acc: ACC, rel: 'guardian' },
+    });
+    patientDoc();
+    const res = await refresh(post('/api/patients/auth/refresh', { refreshToken: 'x' }));
+    expect(res.status).toBe(200);
+    expect(vi.mocked(issuePatientToken).mock.calls[0][1]).toMatchObject({ acc: ACC, rel: 'guardian', av: 0 });
+  });
+
+  it('400 for a JSON body that is not an object', async () => {
+    expect((await refresh(post('/api/patients/auth/refresh', null))).status).toBe(400);
+    expect(consumeRefreshToken).not.toHaveBeenCalled();
   });
 });
 
@@ -231,6 +266,15 @@ describe('DELETE /api/patients/session', () => {
     expect(res.status).toBe(200);
     expect(revokeRefreshToken).toHaveBeenCalledWith('r', 'patient');
     expect(revokeAllPatientAccess).toHaveBeenCalledWith(PATIENT_ID);
+    expect(revokeEmcrAccountSessions).not.toHaveBeenCalled();
+  });
+
+  it("everywhere also ends the eMCR account's guardian sessions", async () => {
+    vi.mocked(verifyPatientAuth).mockResolvedValue({ patientId: PATIENT_ID, type: 'patient', acc: '507f1f77bcf86cd799439044' } as any);
+    const res = await del('?all=true');
+    expect(res.status).toBe(200);
+    expect(revokeAllPatientAccess).toHaveBeenCalledWith(PATIENT_ID);
+    expect(revokeEmcrAccountSessions).toHaveBeenCalledWith('507f1f77bcf86cd799439044');
   });
 
   it('401 when neither token identifies the patient', async () => {

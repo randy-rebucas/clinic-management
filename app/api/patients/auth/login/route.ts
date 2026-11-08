@@ -8,6 +8,7 @@ import {
   parseOptionalTenantId,
   patientLoginResponse,
 } from '../shared';
+import { jsonObject } from '@/lib/api/validate';
 
 /**
  * Patient email + password login
@@ -19,7 +20,7 @@ export async function POST(request: NextRequest) {
   try {
     let body: { email?: unknown; password?: unknown; tenantId?: unknown };
     try {
-      body = await request.json();
+      body = jsonObject(await request.json());
     } catch {
       return NextResponse.json(
         { success: false, error: 'Invalid request format' },
