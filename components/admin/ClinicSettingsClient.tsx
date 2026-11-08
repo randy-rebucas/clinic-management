@@ -1166,7 +1166,7 @@ function DisplayAds({ ads, canUpload, onChange }: { ads: string[]; canUpload: bo
     <div className="px-5 py-4">
       <p className="text-sm font-semibold text-gray-900">Ads on the waiting-room screen</p>
       <p className="text-sm text-gray-500">
-        Widescreen images (16:9; JPEG, PNG or WebP; up to 5 MB). Each shows for 10 seconds: once a minute over the videos, or one after another if there are none. Everyone in the room sees them, so keep patient details out.
+        Widescreen images (16:9; JPEG, PNG or WebP; up to 4 MB). Each shows for 10 seconds: once a minute over the videos, or one after another if there are none. Everyone in the room sees them, so keep patient details out.
       </p>
       {!canUpload && <Warn>File storage isn’t set up on this server, so images can’t be added. See Outside services below.</Warn>}
       {problem && <Warn>{problem}</Warn>}

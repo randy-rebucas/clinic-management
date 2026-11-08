@@ -26,9 +26,6 @@ export const categoryLabel = (c?: string) => (c && c in CATEGORY_LABEL ? CATEGOR
 export const KIND_MARK: Record<DocumentKind, string> = { pdf: 'PDF', image: 'IMG', word: 'DOC', excel: 'XLS', other: 'FILE' };
 export const KIND_LABEL: Record<DocumentKind, string> = { pdf: 'PDF', image: 'Image', word: 'Word document', excel: 'Spreadsheet', other: 'File' };
 
-/** Upload cap when files go to Cloudinary (inline storage has its own, smaller cap). */
-export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
-
 /** Days before an expiry date that a document counts as "expiring soon". */
 export const EXPIRING_DAYS = 30;
 

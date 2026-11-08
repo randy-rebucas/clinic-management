@@ -1,5 +1,6 @@
 import 'server-only';
-import { fetchCloudinaryAsset, cloudinaryRefFromStored, isCloudinaryConfigured, CloudinaryAssetRef } from '@/lib/cloudinary';
+import DocumentModel from '@/models/Document';
+import { openCloudinaryAsset, cloudinaryRefFromStored, deleteFromCloudinary, isCloudinaryConfigured, CloudinaryAssetRef } from '@/lib/cloudinary';
 
 /**
  * Locate a stored document's bytes. Files live either inline as a data URL or on this
@@ -10,27 +11,84 @@ export function cloudinaryRefForDocument(doc: { url?: string; metadata?: any }):
   return cloudinaryRefFromStored(doc.url, doc.metadata);
 }
 
+/**
+ * A document's file, ready to hand to a Response. Cloudinary files are streamed through as
+ * they arrive; `size` is set only when the byte count is known.
+ */
 export async function loadDocumentFile(doc: {
   url?: string;
   metadata?: any;
   contentType?: string;
-}): Promise<{ buffer: Buffer; contentType: string } | null> {
+}): Promise<{ body: BodyInit; contentType: string; size?: number } | null> {
   const url = doc.url || '';
   if (url.startsWith('data:')) {
     const comma = url.indexOf(',');
     if (comma < 0) return null;
-    return {
-      buffer: Buffer.from(url.slice(comma + 1), 'base64'),
-      contentType: doc.contentType || 'application/octet-stream',
-    };
+    const bytes = new Uint8Array(Buffer.from(url.slice(comma + 1), 'base64'));
+    return { body: bytes, contentType: doc.contentType || 'application/octet-stream', size: bytes.length };
   }
   if (!isCloudinaryConfigured()) return null;
   const ref = cloudinaryRefForDocument(doc);
   if (!ref) return null;
-  const file = await fetchCloudinaryAsset(ref);
+  const file = await openCloudinaryAsset(ref);
   if (!file) return null;
   // The recorded content type (validated at upload) wins over whatever the CDN reports.
-  return { buffer: file.buffer, contentType: doc.contentType || file.contentType };
+  return { body: file.body, contentType: doc.contentType || file.contentType, size: file.size };
+}
+
+/**
+ * Remove a document's stored file from Cloudinary. `gone` is true when nothing is left there
+ * (removed now, already gone, or the file was never on Cloudinary). `fields` are the `$set`
+ * paths that record it on the record: where the file was, so a failed removal can be retried
+ * by retryPendingFileRemovals (lib/storage-optimization.ts) after the URL is wiped, and when it
+ * went.
+ */
+export async function removeDocumentFile(doc: { url?: string; metadata?: any }): Promise<{ gone: boolean; fields: Record<string, unknown> }> {
+  const ref = cloudinaryRefForDocument(doc);
+  if (!ref) return { gone: true, fields: {} };
+  const result = await deleteFromCloudinary(ref.publicId, { resourceType: ref.resourceType, deliveryType: ref.deliveryType });
+  if (!result.success) console.error(`Document file not removed from Cloudinary: ${ref.publicId} (${result.error ?? 'failed'})`);
+  return {
+    gone: result.success,
+    fields: {
+      'metadata.cloudinaryPublicId': ref.publicId,
+      'metadata.cloudinaryResourceType': ref.resourceType,
+      'metadata.cloudinaryDeliveryType': ref.deliveryType,
+      ...(ref.format ? { 'metadata.cloudinaryFormat': ref.format } : {}),
+      ...(result.success ? { 'metadata.fileRemovedAt': new Date() } : {}),
+    },
+  };
+}
+
+/** Records of deleted documents whose Cloudinary file may still exist. */
+export const PENDING_FILE_REMOVAL = {
+  status: 'deleted',
+  'metadata.cloudinaryPublicId': { $exists: true },
+  'metadata.fileRemovedAt': { $exists: false },
+} as const;
+
+/**
+ * Delete a document the way the app always does: the record stays for the audit trail, the
+ * file goes. A Cloudinary file is removed (or left marked for retry), and an inline file
+ * (stored in the record as a data URL) is wiped with any OCR text. Null when no record matches.
+ */
+export async function softDeleteDocument(
+  filter: Record<string, unknown>,
+  document: { url?: string; metadata?: any },
+  userId: string
+): Promise<{ deleted: { _id: unknown; documentCode?: string; status: string } | null; fileGone: boolean }> {
+  const { gone, fields } = await removeDocumentFile(document);
+  const deleted = await DocumentModel.findOneAndUpdate(
+    filter,
+    {
+      $set: { status: 'deleted', url: 'removed:', lastModifiedBy: userId, lastModifiedDate: new Date(), ...fields },
+      $unset: { ocrText: 1, thumbnailUrl: 1 },
+    },
+    { new: true }
+  )
+    .select('_id documentCode status')
+    .lean<{ _id: unknown; documentCode?: string; status: string } | null>();
+  return { deleted, fileGone: gone };
 }
 
 /** Public-facing representation: file URLs always go through the authenticated stream route. */

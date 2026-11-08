@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import Settings from '@/models/Settings';
@@ -11,13 +11,13 @@ import { clearSettingsCache, getDefaultSettings, getSettings } from '@/lib/setti
 import { clearTimezoneCache } from '@/lib/clinic-timezone';
 import { isSMSConfigured } from '@/lib/sms';
 import { isEmailConfigured } from '@/lib/email';
-import { isCloudinaryConfigured } from '@/lib/cloudinary';
+import { deleteFromCloudinary, isCloudinaryConfigured, ownAdImageRef } from '@/lib/cloudinary';
 import { requireTenantSession, isTenantSessionError, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { BRANCH_CODE, SERIAL_PREFIX, birSettingsOf, birSetupProblems } from '@/lib/bir';
 import { philhealthSettingsOf } from '@/lib/philhealth';
 import { AUTOMATIONS } from '@/lib/clinic-automations';
-import { clearTenantCache } from '@/lib/tenant';
+import { clearTenantCache, getTenantSubdomain } from '@/lib/tenant';
 import { AD_IMAGE_URL, DISPLAY_NAME_STYLES, MAX_DISPLAY_ADS, MAX_DISPLAY_TICKER, MAX_DISPLAY_VIDEOS, YOUTUBE_ID } from '@/lib/queue-media';
 
 const AUTOMATION_KEYS = new Set(AUTOMATIONS.map((a) => a.key));
@@ -126,7 +126,6 @@ const settingsUpdateSchema = z.object({
     .optional(),
   integrationSettings: z
     .object({
-      cloudinaryEnabled: z.boolean(),
       twilioEnabled: z.boolean(),
       smtpEnabled: z.boolean(),
     })
@@ -183,6 +182,45 @@ function toSetPaths(obj: Record<string, unknown>, prefix = '', out: Record<strin
     }
   }
   return out;
+}
+
+/** Uploads not saved into the ads within a day are taken as abandoned (another admin may be mid-edit). */
+const UNSAVED_AD_GRACE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Ad images to remove from Cloudinary after a save: ones the clinic showed until now, and
+ * uploads that were never saved into the ads.
+ */
+function staleAdImages(beforeAds: string[], files: { url: string; uploadedAt?: Date }[], newAds: string[]): string[] {
+  const kept = new Set(newAds);
+  const cutoff = Date.now() - UNSAVED_AD_GRACE_MS;
+  const stale = new Set(beforeAds.filter((url) => !kept.has(url)));
+  for (const f of files) {
+    if (!kept.has(f.url) && !beforeAds.includes(f.url) && new Date(f.uploadedAt ?? 0).getTime() < cutoff) stale.add(f.url);
+  }
+  return [...stale];
+}
+
+/** Remove ad images from Cloudinary and from the clinic's record of its ad files. Never throws. */
+async function removeAdImages(tenantId: string, tenantSlug: string, urls: string[]) {
+  const removed: string[] = [];
+  for (const url of urls) {
+    const ref = ownAdImageRef(url, tenantSlug);
+    if (!ref) {
+      removed.push(url); // not a file of this clinic's: nothing to delete, just forget it
+      continue;
+    }
+    const result = await deleteFromCloudinary(ref.publicId, { resourceType: ref.resourceType, deliveryType: ref.deliveryType }).catch(() => ({ success: false }));
+    if (result.success) removed.push(url);
+    else console.error(`Ad image not removed from Cloudinary: ${ref.publicId}`);
+  }
+  if (removed.length) {
+    await Settings.updateOne(
+      tenantFilter(tenantId),
+      { $pull: { 'queueSettings.displayAdFiles': { url: { $in: removed } } } },
+      { timestamps: false }
+    ).catch((error) => console.error('Error updating ad image records:', error));
+  }
 }
 
 // GET settings - accessible to all authenticated users of the clinic
@@ -274,6 +312,14 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    // Ad images must be this clinic's own uploads (or ones it already shows).
+    const newAds = fields.queueSettings?.displayAds;
+    const beforeAds: string[] = Array.from(before.queueSettings?.displayAds ?? []);
+    const tenantSlug = newAds ? await getTenantSubdomain(ctx.tenantId) : '';
+    if (newAds?.some((url) => !beforeAds.includes(url) && !ownAdImageRef(url, tenantSlug))) {
+      return NextResponse.json({ success: false, error: 'Upload ad images here; images from elsewhere can’t be shown.' }, { status: 400 });
+    }
+
     const $set = toSetPaths(fields as Record<string, unknown>);
     const tenant = timezone
       ? await Tenant.findById(ctx.tenantObjectId).select('settings.timezone').lean<{ settings?: { timezone?: string } } | null>()
@@ -341,6 +387,11 @@ export async function PUT(request: NextRequest) {
       );
     }
     clearSettingsCache(ctx.tenantId);
+
+    if (newAds) {
+      const stale = staleAdImages(beforeAds, before.queueSettings?.displayAdFiles ?? [], newAds);
+      if (stale.length) after(() => removeAdImages(ctx.tenantId, tenantSlug, stale));
+    }
 
     if (changes.length) {
       await createAuditLog({

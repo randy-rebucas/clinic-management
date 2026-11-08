@@ -44,10 +44,10 @@ export async function GET(
       description: `Patient downloaded own document ${document.documentCode ?? id}`,
     }));
 
-    return new NextResponse(new Uint8Array(file.buffer), {
+    return new NextResponse(file.body, {
       headers: fileResponseHeaders(file.contentType, document.originalFilename || document.filename, {
         download: request.nextUrl.searchParams.get('download') === 'true',
-        size: file.buffer.length,
+        size: file.size,
       }),
     });
   } catch (error) {

@@ -7,11 +7,10 @@ import Appointment from '@/models/Appointment';
 import LabResult from '@/models/LabResult';
 import Invoice from '@/models/Invoice';
 import { requirePermission } from '@/app/lib/auth-helpers';
-import { deleteFromCloudinary } from '@/lib/cloudinary';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { updateDocumentSchema } from '@/lib/document-schema';
-import { cloudinaryRefForDocument, withStreamUrls } from '@/lib/document-file';
+import { softDeleteDocument, withStreamUrls } from '@/lib/document-file';
 import { createAuditLog } from '@/lib/audit';
 import { Types } from 'mongoose';
 
@@ -176,21 +175,9 @@ export async function DELETE(
     const document = await Document.findOne(query).lean() as any;
     if (!document) return notFound('Document');
 
-    const ref = cloudinaryRefForDocument(document);
-    if (ref) {
-      await deleteFromCloudinary(ref.publicId, { resourceType: ref.resourceType, deliveryType: ref.deliveryType });
-    }
-
-    // The record stays for the audit trail, but the file goes: a Cloudinary file is deleted above,
-    // and an inline file (stored in this record as a data URL) is wiped here, with any OCR text.
-    const deletedDocument = await Document.findOneAndUpdate(
-      query,
-      {
-        $set: { status: 'deleted', url: 'removed:', lastModifiedBy: session.userId, lastModifiedDate: new Date() },
-        $unset: { ocrText: 1, thumbnailUrl: 1 },
-      },
-      { new: true }
-    ).select('_id documentCode status').lean();
+    // The record stays for the audit trail, but the file goes. A Cloudinary file that can't be
+    // removed now stays marked on the record, and storage cleanup tries it again.
+    const { deleted: deletedDocument } = await softDeleteDocument(query, document, session.userId);
 
     after(() => createAuditLog({
       userId: session.userId,

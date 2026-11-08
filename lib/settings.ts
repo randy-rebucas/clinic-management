@@ -164,7 +164,6 @@ export function getDefaultSettings() {
       sessionTimeoutMinutes: 480,
     },
     integrationSettings: {
-      cloudinaryEnabled: false,
       twilioEnabled: false,
       smtpEnabled: false,
     },

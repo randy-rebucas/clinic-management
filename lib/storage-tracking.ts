@@ -11,7 +11,7 @@ import LabResult from '@/models/LabResult';
 import { checkSubscriptionStatus } from '@/lib/subscription';
 import { getSubscriptionLimitations, checkLimit } from '@/lib/subscription-packages';
 import { Types } from 'mongoose';
-import { v2 as cloudinary } from 'cloudinary';
+import Settings from '@/models/Settings';
 
 export interface StorageUsage {
   totalBytes: number;
@@ -19,6 +19,8 @@ export interface StorageUsage {
   documentsBytes: number;
   cloudinaryBytes: number;
   attachmentsBytes: number;
+  /** Waiting-room ad images. */
+  displayAdsBytes: number;
   base64Bytes: number;
   limitGB: number | null;
   limitBytes: number | null;
@@ -32,8 +34,8 @@ export interface StorageUsage {
  * Calculate storage usage for a tenant
  * Includes:
  * - Documents (from Document model)
- * - Cloudinary files (via API or metadata)
  * - Attachments in other models (Patient, Visit, LabResult)
+ * - Waiting-room ad images (Settings.queueSettings.displayAdFiles)
  */
 export async function calculateStorageUsage(
   tenantId: string | Types.ObjectId
@@ -113,8 +115,16 @@ export async function calculateStorageUsage(
       cloudinaryBytes += t.total - t.base64;
     }
 
+    // 3. Waiting-room ad images (always on Cloudinary), recorded by the ad upload route.
+    const [adAgg] = await Settings.aggregate([
+      { $match: { tenantId: tenantIdObj } },
+      { $project: { bytes: { $sum: { $map: { input: { $ifNull: ['$queueSettings.displayAdFiles', []] }, as: 'f', in: { $ifNull: ['$$f.bytes', 0] } } } } } },
+    ]);
+    const displayAdsBytes: number = adAgg?.bytes || 0;
+    cloudinaryBytes += displayAdsBytes;
+
     // Total storage
-    const totalBytes = documentsBytes + attachmentsBytes;
+    const totalBytes = documentsBytes + attachmentsBytes + displayAdsBytes;
     const totalGB = totalBytes / (1024 * 1024 * 1024); // Convert bytes to GB
 
     // Get subscription limits
@@ -134,6 +144,7 @@ export async function calculateStorageUsage(
       documentsBytes,
       cloudinaryBytes,
       attachmentsBytes,
+      displayAdsBytes,
       base64Bytes,
       limitGB,
       limitBytes,
@@ -206,54 +217,6 @@ export async function checkStorageLimit(
       allowed: true,
       reason: 'Unable to verify storage limit. Upload allowed.',
     };
-  }
-}
-
-/**
- * Get Cloudinary storage usage for a tenant
- * Note: This requires Cloudinary API access and may be slow
- * Use this for periodic audits, not real-time checks
- */
-export async function getCloudinaryStorageUsage(
-  tenantId: string | Types.ObjectId
-): Promise<{ totalBytes: number; totalResources: number }> {
-  try {
-    // Check if Cloudinary is configured
-    if (!process.env.CLOUDINARY_CLOUD_NAME || 
-        !process.env.CLOUDINARY_API_KEY || 
-        !process.env.CLOUDINARY_API_SECRET) {
-      return { totalBytes: 0, totalResources: 0 };
-    }
-
-    // Get all documents with Cloudinary public IDs
-    const tenantIdObj = typeof tenantId === 'string' 
-      ? new Types.ObjectId(tenantId) 
-      : tenantId;
-
-    const documents = await Document.find({
-      tenantId: tenantIdObj,
-      status: { $ne: 'deleted' },
-      'metadata.cloudinaryPublicId': { $exists: true },
-    }).select('metadata size').lean();
-
-    // Sum up sizes from documents (already stored)
-    let totalBytes = 0;
-    for (const doc of documents) {
-      totalBytes += doc.size || 0;
-    }
-
-    // Note: To get exact Cloudinary usage, you would need to:
-    // 1. Use Cloudinary Admin API to list resources by folder/tag
-    // 2. Sum up bytes from each resource
-    // This is expensive and should be done via cron job, not real-time
-
-    return {
-      totalBytes,
-      totalResources: documents.length,
-    };
-  } catch (error: any) {
-    console.error('Error getting Cloudinary storage usage:', error);
-    return { totalBytes: 0, totalResources: 0 };
   }
 }
 

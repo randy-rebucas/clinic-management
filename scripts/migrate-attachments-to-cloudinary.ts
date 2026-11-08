@@ -20,22 +20,24 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 dotenv.config();
 
 import mongoose, { Types } from 'mongoose';
-import { isCloudinaryConfigured, safeFolderSegment, uploadToCloudinary } from '../lib/cloudinary';
+import { CLOUDINARY_ROOT_FOLDER, NO_CLINIC_SLUG, isCloudinaryConfigured, ownedUploadOptions, uploadToCloudinary } from '../lib/cloudinary';
 
 const args = process.argv.slice(2);
 const APPLY = args.includes('--apply');
 const limitArg = args.indexOf('--limit');
 const LIMIT = limitArg >= 0 ? Math.max(1, Number(args[limitArg + 1]) || 0) : Infinity;
 
+// Folder types as in lib/attachment-file.ts ATTACHMENT_ASSET_TYPE (that module is server-only).
 const TARGETS = [
-  { collection: 'patients', kind: 'patient' },
-  { collection: 'visits', kind: 'visit' },
-  { collection: 'labresults', kind: 'lab-result' },
+  { collection: 'patients', type: 'patient-files' },
+  { collection: 'visits', type: 'visit-files' },
+  { collection: 'labresults', type: 'lab-result-files' },
 ] as const;
 
 interface Row {
   _id: Types.ObjectId;
   tenantId?: Types.ObjectId;
+  tenantIds?: Types.ObjectId[];
   attachments?: { _id: Types.ObjectId; url?: string; contentType?: string; tenantId?: Types.ObjectId }[];
 }
 
@@ -48,17 +50,24 @@ async function main() {
   await mongoose.connect(uri, { autoIndex: false, autoCreate: false });
   console.log(`Database: ${mongoose.connection.host}/${mongoose.connection.name}`);
   const db = mongoose.connection.db!;
+  console.log(`Folders: ${CLOUDINARY_ROOT_FOLDER}/{clinic subdomain}/{type}/`);
+
+  // Each clinic's folder is its subdomain.
+  const subdomains = new Map<string, string>();
+  for await (const t of db.collection<{ _id: Types.ObjectId; subdomain?: string }>('tenants').find({}, { projection: { subdomain: 1 } })) {
+    if (t.subdomain) subdomains.set(String(t._id), t.subdomain);
+  }
 
   let moved = 0;
   let failed = 0;
-  for (const { collection, kind } of TARGETS) {
+  for (const { collection, type } of TARGETS) {
     const coll = db.collection<Row>(collection);
     const filter = { 'attachments.url': { $regex: /^data:/ } };
     const records = await coll.countDocuments(filter);
     let files = 0;
     let bytes = 0;
 
-    const cursor = coll.find(filter, { projection: { tenantId: 1, 'attachments._id': 1, 'attachments.url': 1, 'attachments.contentType': 1, 'attachments.tenantId': 1 } });
+    const cursor = coll.find(filter, { projection: { tenantId: 1, tenantIds: 1, 'attachments._id': 1, 'attachments.url': 1, 'attachments.contentType': 1, 'attachments.tenantId': 1 } });
     for await (const row of cursor) {
       for (const a of row.attachments ?? []) {
         const m = a.url ? /^data:([^;,]+);base64,([\s\S]*)$/.exec(a.url) : null;
@@ -69,13 +78,16 @@ async function main() {
         if (!APPLY || moved >= LIMIT) continue;
 
         // Patient records are shared; their files carry the uploading clinic (attachments[].tenantId).
-        const owner = String(a.tenantId ?? row.tenantId ?? 'shared');
+        // A very old file without one belongs to the patient's only clinic, if there is just one.
+        const ownerId = a.tenantId ?? row.tenantId ?? (row.tenantIds?.length === 1 ? row.tenantIds[0] : undefined);
+        const tenantId = ownerId ? String(ownerId) : 'unknown';
+        const tenantSlug = (ownerId && subdomains.get(String(ownerId))) || NO_CLINIC_SLUG;
+        if (tenantSlug === NO_CLINIC_SLUG) console.warn(`  ${collection} ${row._id} file ${a._id}: clinic unknown, stored under ${NO_CLINIC_SLUG}/`);
         const contentType = (a.contentType || m[1]).toLowerCase();
         const result = await uploadToCloudinary(buffer, {
-          folder: `clinic-attachments/${safeFolderSegment(owner, 'tenant')}/${kind}`,
+          ...ownedUploadOptions({ tenantId, tenantSlug }, type),
           resourceType: contentType.startsWith('image/') ? 'image' : 'raw',
           deliveryType: 'authenticated',
-          contentType,
         });
         if (!result.success || !result.data) {
           failed++;

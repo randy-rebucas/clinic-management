@@ -1,6 +1,9 @@
 /**
- * Storage Optimization Utilities
- * Automatic cleanup, compression, and bulk delete functionality
+ * Storage maintenance: retrying file removals that failed, bulk delete, and analytics.
+ *
+ * Nothing here erases a document record. Deleting a document always goes through
+ * softDeleteDocument (lib/document-file.ts): the record stays for the audit trail and medical
+ * record retention, and only its file goes.
  */
 
 import connectDB from '@/lib/mongodb';
@@ -9,16 +12,22 @@ import Patient from '@/models/Patient';
 import Visit from '@/models/Visit';
 import LabResult from '@/models/LabResult';
 import { Types } from 'mongoose';
-import { deleteFromCloudinary } from '@/lib/cloudinary';
-import { cloudinaryRefForDocument } from '@/lib/document-file';
+import { PENDING_FILE_REMOVAL, removeDocumentFile, softDeleteDocument } from '@/lib/document-file';
 import { ownAttachments } from '@/lib/patient-attachments';
 
 export interface StorageCleanupResult {
   success: boolean;
+  /** Documents moved to deleted (bulk delete only). */
   deletedDocuments: number;
-  deletedAttachments: number;
+  /** Stored files removed from Cloudinary. */
+  filesRemoved: number;
+  /** Files that could not be removed yet; they stay marked and the next cleanup tries again. */
+  filesPending: number;
+  /** Bytes of active documents moved to deleted (bulk delete only). */
   freedBytes: number;
   freedGB: number;
+  /** Deleted documents, for the audit log. */
+  deleted: { _id: string; documentCode?: string; patient?: string; size: number }[];
   errors: string[];
 }
 
@@ -44,179 +53,97 @@ export interface StorageAnalytics {
   };
 }
 
+const toGB = (bytes: number) => Math.round((bytes / (1024 * 1024 * 1024)) * 100) / 100;
+const asObjectId = (id: string | Types.ObjectId) => (typeof id === 'string' ? new Types.ObjectId(id) : id);
+
 /**
- * Clean up old/deleted files
- * Removes files older than specified days and deleted documents
+ * Remove the Cloudinary files of deleted documents whose removal failed when they were deleted
+ * (or that were deleted before removals were recorded). Records are left in place.
  */
-export async function cleanupOldFiles(
+export async function retryPendingFileRemovals(
   tenantId: string | Types.ObjectId,
-  options: {
-    deleteOlderThanDays?: number; // Delete files older than X days (default: 365)
-    includeDeleted?: boolean; // Include files with status 'deleted' (default: true)
-    dryRun?: boolean; // If true, don't actually delete, just report (default: false)
-  } = {}
+  options: { dryRun?: boolean; limit?: number } = {}
 ): Promise<StorageCleanupResult> {
+  const { dryRun = false, limit = 500 } = options;
+  const result: StorageCleanupResult = {
+    success: true, deletedDocuments: 0, filesRemoved: 0, filesPending: 0, freedBytes: 0, freedGB: 0, deleted: [], errors: [],
+  };
   try {
     await connectDB();
+    const pending = await Document.find({ tenantId: asObjectId(tenantId), ...PENDING_FILE_REMOVAL })
+      .select('_id url metadata')
+      .limit(limit)
+      .lean<{ _id: Types.ObjectId; url?: string; metadata?: any }[]>();
 
-    const tenantIdObj = typeof tenantId === 'string' 
-      ? new Types.ObjectId(tenantId) 
-      : tenantId;
-
-    const {
-      deleteOlderThanDays = 365,
-      includeDeleted = true,
-      dryRun = false,
-    } = options;
-
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - deleteOlderThanDays);
-
-    let deletedDocuments = 0;
-    const deletedAttachments = 0;
-    let freedBytes = 0;
-    const errors: string[] = [];
-
-    // Find old or deleted documents
-    const query: any = {
-      tenantId: tenantIdObj,
-      $or: [
-        { uploadDate: { $lt: cutoffDate } },
-        ...(includeDeleted ? [{ status: 'deleted' }] : []),
-      ],
-    };
-
-    const documentsToDelete = await Document.find(query).select('_id url metadata size');
-
-    for (const doc of documentsToDelete) {
-      try {
-        // Delete from Cloudinary if applicable
-        const ref = cloudinaryRefForDocument(doc);
-        if (ref && !dryRun) {
-          const deleteResult = await deleteFromCloudinary(ref.publicId, {
-            resourceType: ref.resourceType,
-            deliveryType: ref.deliveryType,
-          });
-          if (!deleteResult.success) {
-            errors.push(`Failed to delete Cloudinary file: ${ref.publicId}`);
-          }
-        }
-
-        // Delete document from database
-        if (!dryRun) {
-          await Document.deleteOne({ _id: doc._id });
-        }
-
-        deletedDocuments++;
-        freedBytes += doc.size || 0;
-      } catch (error: any) {
-        console.error(`Error deleting document ${doc._id}:`, error);
-        errors.push(`Error deleting document ${doc._id}`);
+    for (const doc of pending) {
+      if (dryRun) {
+        result.filesPending++;
+        continue;
+      }
+      const { gone, fields } = await removeDocumentFile(doc);
+      if (gone) {
+        await Document.updateOne({ _id: doc._id }, { $set: fields });
+        result.filesRemoved++;
+      } else {
+        result.filesPending++;
+        result.errors.push(`File of document ${doc._id} could not be removed`);
       }
     }
-
-    // Clean up old attachments (this is more complex as they're embedded)
-    // For now, we'll focus on documents. Attachments cleanup would require
-    // updating parent documents, which is more complex.
-
-    const freedGB = freedBytes / (1024 * 1024 * 1024);
-
-    return {
-      success: errors.length === 0,
-      deletedDocuments,
-      deletedAttachments,
-      freedBytes,
-      freedGB: Math.round(freedGB * 100) / 100,
-      errors,
-    };
-  } catch (error: any) {
-    console.error('Error cleaning up old files:', error);
-    return {
-      success: false,
-      deletedDocuments: 0,
-      deletedAttachments: 0,
-      freedBytes: 0,
-      freedGB: 0,
-      errors: ['Storage cleanup failed'],
-    };
+    result.success = result.errors.length === 0;
+    return result;
+  } catch (error) {
+    console.error('Error retrying file removals:', error);
+    return { ...result, success: false, errors: ['Storage cleanup failed'] };
   }
 }
 
-/**
- * Bulk delete files by IDs
- */
+/** Delete documents by id: each record is kept as deleted and its file removed, as on the document page. */
 export async function bulkDeleteFiles(
   tenantId: string | Types.ObjectId,
   documentIds: string[],
-  options: {
-    deleteFromCloudinary?: boolean; // Delete from Cloudinary too (default: true)
-  } = {}
+  userId: string
 ): Promise<StorageCleanupResult> {
+  const result: StorageCleanupResult = {
+    success: true, deletedDocuments: 0, filesRemoved: 0, filesPending: 0, freedBytes: 0, freedGB: 0, deleted: [], errors: [],
+  };
   try {
     await connectDB();
-
-    const tenantIdObj = typeof tenantId === 'string' 
-      ? new Types.ObjectId(tenantId) 
-      : tenantId;
-
-    const { deleteFromCloudinary: deleteFromCloud = true } = options;
-
-    let deletedDocuments = 0;
-    let freedBytes = 0;
-    const errors: string[] = [];
-
+    const tenantIdObj = asObjectId(tenantId);
     const documents = await Document.find({
-      _id: { $in: documentIds.map(id => new Types.ObjectId(id)) },
+      _id: { $in: documentIds.map((id) => new Types.ObjectId(id)) },
       tenantId: tenantIdObj,
-    }).select('_id url metadata size');
+      status: { $ne: 'deleted' },
+    })
+      .select('_id url metadata size documentCode patient')
+      .lean<{ _id: Types.ObjectId; url?: string; metadata?: any; size?: number; documentCode?: string; patient?: Types.ObjectId }[]>();
 
     for (const doc of documents) {
       try {
-        // Delete from Cloudinary if applicable
-        const ref = deleteFromCloud ? cloudinaryRefForDocument(doc) : null;
-        if (ref) {
-          const deleteResult = await deleteFromCloudinary(ref.publicId, {
-            resourceType: ref.resourceType,
-            deliveryType: ref.deliveryType,
-          });
-          if (!deleteResult.success) {
-            errors.push(`Failed to delete Cloudinary file: ${ref.publicId}`);
-          }
+        const hadFile = Boolean(doc.metadata?.cloudinaryPublicId) || /res\.cloudinary\.com/.test(doc.url ?? '');
+        const { deleted, fileGone } = await softDeleteDocument({ _id: doc._id, tenantId: tenantIdObj }, doc, userId);
+        if (!deleted) continue;
+        result.deletedDocuments++;
+        result.freedBytes += doc.size || 0;
+        if (hadFile && fileGone) result.filesRemoved++;
+        if (!fileGone) {
+          result.filesPending++;
+          result.errors.push(`File of document ${doc._id} could not be removed`);
         }
-
-        // Delete document from database
-        await Document.deleteOne({ _id: doc._id });
-
-        deletedDocuments++;
-        freedBytes += doc.size || 0;
-      } catch (error: any) {
+        result.deleted.push({ _id: String(doc._id), documentCode: doc.documentCode, patient: doc.patient ? String(doc.patient) : undefined, size: doc.size || 0 });
+      } catch (error) {
         console.error(`Error deleting document ${doc._id}:`, error);
-        errors.push(`Error deleting document ${doc._id}`);
+        result.errors.push(`Error deleting document ${doc._id}`);
       }
     }
-
-    const freedGB = freedBytes / (1024 * 1024 * 1024);
-
-    return {
-      success: errors.length === 0,
-      deletedDocuments,
-      deletedAttachments: 0,
-      freedBytes,
-      freedGB: Math.round(freedGB * 100) / 100,
-      errors,
-    };
-  } catch (error: any) {
+    result.freedGB = toGB(result.freedBytes);
+    result.success = result.errors.length === 0;
+    return result;
+  } catch (error) {
     console.error('Error bulk deleting files:', error);
-    return {
-      success: false,
-      deletedDocuments: 0,
-      deletedAttachments: 0,
-      freedBytes: 0,
-      freedGB: 0,
-      errors: ['Storage cleanup failed'],
-    };
+    return { ...result, success: false, errors: ['Storage cleanup failed'] };
   }
 }
+
 
 /**
  * Get storage analytics and trends

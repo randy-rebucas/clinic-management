@@ -10,6 +10,7 @@ vi.mock('@/models/Document', () => ({ default: { aggregate: vi.fn(), find: vi.fn
 vi.mock('@/models/Patient', () => ({ default: { aggregate: vi.fn() } }));
 vi.mock('@/models/Visit', () => ({ default: { aggregate: vi.fn() } }));
 vi.mock('@/models/LabResult', () => ({ default: { aggregate: vi.fn() } }));
+vi.mock('@/models/Settings', () => ({ default: { aggregate: vi.fn() } }));
 
 vi.mock('@/lib/subscription', () => ({
   checkSubscriptionStatus: vi.fn(),
@@ -19,6 +20,7 @@ import Document from '@/models/Document';
 import Patient from '@/models/Patient';
 import Visit from '@/models/Visit';
 import LabResult from '@/models/LabResult';
+import Settings from '@/models/Settings';
 import { checkSubscriptionStatus } from '@/lib/subscription';
 
 describe('Storage Tracking', () => {
@@ -31,6 +33,7 @@ describe('Storage Tracking', () => {
     vi.mocked(Patient.aggregate).mockResolvedValue([] as any);
     vi.mocked(Visit.aggregate).mockResolvedValue([{ total: 2000, base64: 2000 }] as any);
     vi.mocked(LabResult.aggregate).mockResolvedValue([] as any);
+    vi.mocked(Settings.aggregate).mockResolvedValue([] as any);
     vi.mocked(checkSubscriptionStatus).mockResolvedValue({
       isActive: true,
       isExpired: false,
@@ -66,6 +69,17 @@ describe('Storage Tracking', () => {
       expect(docMatch.$match.tenantId).toEqual(tenantId);
       const patientMatch = vi.mocked(Patient.aggregate).mock.calls[0][0][0] as any;
       expect(patientMatch.$match).toEqual({ tenantIds: tenantId });
+    });
+
+    it('counts the waiting-room ad images as Cloudinary storage', async () => {
+      vi.mocked(Settings.aggregate).mockResolvedValue([{ bytes: 300000 }] as any);
+      const usage = await calculateStorageUsage(tenantId);
+
+      expect(usage.displayAdsBytes).toBe(300000);
+      expect(usage.totalBytes).toBe(1802000);
+      expect(usage.cloudinaryBytes).toBe(1300000);
+      const settingsMatch = vi.mocked(Settings.aggregate).mock.calls[0][0][0] as any;
+      expect(settingsMatch.$match.tenantId).toEqual(tenantId);
     });
   });
 

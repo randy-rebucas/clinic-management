@@ -135,10 +135,15 @@ async function getTenantStats(plan: Plan, tenantId: Types.ObjectId): Promise<Rec
   return stats;
 }
 
-/** Remove the clinic's uploaded documents from Cloudinary before their records go. */
-async function deleteCloudinaryFiles(tenantId: Types.ObjectId): Promise<{ deleted: number; failed: string[] }> {
+/**
+ * Remove every file the clinic stored on Cloudinary before its records go: each document by its
+ * own record, then the clinic's whole folder ({root}/{subdomain}/, lib/cloudinary.ts), then
+ * anything still carrying the clinic's tag (e.g. stored under a folder of an earlier layout).
+ */
+async function deleteCloudinaryFiles(tenantId: Types.ObjectId, subdomain: string): Promise<{ deleted: number; failed: string[] }> {
   // lib/document-file is server-only; its cloudinaryRefForDocument is this same call.
-  const { cloudinaryRefFromStored, deleteFromCloudinary, isCloudinaryConfigured } = await import('../lib/cloudinary');
+  const { cloudinaryRefFromStored, deleteCloudinaryAssets, deleteFromCloudinary, isCloudinaryConfigured, tenantFolder, tenantTag } =
+    await import('../lib/cloudinary');
   const docs = await mongoose.model('Document').find({ tenantId }).select('url metadata').lean<{ _id: Types.ObjectId; url?: string; metadata?: any }[]>();
   let deleted = 0;
   const failed: string[] = [];
@@ -150,18 +155,28 @@ async function deleteCloudinaryFiles(tenantId: Types.ObjectId): Promise<{ delete
     else failed.push(`${ref.publicId}: ${result.error ?? 'failed'}`);
   }
 
-  // Files attached to patients, visits and lab results live under one folder per clinic
-  // (lib/attachment-file.ts), so they go by prefix.
   if (!isCloudinaryConfigured()) return { deleted, failed };
-  const { v2: cloudinary } = await import('cloudinary');
-  const prefix = `clinic-attachments/${String(tenantId)}/`;
-  for (const resource_type of ['image', 'raw'] as const) {
-    try {
-      const res = await cloudinary.api.delete_resources_by_prefix(prefix, { resource_type, type: 'authenticated' });
-      deleted += Object.values(res.deleted ?? {}).filter((v) => v === 'deleted').length;
-    } catch (error: any) {
-      failed.push(`${prefix} (${resource_type}): ${error?.message ?? 'failed'}`);
-    }
+  const id = String(tenantId);
+  const sweeps = [
+    // The clinic's folder: private files, and the public waiting-room ads.
+    { match: { prefix: `${tenantFolder(subdomain)}/`, deliveryType: 'authenticated' }, resourceType: 'image' },
+    { match: { prefix: `${tenantFolder(subdomain)}/`, deliveryType: 'authenticated' }, resourceType: 'raw' },
+    { match: { prefix: `${tenantFolder(subdomain)}/`, deliveryType: 'upload' }, resourceType: 'image' },
+    // Folders of the layout before {root}/{subdomain}/{type}, keyed by clinic id.
+    { match: { prefix: `clinic-attachments/${id}/`, deliveryType: 'authenticated' }, resourceType: 'image' },
+    { match: { prefix: `clinic-attachments/${id}/`, deliveryType: 'authenticated' }, resourceType: 'raw' },
+    { match: { prefix: `clinic-documents/${id}/`, deliveryType: 'authenticated' }, resourceType: 'image' },
+    { match: { prefix: `clinic-documents/${id}/`, deliveryType: 'authenticated' }, resourceType: 'raw' },
+    { match: { prefix: `queue-display-ads/${id}/`, deliveryType: 'upload' }, resourceType: 'image' },
+    // Anything else tagged as the clinic's.
+    { match: { tag: tenantTag(id) }, resourceType: 'image' },
+    { match: { tag: tenantTag(id) }, resourceType: 'raw' },
+  ] as const;
+  for (const { match, resourceType } of sweeps) {
+    const res = await deleteCloudinaryAssets(match, resourceType);
+    deleted += res.deleted;
+    const what = 'prefix' in match ? `${match.prefix} (${resourceType}/${match.deliveryType})` : `tag ${match.tag} (${resourceType})`;
+    if (res.error) failed.push(`${what}: ${res.error}`);
   }
   return { deleted, failed };
 }
@@ -192,11 +207,11 @@ async function detachShared(model: Model<any>, tenantId: Types.ObjectId): Promis
 /**
  * Delete everything the clinic owns and detach it from shared records.
  */
-async function deleteTenantData(plan: Plan, tenantId: Types.ObjectId): Promise<DeletionStats[]> {
+async function deleteTenantData(plan: Plan, tenantId: Types.ObjectId, subdomain: string): Promise<DeletionStats[]> {
   const results: DeletionStats[] = [];
 
   log('Removing uploaded files from Cloudinary...', 'info');
-  const files = await deleteCloudinaryFiles(tenantId);
+  const files = await deleteCloudinaryFiles(tenantId, subdomain);
   log(`  ✓ Deleted ${files.deleted} Cloudinary files`, 'success');
   for (const f of files.failed) log(`  ✗ Not deleted from Cloudinary: ${f}`, 'error');
 
@@ -331,7 +346,7 @@ async function main() {
 
     // Delete tenant data
     log('\nStarting deletion process...', 'info');
-    const deletionResults = await deleteTenantData(plan, tenant._id);
+    const deletionResults = await deleteTenantData(plan, tenant._id, tenant.subdomain);
 
     const totalDeleted = deletionResults.reduce((sum, r) => sum + r.deletedCount, 0);
     const totalDetached = deletionResults.reduce((sum, r) => sum + (r.detachedCount ?? 0), 0);

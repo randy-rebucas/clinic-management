@@ -134,7 +134,7 @@ describe('patient /me detail routes', () => {
     vi.mocked(Document.findOne).mockReturnValue({
       lean: vi.fn().mockResolvedValue({ _id: RECORD_ID, patient: PATIENT_ID, filename: 'cbc.pdf', tenantId: TENANT_A }),
     } as any);
-    vi.mocked(loadDocumentFile).mockResolvedValue({ buffer: Buffer.from('%PDF'), contentType: 'application/pdf' });
+    vi.mocked(loadDocumentFile).mockResolvedValue({ body: new Uint8Array(Buffer.from('%PDF')), contentType: 'application/pdf', size: 4 });
 
     const res = await call(getDocument, RECORD_ID, `http://localhost/api/patients/me/documents/${RECORD_ID}?download=true`);
     expect(res.status).toBe(200);
