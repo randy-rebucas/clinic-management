@@ -6,9 +6,11 @@ import { usePathname } from 'next/navigation';
 const SECTIONS = [
   { label: 'Overview', href: '/platform' },
   { label: 'Clinics', href: '/platform/clinics' },
+  { label: 'Medical reps', href: '/platform/reps' },
   { label: 'Support', href: '/platform/support' },
   { label: 'Chat', href: '/platform/chat' },
   { label: 'eMCR vouchers', href: '/platform/vouchers' },
+  { label: 'Rep referrals', href: '/platform/referral-codes' },
   { label: 'Notify', href: '/platform/notifications' },
   { label: 'Configuration', href: '/platform/configuration' },
 ];

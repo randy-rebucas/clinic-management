@@ -11,6 +11,7 @@ import { recordInvoicePayments } from '@/lib/invoice-payments';
 import { isPaidPlan } from '@/lib/subscription-period';
 import { paidTotal, type CheckoutSession } from '@/lib/paymongo';
 import { applyRepSubscriptionPayment, applyTeamPayment } from '@/lib/rep-billing';
+import { applySponsorshipPayment } from '@/lib/clinic-sponsorship';
 
 export type ApplyResult = { ok: true; applied: boolean; detail?: string } | { ok: false; retry: boolean; error: string };
 
@@ -55,6 +56,14 @@ export async function applyPaidCheckout(session: CheckoutSession): Promise<Apply
     // DevCom Digital's sales invoice for it, after the response (idempotent; also on a repeat).
     scheduleSubscriptionInvoice(orderId);
     return { ok: true, applied: !r.alreadyApplied };
+  }
+
+  if (m.purpose === 'clinic-sponsorship') {
+    // A medical rep paying for a clinic's plan: the same subscription path, plus the sponsorship's record.
+    const r = await applySponsorshipPayment(m, paid, paymentId, session.id);
+    if (!r.ok) return r;
+    scheduleSubscriptionInvoice(m.orderId);
+    return { ok: true, applied: r.applied };
   }
 
   if (m.purpose === 'invoice') {

@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
-export const PLATFORM_SETTING_KEYS = ['billing-issuer', 'paymongo', 'pricing', 'fees'] as const;
+export const PLATFORM_SETTING_KEYS = ['billing-issuer', 'paymongo', 'pricing', 'fees', 'sponsorship'] as const;
 export type PlatformSettingKey = (typeof PLATFORM_SETTING_KEYS)[number];
 
 /**

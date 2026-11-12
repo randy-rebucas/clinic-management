@@ -5,11 +5,12 @@ import type { PlatformConfigView } from '@/lib/platform-config-page';
 import type { BillingIssuer, PlatformFees } from '@/lib/platform-config-schema';
 import { PAID_PLANS, planLabel, type PlanPricing } from '@/lib/subscription-period';
 import { formatSerial, formatTin } from '@/lib/bir';
+import { sponsorshipQuotes, termLabel, type SponsorshipPricing } from '@/lib/sponsorship-pricing';
 import { FIELD } from '../appointments/shared';
 import { CARD, H2, ago, php } from './shared';
 import { LABEL, Notice, OUTLINE, PRIMARY } from './platform-api';
 
-type Section = 'billing-issuer' | 'paymongo' | 'pricing' | 'fees';
+type Section = 'billing-issuer' | 'paymongo' | 'pricing' | 'fees' | 'sponsorship';
 type Errors = Record<string, string>;
 type Note = { tone: 'ok' | 'error'; text: string } | null;
 
@@ -48,6 +49,7 @@ export default function PlatformConfigurationForms({ initial }: { initial: Platf
       <div className="grid gap-6 lg:grid-cols-2">
         <PricingCard view={view} onSaved={setView} />
         <FeesCard view={view} onSaved={setView} />
+        <SponsorshipCard view={view} onSaved={setView} />
       </div>
     </div>
   );
@@ -357,6 +359,41 @@ function FeesCard({ view, onSaved }: { view: PlatformConfigView; onSaved: (v: Pl
         {num('voucherWholesalePrice', 'eMCR voucher: clinic pays (₱)', `Clinic keeps ${php(Math.max(0, f.voucherFaceValue - f.voucherWholesalePrice))} per code`)}
         <div className="flex flex-wrap items-center gap-3">
           <button type="submit" disabled={busy} className={PRIMARY}>{busy ? 'Saving…' : 'Save fees'}</button>
+          <Notice notice={note} />
+        </div>
+      </form>
+    </Card>
+  );
+}
+
+function SponsorshipCard({ view, onSaved }: { view: PlatformConfigView; onSaved: (v: PlatformConfigView) => void }) {
+  const [s, setS] = useState<SponsorshipPricing>(view.sponsorship);
+  const { busy, errors, note, submit } = useSection('sponsorship', onSaved);
+  const setOff = (k: '3' | '6' | '12', v: number) => setS((prev) => ({ ...prev, discounts: { ...prev.discounts, [k]: v } }));
+  return (
+    <Card id="cfg-sponsorship" title="Clinic sponsorship (paid by a medical rep)" meta={view.updated.sponsorship}>
+      <form
+        className="space-y-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (window.confirm('Change sponsorship prices? New sponsorship checkouts use them; payments already started keep their amount.')) {
+            void submit(s, 'Sponsorship prices saved.');
+          }
+        }}
+      >
+        <Field id="sp-monthly" label="Per month (₱)" hint="A sponsored clinic gets the Professional plan" error={errors.monthly}>
+          <input id="sp-monthly" type="number" min={20} step="any" value={s.monthly} onChange={(e) => setS((prev) => ({ ...prev, monthly: Number(e.target.value) }))} className={FIELD} />
+        </Field>
+        {(['3', '6', '12'] as const).map((k) => (
+          <Field key={k} id={`sp-off-${k}`} label={`${termLabel(Number(k))} prepaid: discount (%)`} error={errors[`discounts.${k}`]}>
+            <input id={`sp-off-${k}`} type="number" min={0} max={50} step="any" value={s.discounts[k]} onChange={(e) => setOff(k, Number(e.target.value))} className={FIELD} />
+          </Field>
+        ))}
+        <p className="text-xs text-gray-500">
+          {sponsorshipQuotes(s).map((q) => `${termLabel(q.months)}: ${php(q.amount)}`).join(' · ')}
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="submit" disabled={busy} className={PRIMARY}>{busy ? 'Saving…' : 'Save sponsorship prices'}</button>
           <Notice notice={note} />
         </div>
       </form>

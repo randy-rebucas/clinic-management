@@ -12,44 +12,12 @@ import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { buildSetPasswordUrl, generateInviteToken, inviteUpdate, randomUnusablePasswordHash, sendSetPasswordEmail } from '@/lib/user-invite';
 import { turnstileRejection } from '@/lib/turnstile';
 import { sendEmail } from '@/lib/email';
-
-const RESERVED_WORDS = [
-  'www',
-  'api',
-  'admin',
-  'app',
-  'mail',
-  'ftp',
-  'localhost',
-  'staging',
-  'dev',
-  'test',
-  'demo',
-  // Names that would pass for the platform's own pages on a clinic subdomain (phishing).
-  'login', 'signin', 'signup', 'auth', 'account', 'accounts', 'secure', 'security', 'pay', 'payment',
-  'payments', 'billing', 'checkout', 'support', 'help', 'status', 'platform', 'console', 'dashboard',
-  'portal', 'emcr', 'verify', 'docs', 'blog', 'static', 'assets', 'cdn', 'media', 'files', 'smtp',
-  'email', 'webmail', 'ns1', 'ns2', 'root', 'system', 'official', 'myclinicsoft', 'devcom',
-];
+import { lookupReferralCode, redeemReferralCode } from '@/lib/rep-referral';
+import { DATE_FORMATS, PH_DEFAULTS, formatClinicAddress, formatPhPhone, isPhZipCode, normalizePhPhone, subdomainError } from '@/lib/tenant-onboarding';
 
 function validateSubdomain(subdomain: string): { valid: boolean; error?: string } {
-  if (!subdomain || subdomain.length < 2) {
-    return { valid: false, error: 'Subdomain must be at least 2 characters long' };
-  }
-
-  if (subdomain.length > 63) {
-    return { valid: false, error: 'Subdomain must be at most 63 characters long' };
-  }
-
-  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(subdomain)) {
-    return { valid: false, error: 'Subdomain must contain only lowercase letters, numbers, and hyphens' };
-  }
-
-  if (RESERVED_WORDS.includes(subdomain.toLowerCase())) {
-    return { valid: false, error: `Subdomain "${subdomain}" is reserved and cannot be used` };
-  }
-
-  return { valid: true };
+  const error = subdomainError(subdomain);
+  return error ? { valid: false, error } : { valid: true };
 }
 
 export async function POST(request: NextRequest) {
@@ -89,6 +57,7 @@ export async function POST(request: NextRequest) {
       address,
       settings,
       admin,
+      referralCode,
     } = body;
 
     const isStr = (v: unknown): v is string => typeof v === 'string';
@@ -96,6 +65,7 @@ export async function POST(request: NextRequest) {
       (name !== undefined && !isStr(name)) ||
       (subdomain !== undefined && !isStr(subdomain)) ||
       (displayName !== undefined && displayName !== null && !isStr(displayName)) ||
+      (referralCode !== undefined && referralCode !== null && !isStr(referralCode)) ||
       (email !== undefined && email !== null && !isStr(email)) ||
       (phone !== undefined && phone !== null && !isStr(phone)) ||
       (admin !== undefined && (typeof admin !== 'object' || admin === null)) ||
@@ -217,28 +187,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate optional settings fields against allowed values
-    const VALID_TIMEZONES = new Set(['UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Anchorage', 'Pacific/Honolulu', 'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Kolkata', 'Asia/Manila', 'Australia/Sydney']);
-    const VALID_CURRENCIES = new Set(['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'PHP', 'INR', 'SGD', 'MYR']);
-    const VALID_DATE_FORMATS = new Set(['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD']);
+    // Clinics are in the Philippines: PHP is the only currency PayMongo pay-links take, and
+    // Asia/Manila is the country's only timezone. Anything else is refused, not silently replaced.
+    const badRequest = (message: string, field: string, detail: string) =>
+      NextResponse.json({ success: false, message, errors: { [field]: [detail] } }, { status: 400 });
 
-    if (settings?.timezone && !VALID_TIMEZONES.has(settings.timezone)) {
-      return NextResponse.json(
-        { success: false, message: 'Invalid timezone.', errors: { timezone: ['Unsupported timezone'] } },
-        { status: 400 }
-      );
+    if (settings !== undefined && settings !== null && typeof settings !== 'object') {
+      return badRequest('Invalid settings.', 'general', 'Invalid request format. Please try again.');
     }
-    if (settings?.currency && !VALID_CURRENCIES.has(settings.currency)) {
-      return NextResponse.json(
-        { success: false, message: 'Invalid currency.', errors: { currency: ['Unsupported currency'] } },
-        { status: 400 }
-      );
+    if (settings?.timezone && settings.timezone !== PH_DEFAULTS.timezone) {
+      return badRequest('Invalid timezone.', 'timezone', 'Clinics use Philippine time (Asia/Manila)');
     }
-    if (settings?.dateFormat && !VALID_DATE_FORMATS.has(settings.dateFormat)) {
-      return NextResponse.json(
-        { success: false, message: 'Invalid date format.', errors: { dateFormat: ['Unsupported date format'] } },
-        { status: 400 }
-      );
+    if (settings?.currency && settings.currency !== PH_DEFAULTS.currency) {
+      return badRequest('Invalid currency.', 'currency', 'Clinics bill in Philippine pesos (PHP)');
+    }
+    if (settings?.dateFormat && !(DATE_FORMATS as readonly string[]).includes(settings.dateFormat)) {
+      return badRequest('Invalid date format.', 'dateFormat', 'Unsupported date format');
+    }
+    if (address?.country && !/^(philippines|ph)$/i.test(address.country.trim())) {
+      return badRequest('Clinics must be in the Philippines.', 'country', 'Clinics must be in the Philippines');
+    }
+    if (address?.zipCode && !isPhZipCode(address.zipCode)) {
+      return badRequest('Invalid ZIP code.', 'zipCode', 'Enter the 4-digit ZIP code');
+    }
+
+    const clinicPhone = phone && phone.trim() ? normalizePhPhone(phone) : undefined;
+    if (clinicPhone === null) {
+      return badRequest('Invalid phone number.', 'phone', 'Enter a Philippine mobile (0917 123 4567) or landline ((02) 8123 4567)');
+    }
+    const adminPhone = admin.phone && admin.phone.trim() ? normalizePhPhone(admin.phone) : undefined;
+    if (adminPhone === null) {
+      return badRequest('Invalid admin phone number.', 'adminPhone', 'Enter a Philippine mobile number, e.g. 0917 123 4567');
+    }
+
+    // A medical rep's referral code links that rep to the new clinic (lib/rep-referral.ts).
+    if (referralCode && referralCode.trim()) {
+      const referral = await lookupReferralCode(referralCode);
+      if (!referral.ok) return badRequest(referral.error, 'referralCode', referral.error);
     }
 
     // Create tenant with 14-day trial subscription
@@ -250,9 +235,9 @@ export async function POST(request: NextRequest) {
       subdomain: subdomain.toLowerCase().trim(),
       status: 'active',
       settings: {
-        timezone: settings?.timezone || 'UTC',
-        currency: settings?.currency || 'USD',
-        dateFormat: settings?.dateFormat || 'MM/DD/YYYY',
+        timezone: PH_DEFAULTS.timezone,
+        currency: PH_DEFAULTS.currency,
+        dateFormat: settings?.dateFormat || PH_DEFAULTS.dateFormat,
       },
       subscription: {
         plan: 'trial',
@@ -269,18 +254,15 @@ export async function POST(request: NextRequest) {
       tenantData.email = email.toLowerCase().trim();
     }
 
-    if (phone) {
-      tenantData.phone = phone.trim();
+    if (clinicPhone) {
+      tenantData.phone = clinicPhone;
     }
 
-    if (address && (address.street || address.city || address.state || address.zipCode || address.country)) {
-      tenantData.address = {};
-      if (address.street) tenantData.address.street = address.street.trim();
-      if (address.city) tenantData.address.city = address.city.trim();
-      if (address.state) tenantData.address.state = address.state.trim();
-      if (address.zipCode) tenantData.address.zipCode = address.zipCode.trim();
-      if (address.country) tenantData.address.country = address.country.trim();
-    }
+    tenantData.address = { country: PH_DEFAULTS.country };
+    if (address?.street?.trim()) tenantData.address.street = address.street.trim();
+    if (address?.city?.trim()) tenantData.address.city = address.city.trim();
+    if (address?.state?.trim()) tenantData.address.state = address.state.trim();
+    if (address?.zipCode?.trim()) tenantData.address.zipCode = address.zipCode.trim();
 
     const tenant = await Tenant.create(tenantData);
     const tenantId = tenant._id;
@@ -441,7 +423,7 @@ export async function POST(request: NextRequest) {
         firstName: firstName,
         lastName: lastName,
         email: adminEmail,
-        phone: admin.phone || undefined,
+        phone: adminPhone,
         department: 'Administration',
         accessLevel: 'full',
         status: 'active',
@@ -467,30 +449,28 @@ export async function POST(request: NextRequest) {
     }
 
     // Create tenant settings
-    const clinicAddress = tenant.address?.street
-      ? `${tenant.address.street}${tenant.address.city ? `, ${tenant.address.city}` : ''}${tenant.address.state ? `, ${tenant.address.state}` : ''}${tenant.address.zipCode ? ` ${tenant.address.zipCode}` : ''}`
-      : '';
+    const clinicAddress = formatClinicAddress(tenant.address);
 
     await Settings.create({
       tenantId,
       clinicName: tenant.displayName || tenant.name,
       clinicAddress: clinicAddress,
-      clinicPhone: tenant.phone || '',
+      clinicPhone: tenant.phone ? formatPhPhone(tenant.phone) : '',
       clinicEmail: tenant.email || '',
       clinicWebsite: '',
       taxId: '',
       licenseNumber: '',
       ptr: '',
       generalSettings: {
-        timezone: tenant.settings?.timezone || 'UTC',
-        dateFormat: tenant.settings?.dateFormat || 'MM/DD/YYYY',
+        timezone: tenant.settings?.timezone || PH_DEFAULTS.timezone,
+        dateFormat: tenant.settings?.dateFormat || PH_DEFAULTS.dateFormat,
         timeFormat: '12h',
         itemsPerPage: 20,
         enableAuditLog: true,
         sessionTimeoutMinutes: 480,
       },
       billingSettings: {
-        currency: tenant.settings?.currency || 'USD',
+        currency: tenant.settings?.currency || PH_DEFAULTS.currency,
         taxRate: 0,
         paymentTerms: 30,
         lateFeePercentage: 0,
@@ -498,6 +478,12 @@ export async function POST(request: NextRequest) {
         allowPartialPayments: true,
       },
     });
+
+    if (referralCode && referralCode.trim()) {
+      // Checked above; a code used up in the meantime only skips the link, never the signup.
+      const linked = await redeemReferralCode(tenant._id, referralCode).catch((e) => ({ ok: false as const, error: String(e?.message ?? e) }));
+      if (!linked.ok) console.warn('[onboard] Referral code not applied:', linked.error);
+    }
 
     const delivery = await sendSetPasswordEmail({ email: adminEmail, name: admin.name.trim(), token: invite.token, tenantId: tenant._id, kind: 'invite' });
     if (delivery !== 'sent' && process.env.NODE_ENV !== 'production') {

@@ -13,6 +13,8 @@ import { getPlanPricing } from '@/lib/platform-config';
 import { currentOrderId } from '@/lib/subscription-order';
 import { SUBSCRIPTION_PACKAGES } from '@/lib/subscription-packages';
 import { buildUsageRows, planLimits, type UsageKey, type UsageRow } from '@/lib/plan-usage';
+import { loadClinicSponsorship, type ClinicSponsorshipPage, type SponsorshipView } from '@/lib/clinic-sponsorship';
+import { termLabel } from '@/lib/sponsorship-pricing';
 import {
   PAID_PLANS,
   isPaidPlan,
@@ -77,6 +79,10 @@ export interface PaymentRow {
   paidOn: string;
   plan: string;
   cycle: BillingCycle;
+  /** "Monthly", "Yearly", or a sponsorship's term ("3 months"). */
+  term: string;
+  /** Paid by a medical rep's sponsorship. */
+  sponsored: boolean;
   amount: number;
   currency: string;
   status: 'completed' | 'refunded' | 'failed';
@@ -108,9 +114,21 @@ export interface UnfinishedPayment {
   status: 'pending' | 'processing';
 }
 
+/** A sponsorship as the billing page shows it, dates in the clinic's zone. */
+export type SponsorshipRow = SponsorshipView & { paidThroughOn: string | null; createdOn: string };
+
+export interface SponsorshipSection extends Omit<ClinicSponsorshipPage, 'current' | 'history'> {
+  current: SponsorshipRow | null;
+  history: SponsorshipRow[];
+}
+
 export interface SubscriptionPageData {
   clinicName: string;
   plan: PlanNow;
+  /** The medical rep who paid for the current period, if one did. */
+  sponsor: { name: string; company: string | null } | null;
+  /** Null when it couldn't be read (the rest of the page still works). */
+  sponsorship: SponsorshipSection | null;
   usage: UsageRow[] | null;
   offers: PlanOffer[];
   payments: PaymentRow[];
@@ -146,6 +164,8 @@ interface TenantDoc {
       currency: string;
       plan: string;
       billingCycle?: BillingCycle;
+      months?: number;
+      sponsorshipId?: Types.ObjectId;
       status?: 'completed' | 'refunded' | 'failed';
       paidAt?: Date;
     }[];
@@ -160,7 +180,7 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
   const tenantId = new Types.ObjectId(session.tenantId);
   const now = new Date();
 
-  const [tz, tenant, status, usage, orders, invoices] = await Promise.all([
+  const [tz, tenant, status, usage, orders, invoices, sponsorship] = await Promise.all([
     getTenantTimezone(tenantId),
     Tenant.findById(tenantId).select('name displayName email address billingProfile createdAt subscription').lean<TenantDoc | null>(),
     checkSubscriptionStatus(tenantId),
@@ -170,6 +190,8 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
     }),
     SubscriptionOrder.find({
       tenantId,
+      // A rep's sponsorship checkout is the rep's to finish, not the clinic's.
+      sponsorshipId: { $exists: false },
       $or: [{ status: 'processing' }, { status: 'pending', createdAt: { $gte: new Date(now.getTime() - PENDING_LIFETIME_MS) } }],
     })
       .sort({ createdAt: -1 })
@@ -178,6 +200,10 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
     PlatformInvoice.find({ tenantId })
       .select('orderId serialNo status')
       .lean<{ _id: Types.ObjectId; orderId: string; serialNo?: string; status: string }[]>(),
+    loadClinicSponsorship(String(tenantId)).catch((error) => {
+      console.error('Subscription page: sponsorship unavailable', error);
+      return null;
+    }),
   ]);
   const invoiceByOrder = new Map(invoices.map((inv) => [inv.orderId, inv]));
 
@@ -230,9 +256,27 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
     };
   });
 
+  const sponsorRow = (v: SponsorshipView): SponsorshipRow => ({
+    ...v,
+    paidThroughOn: v.paidThrough ? day(v.paidThrough) : null,
+    createdOn: day(v.createdAt),
+  });
+  // The sponsor is the rep with an accepted sponsorship that still has paid time on the plan,
+  // whoever made the latest payment (the clinic may also pay for itself meanwhile).
+  const open = sponsorship?.current;
+  const activeSponsor = open && open.status === 'accepted' && open.active && state === 'active' ? open.rep : null;
+
   return {
     clinicName: tenant?.displayName || tenant?.name || 'Your clinic',
     plan,
+    sponsor: activeSponsor ? { name: activeSponsor.name, company: activeSponsor.company } : null,
+    sponsorship: sponsorship
+      ? {
+          ...sponsorship,
+          current: sponsorship.current ? sponsorRow(sponsorship.current) : null,
+          history: sponsorship.history.map(sponsorRow),
+        }
+      : null,
     usage: usage ? buildUsageRows(usage) : null,
     offers,
     payments: history.map((p, i) => ({
@@ -240,6 +284,8 @@ export async function loadSubscriptionPage(session: { tenantId?: string | null }
       paidOn: p.paidAt ? day(p.paidAt) : '—',
       plan: planLabel(p.plan),
       cycle: p.billingCycle === 'yearly' ? 'yearly' : 'monthly',
+      term: p.months ? termLabel(p.months) : p.billingCycle === 'yearly' ? 'Yearly' : 'Monthly',
+      sponsored: !!p.sponsorshipId,
       amount: p.amount,
       currency: p.currency || 'USD',
       status: p.status ?? 'completed',

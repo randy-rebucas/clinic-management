@@ -3,6 +3,8 @@ import { after } from 'next/server';
 import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Tenant from '@/models/Tenant';
+import MedicalRepresentative from '@/models/MedicalRepresentative';
+import ClinicSponsorship from '@/models/ClinicSponsorship';
 import Counter from '@/models/Counter';
 import PlatformInvoice, { type IPlatformInvoice, type PlatformInvoiceBuyer } from '@/models/PlatformInvoice';
 import { nextSequence } from '@/lib/counters';
@@ -13,6 +15,7 @@ import { sendEmail, escapeHtml } from '@/lib/email';
 import { htmlToPdf, pdfFilename } from '@/lib/pdf';
 import { platformInvoiceHTML } from '@/lib/platform-invoice-html';
 import { planLabel } from '@/lib/subscription-period';
+import { termLabel } from '@/lib/sponsorship-pricing';
 
 /**
  * DevCom Digital's BIR sales invoices to clinics, one per subscription payment. The seller is
@@ -33,7 +36,18 @@ type TenantRow = {
   billingProfile?: Partial<PlatformInvoiceBuyer>;
   subscription?: {
     expiresAt?: Date;
-    paymentHistory?: { orderId: string; transactionId?: string; amount: number; currency?: string; plan: string; billingCycle?: 'monthly' | 'yearly'; status?: string; paidAt?: Date }[];
+    paymentHistory?: {
+      orderId: string;
+      transactionId?: string;
+      amount: number;
+      currency?: string;
+      plan: string;
+      billingCycle?: 'monthly' | 'yearly';
+      months?: number;
+      sponsorshipId?: Types.ObjectId;
+      status?: string;
+      paidAt?: Date;
+    }[];
   };
 };
 
@@ -46,6 +60,16 @@ function buyerOf(t: TenantRow): PlatformInvoiceBuyer {
     address: p.address?.trim() || [a.street, a.city, [a.state, a.zipCode].filter(Boolean).join(' '), a.country].filter(Boolean).join(', '),
     email: p.email?.trim() || t.email || '',
   };
+}
+
+/** A rep who sponsored a clinic is the buyer of that payment, not the clinic. */
+async function sponsorBuyer(sponsorshipId: Types.ObjectId): Promise<PlatformInvoiceBuyer | null> {
+  const sponsorship = await ClinicSponsorship.findById(sponsorshipId).select('repId').lean<{ repId: Types.ObjectId } | null>();
+  if (!sponsorship) return null;
+  const rep = await MedicalRepresentative.findById(sponsorship.repId).select('firstName lastName company email').lean<any>();
+  if (!rep) return null;
+  const name = `${rep.firstName} ${rep.lastName}`.trim();
+  return { registeredName: rep.company ? `${rep.company} (${name})` : name, tin: '', address: '', email: rep.email || '' };
 }
 
 /** VAT inside a VAT-inclusive amount, for a VAT-registered issuer; none otherwise. */
@@ -82,6 +106,8 @@ export async function issueSubscriptionInvoice(orderId: string): Promise<IssueOu
         transactionId: payment.transactionId,
         plan: payment.plan,
         billingCycle: payment.billingCycle === 'yearly' ? 'yearly' : 'monthly',
+        ...(payment.months ? { months: payment.months } : {}),
+        ...(payment.sponsorshipId ? { sponsoredClinic: tenant.displayName || tenant.name || 'Clinic' } : {}),
         paidThrough: tenant.subscription?.expiresAt,
         paidAt: payment.paidAt ?? new Date(),
         amount: payment.amount,
@@ -133,7 +159,7 @@ export async function issueSubscriptionInvoice(orderId: string): Promise<IssueOu
           status: 'issued',
           issuedAt: now,
           seller: issuer,
-          buyer: buyerOf(tenant),
+          buyer: (payment.sponsorshipId && (await sponsorBuyer(payment.sponsorshipId))) || buyerOf(tenant),
           ...vatSplit(claimed.amount, issuer),
         },
         $unset: { lockAt: 1, heldReason: 1 },
@@ -233,14 +259,17 @@ export async function emailInvoice(invoice: IPlatformInvoice): Promise<boolean> 
     console.error(`Platform invoice ${invoice.serialNo}: PDF failed, emailing without it`, error);
   }
   const seller = invoice.seller?.sellerName || 'DevCom Digital';
-  const plan = `${planLabel(invoice.plan)} plan, ${invoice.billingCycle}`;
+  const plan = `${planLabel(invoice.plan)} plan, ${invoice.months ? termLabel(invoice.months) : invoice.billingCycle}`;
+  const sponsored = invoice.sponsoredClinic;
   const result = await sendEmail({
     to,
-    subject: `Sales invoice ${invoice.serialNo} for your MyClinicSoft subscription`,
+    subject: sponsored
+      ? `Sales invoice ${invoice.serialNo} for your sponsorship of ${sponsored}`
+      : `Sales invoice ${invoice.serialNo} for your MyClinicSoft subscription`,
     html: `<p>Thank you for your payment.</p>
-<p>${escapeHtml(seller)} issued sales invoice <strong>${escapeHtml(invoice.serialNo)}</strong> for your MyClinicSoft ${escapeHtml(plan)}
+<p>${escapeHtml(seller)} issued sales invoice <strong>${escapeHtml(invoice.serialNo)}</strong> for ${sponsored ? `the MyClinicSoft ${escapeHtml(plan)} you sponsored for ${escapeHtml(sponsored)}` : `your MyClinicSoft ${escapeHtml(plan)}`}
 (₱${escapeHtml(invoice.amount.toLocaleString('en-PH', { minimumFractionDigits: 2 }))}).</p>
-<p>${attachments ? 'It is attached to this email. ' : ''}You can also download it any time from Admin → Subscription → Payments.</p>`,
+<p>${attachments ? 'It is attached to this email.' : ''}${sponsored ? '' : ' You can also download it any time from Admin → Subscription → Payments.'}</p>`,
     attachments,
   });
   if (result.success) await PlatformInvoice.updateOne({ _id: invoice._id }, { $set: { emailedAt: new Date() } });

@@ -173,7 +173,7 @@ export default function MedicalRepresentativeOnboardingClient({ onlineFee }: { o
   const activation = [
     { title: 'Register', description: 'Tell us about you, then confirm your email.' },
     onlineFee
-      ? { title: `Pay ${peso(onlineFee)} online`, description: 'GCash, Maya, card, GrabPay, or QR Ph through PayMongo.' }
+      ? { title: `Pay ${peso(onlineFee)} online`, description: 'By debit or credit card, through PayMongo.' }
       : { title: 'Verification', description: 'Our team contacts you about the activation fee.' },
     { title: 'Reach clinics', description: 'Your account is activated and clinics on the platform can see you.' },
   ];

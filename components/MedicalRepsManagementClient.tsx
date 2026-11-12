@@ -26,6 +26,8 @@ interface MedicalRep {
   status: 'active' | 'inactive' | 'on-leave';
   isActivated?: boolean;
   tenantIds?: string[];
+  /** Pays for this clinic's plan (an accepted sponsorship). */
+  sponsoring?: boolean;
   availability?: {
     dayOfWeek: number;
     startTime: string;
@@ -519,6 +521,14 @@ export default function MedicalRepsManagementClient({ embedded = false }: { embe
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">
                       {rep.title ? `${rep.title} ` : ''}{rep.firstName} {rep.lastName}
+                      {rep.sponsoring && (
+                        <a
+                          href="/admin/subscription#sponsorship"
+                          className="ml-2 rounded-full bg-brand-teal-light px-2 py-0.5 text-xs font-semibold text-brand-teal-deep hover:underline"
+                        >
+                          Sponsoring your plan
+                        </a>
+                      )}
                     </div>
                     <div className="text-sm text-gray-500">{rep.email}</div>
                     {rep.bio && (

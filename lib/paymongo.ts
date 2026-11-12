@@ -4,6 +4,7 @@ import { getPlatformPaymongoKeys, isPlatformPaymongoReady } from '@/lib/platform
 
 /**
  * PayMongo (Philippines): hosted checkout for GCash, Maya, cards, GrabPay and QR Ph, in pesos.
+ * Medical reps' checkouts offer cards only (checkoutMethods).
  * Server-only; the secret key never reaches the browser.
  *
  * Every call takes the secret key to use: a clinic's own account (lib/payments) or, when none is
@@ -14,6 +15,18 @@ import { getPlatformPaymongoKeys, isPlatformPaymongoReady } from '@/lib/platform
 const API = 'https://api.paymongo.com/v1';
 
 export const PAYMONGO_METHODS = ['gcash', 'paymaya', 'card', 'grab_pay', 'qrph'] as const;
+
+/**
+ * Medical reps pay by debit or credit card only (business rule): activation, their own plan,
+ * team seats and clinic sponsorships. PayMongo's `card` covers both debit and credit.
+ */
+export const REP_PAYMONGO_METHODS = ['card'] as const;
+const REP_PURPOSES: ReadonlySet<CheckoutPurpose> = new Set<CheckoutPurpose>(['medrep', 'medrep-subscription', 'medrep-team', 'clinic-sponsorship']);
+
+/** The payment methods a checkout offers: cards only when a medical rep is paying. */
+export function checkoutMethods(purpose: CheckoutPurpose): readonly string[] {
+  return REP_PURPOSES.has(purpose) ? REP_PAYMONGO_METHODS : PAYMONGO_METHODS;
+}
 
 /** The platform's PayMongo account is set up (Platform → Configuration or env). */
 export async function isPayMongoConfigured(): Promise<boolean> {
@@ -29,7 +42,7 @@ async function auth(secretKey?: string) {
 /** Pesos to centavos, the unit PayMongo's API takes. */
 export const toCentavos = (pesos: number) => Math.round(pesos * 100);
 
-export type CheckoutPurpose = 'subscription' | 'invoice' | 'medrep' | 'medrep-subscription' | 'medrep-team';
+export type CheckoutPurpose = 'subscription' | 'invoice' | 'medrep' | 'medrep-subscription' | 'medrep-team' | 'clinic-sponsorship';
 
 export interface CheckoutSession {
   id: string;
@@ -74,7 +87,7 @@ export async function createCheckoutSession(opts: {
       data: {
         attributes: {
           line_items: [{ name: opts.name.slice(0, 255), amount: toCentavos(opts.amount), currency: 'PHP', quantity: 1 }],
-          payment_method_types: PAYMONGO_METHODS,
+          payment_method_types: checkoutMethods(opts.metadata.purpose),
           description: opts.description.slice(0, 255),
           reference_number: opts.referenceNumber,
           success_url: opts.successUrl,

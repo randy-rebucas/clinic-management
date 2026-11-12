@@ -5,6 +5,8 @@
 import connectDB from '@/lib/mongodb';
 import Tenant from '@/models/Tenant';
 import SubscriptionOrder from '@/models/SubscriptionOrder';
+import ClinicSponsorship from '@/models/ClinicSponsorship';
+import MedicalRepresentative from '@/models/MedicalRepresentative';
 import { Types } from 'mongoose';
 import { subMonths, subYears } from 'date-fns';
 import { isPaidPlan, periodEndAfterPayment } from '@/lib/subscription-period';
@@ -128,6 +130,19 @@ export type ActivationResult =
  * expected amount come from the SubscriptionOrder record created server-side, never from
  * the client.
  */
+/** What the plan shows as its sponsor: the rep behind a sponsorship. */
+async function sponsorFor(sponsorshipId: Types.ObjectId | string) {
+  const sponsorship = await ClinicSponsorship.findById(sponsorshipId).select('repId').lean<{ _id: Types.ObjectId; repId: Types.ObjectId } | null>();
+  if (!sponsorship) return null;
+  const rep = await MedicalRepresentative.findById(sponsorship.repId).select('firstName lastName company').lean<any>();
+  return {
+    sponsorshipId: sponsorship._id,
+    repId: sponsorship.repId,
+    repName: rep ? `${rep.firstName} ${rep.lastName}`.trim() : 'A medical representative',
+    ...(rep?.company ? { company: rep.company } : {}),
+  };
+}
+
 export async function activateSubscriptionFromOrder(
   orderId: string,
   payment: CapturedPayment
@@ -162,7 +177,7 @@ export async function activateSubscriptionFromOrder(
       sub,
       order.billingCycle === 'yearly' ? 'yearly' : 'monthly',
       now,
-      isPaidPlan(order.plan) ? { plan: order.plan, pricing: await getPlanPricing() } : undefined
+      isPaidPlan(order.plan) ? { plan: order.plan, pricing: await getPlanPricing(), months: order.months || undefined } : undefined
     );
 
     const entry = {
@@ -173,9 +188,14 @@ export async function activateSubscriptionFromOrder(
       payerEmail: payment.payerEmail,
       plan: order.plan,
       billingCycle: order.billingCycle,
+      ...(order.months ? { months: order.months } : {}),
+      ...(order.sponsorshipId ? { sponsorshipId: order.sponsorshipId } : {}),
       status: 'completed' as const,
       paidAt: now,
     };
+
+    // A rep-sponsored payment names its sponsor on the plan; the clinic paying itself clears it.
+    const sponsor = order.sponsorshipId ? await sponsorFor(order.sponsorshipId) : null;
 
     // Optimistic concurrency on expiresAt: a concurrent activation makes this miss and retry.
     const updated = await Tenant.findOneAndUpdate(
@@ -194,7 +214,9 @@ export async function activateSubscriptionFromOrder(
           'subscription.lastOrderId': orderId,
           // Kept in step until the field is renamed in the database (lib/subscription-order.ts).
           'subscription.paypalOrderId': orderId,
+          ...(sponsor ? { 'subscription.sponsor': sponsor } : {}),
         },
+        ...(sponsor ? {} : { $unset: { 'subscription.sponsor': 1 } }),
         $push: { 'subscription.paymentHistory': entry },
       },
       { new: true, runValidators: true }
@@ -238,14 +260,43 @@ export async function reverseSubscriptionPayment(
   payment.status = 'refunded';
   const sub = tenant.subscription;
   if (sub.expiresAt) {
-    const end = payment.billingCycle === 'yearly' ? subYears(new Date(sub.expiresAt), 1) : subMonths(new Date(sub.expiresAt), 1);
+    const end = payment.months
+      ? subMonths(new Date(sub.expiresAt), payment.months)
+      : payment.billingCycle === 'yearly'
+        ? subYears(new Date(sub.expiresAt), 1)
+        : subMonths(new Date(sub.expiresAt), 1);
     sub.expiresAt = end;
     sub.renewalAt = end;
   }
   if (!sub.expiresAt || new Date(sub.expiresAt) <= new Date() || payment.orderId === currentOrderId(sub)) {
     sub.status = 'cancelled';
+    // The refunded sponsorship no longer pays for anything on the plan.
+    if (payment.sponsorshipId && sub.sponsor && String(sub.sponsor.sponsorshipId) === String(payment.sponsorshipId)) {
+      sub.sponsor = undefined;
+    }
   }
   await tenant.save();
+  if (payment.sponsorshipId) {
+    // Mark it on the sponsorship too, and take its months off the sponsorship's own paid-through
+    // (never past the plan's new end: time the clinic paid for itself isn't the sponsor's).
+    try {
+      const sponsorship = await ClinicSponsorship.findById(payment.sponsorshipId).select('paidThrough').lean<{ paidThrough?: Date } | null>();
+      const planEnd = sub.status === 'cancelled' || !sub.expiresAt ? null : new Date(sub.expiresAt);
+      let paidThrough: Date | null = null;
+      if (planEnd && sponsorship?.paidThrough) {
+        const back = subMonths(new Date(sponsorship.paidThrough), payment.months || (payment.billingCycle === 'yearly' ? 12 : 1));
+        paidThrough = back < planEnd ? back : planEnd;
+      }
+      await ClinicSponsorship.updateOne(
+        { _id: payment.sponsorshipId, payments: { $elemMatch: { orderId: payment.orderId, refundedAt: { $exists: false } } } },
+        paidThrough
+          ? { $set: { 'payments.$.refundedAt': new Date(), paidThrough } }
+          : { $set: { 'payments.$.refundedAt': new Date() }, $unset: { paidThrough: 1 } }
+      );
+    } catch (error) {
+      console.error(`Marking sponsorship ${payment.sponsorshipId} payment ${payment.orderId} refunded failed`, error);
+    }
+  }
   await cancelSubscriptionInvoice(payment.orderId, refunded === 'full' ? 'Payment refunded or charged back' : 'Payment refunded').catch((error) =>
     console.error(`Cancelling the sales invoice for order ${payment.orderId} failed`, error)
   );

@@ -79,7 +79,8 @@ export function periodEndAfterPayment(
   } | null | undefined,
   cycle: BillingCycle,
   now = new Date(),
-  next?: { plan: PaidPlan; pricing?: PlanPricing }
+  /** `months`: the payment buys that many months instead of one `cycle` (rep sponsorship). */
+  next?: { plan: PaidPlan; pricing?: PlanPricing; months?: number }
 ): Date {
   const currentEnd = current?.expiresAt ? new Date(current.expiresAt) : null;
   const active = current?.status === 'active' && !!currentEnd && currentEnd > now;
@@ -91,6 +92,7 @@ export function periodEndAfterPayment(
     const ratio = isPaidPlan(oldPlan) ? dailyPrice(oldPlan, oldCycle, next.pricing) / dailyPrice(next.plan, cycle, next.pricing) : 0;
     base = new Date(now.getTime() + ((currentEnd as Date).getTime() - now.getTime()) * ratio);
   }
+  if (next?.months) return addMonths(base, next.months);
   return cycle === 'yearly' ? addYears(base, 1) : addMonths(base, 1);
 }
 

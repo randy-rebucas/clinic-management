@@ -9,6 +9,7 @@ import { FigureRow, Icon, Panel, formatCount, type Figure } from '@/components/d
 import { Modal } from '@/components/ui/Modal';
 import { FIELD } from '@/components/appointments/shared';
 import UsageMeter, { usageAmount } from './UsageMeter';
+import SponsorshipPanel from './SponsorshipPanel';
 
 const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal focus-visible:ring-offset-2';
 const PRIMARY = `inline-flex items-center justify-center gap-2 rounded-md bg-brand-teal-dark px-4 py-2.5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-teal-deep disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`;
@@ -80,7 +81,7 @@ function Banner({ tone, title, children }: { tone: Tone; title: string; children
   );
 }
 
-function StateBanner({ plan }: { plan: SubscriptionPageData['plan'] }) {
+function StateBanner({ plan, sponsor }: { plan: SubscriptionPageData['plan']; sponsor: SubscriptionPageData['sponsor'] }) {
   const unpaid = `Staff can still open records, but can’t add ${BLOCKED_WHEN_UNPAID} until a plan is paid for.`;
   switch (plan.state) {
     case 'none':
@@ -110,7 +111,9 @@ function StateBanner({ plan }: { plan: SubscriptionPageData['plan'] }) {
       if (plan.daysLeft !== null && plan.daysLeft <= 14) {
         return (
           <Banner tone="amber" title={`The ${plan.label} plan ends in ${plural(plan.daysLeft, 'day')}${plan.endsOn ? ` (${plan.endsOn})` : ''}`}>
-            Payments don’t renew on their own. Pay for another {plan.cycle ? CYCLE_WORD[plan.cycle] : 'period'} below to keep going without a gap.
+            {sponsor
+              ? `${sponsor.name} sponsors this plan and can renew it from the Rep app (they get a reminder a week before it ends). You can also pay for a plan below.`
+              : `Payments don’t renew on their own. Pay for another ${plan.cycle ? CYCLE_WORD[plan.cycle] : 'period'} below to keep going without a gap.`}
           </Banner>
         );
       }
@@ -153,14 +156,20 @@ function PeriodBar({ plan }: { plan: SubscriptionPageData['plan'] }) {
 }
 
 function PeriodPanel({ data }: { data: SubscriptionPageData }) {
-  const { plan, payments } = data;
+  const { plan, payments, sponsor } = data;
   const last = payments.find((p) => p.status === 'completed');
   const ended = plan.state === 'ended' || plan.state === 'cancelled' || plan.state === 'none';
   const figures: Figure[] = [
     {
       label: 'Plan',
       value: plan.label,
-      detail: plan.state === 'trial' ? 'Free trial' : plan.cycle ? `Paid ${plan.cycle}` : undefined,
+      detail: plan.state === 'trial'
+        ? 'Free trial'
+        : sponsor
+          ? `Sponsored by ${sponsor.company ? `${sponsor.name}, ${sponsor.company}` : sponsor.name}`
+          : plan.cycle
+            ? `Paid ${plan.cycle}`
+            : undefined,
     },
     {
       label: plan.state === 'trial' ? 'Trial ends' : ended ? 'Ended' : 'Paid until',
@@ -511,7 +520,10 @@ function Payments({ payments }: { payments: SubscriptionPageData['payments'] }) 
               >
                 <span className="text-gray-600">{p.paidOn}</span>
                 <span className="font-medium text-gray-900 max-sm:col-start-1 max-sm:row-start-2">
-                  {p.plan} · {CYCLE_LABEL[p.cycle]}
+                  {p.plan} · {p.term}
+                  {p.sponsored && (
+                    <span className="ml-2 rounded-full bg-brand-teal-light px-2 py-0.5 text-xs font-semibold text-brand-teal-deep">Sponsored</span>
+                  )}
                 </span>
                 <span className={`text-right font-mono tabular-nums text-gray-900 max-sm:col-start-2 max-sm:row-start-1 ${p.status === 'refunded' ? 'line-through text-gray-500' : ''}`}>
                   {money(p.amount, p.currency, true)}
@@ -615,6 +627,11 @@ export default function SubscriptionClient({ data, canceled }: { data: Subscript
         <h1 className="text-2xl font-extrabold tracking-tight text-gray-900 sm:text-3xl">Subscription</h1>
         <p className="mt-1 text-sm text-gray-600 sm:text-base">
           {data.clinicName} · {data.plan.label} plan
+          {data.sponsor && (
+            <span className="ml-2 rounded-full bg-brand-teal-light px-2.5 py-0.5 text-xs font-semibold text-brand-teal-deep align-middle">
+              Sponsored by {data.sponsor.name}
+            </span>
+          )}
         </p>
       </div>
 
@@ -624,7 +641,7 @@ export default function SubscriptionClient({ data, canceled }: { data: Subscript
         </Banner>
       )}
       <Unfinished items={data.unfinished} />
-      <StateBanner plan={data.plan} />
+      <StateBanner plan={data.plan} sponsor={data.sponsor} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <div className="lg:col-span-3">
@@ -660,6 +677,7 @@ export default function SubscriptionClient({ data, canceled }: { data: Subscript
         </div>
       </section>
 
+      <SponsorshipPanel section={data.sponsorship} />
       <Payments payments={data.payments} />
       <BillingDetails profile={data.billingProfile} />
 
