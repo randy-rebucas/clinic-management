@@ -8,6 +8,7 @@ import { headers } from 'next/headers';
 import connectDB from '@/lib/mongodb';
 import Tenant, { ITenant } from '@/models/Tenant';
 import { Types } from 'mongoose';
+import { extractSubdomain } from '@/lib/subdomain';
 
 // Type for lean tenant result from database
 type TenantLean = {
@@ -61,44 +62,7 @@ export interface TenantContext {
   tenant: TenantData | null;
 }
 
-/**
- * Extract subdomain from request headers
- */
-export function extractSubdomain(host?: string | null): string | null {
-  if (!host) return null;
-
-  const hostname = host.split(':')[0]; // Remove port if present
-  const rootDomain = process.env.ROOT_DOMAIN || 'localhost';
-
-  // Local development environment
-  if (hostname.includes('localhost') || hostname.includes('127.0.0.1')) {
-    // Try to extract subdomain from the full URL
-    if (hostname.includes('.localhost')) {
-      const parts = hostname.split('.');
-      if (parts.length > 1 && parts[0] !== 'www') {
-        return parts[0];
-      }
-    }
-    return null;
-  }
-
-  // Production environment
-  const rootDomainFormatted = rootDomain.split(':')[0];
-
-  // Handle preview deployment URLs (tenant---branch-name.vercel.app)
-  if (hostname.includes('---') && hostname.endsWith('.vercel.app')) {
-    const parts = hostname.split('---');
-    return parts.length > 0 ? parts[0] : null;
-  }
-
-  // Regular subdomain detection
-  const isSubdomain =
-    hostname !== rootDomainFormatted &&
-    hostname !== `www.${rootDomainFormatted}` &&
-    hostname.endsWith(`.${rootDomainFormatted}`);
-
-  return isSubdomain ? hostname.replace(`.${rootDomainFormatted}`, '') : null;
-}
+export { extractSubdomain };
 
 /**
  * Active tenants by subdomain, per instance. Every request on a clinic subdomain resolves its

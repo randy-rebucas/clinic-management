@@ -4,15 +4,34 @@ import JsonLd from '@/components/JsonLd';
 import Link from 'next/link';
 import Image from 'next/image';
 import { verifySession } from '@/app/lib/dal';
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { BRAND_GRADIENT } from '@/lib/brand-mark';
+import { getTenantContext } from '@/lib/tenant';
+import { clinicPageUrl, getClinicWebsite } from '@/lib/clinic-website';
+import ClinicWebsite from '@/components/clinic-site/ClinicWebsite';
 
-export const metadata: Metadata = pageMetadata({
+const marketingMetadata: Metadata = pageMetadata({
   title: 'MyClinicSoft — Clinic Management Software for Philippine Clinics',
   path: '/',
   absoluteTitle: true,
   description: 'Run your clinic from one system: patient records, appointments, queues, billing, PhilHealth and HMO claims, and inventory — plus the eMCR app for patients. Try it free for 14 days.',
 });
+
+export async function generateMetadata(): Promise<Metadata> {
+  const { tenant, subdomain } = await getTenantContext();
+  if (!tenant) return subdomain ? { title: 'Clinic not found', robots: { index: false } } : marketingMetadata;
+  const clinic = await getClinicWebsite(tenant);
+  const where = clinic.address ? ` in ${clinic.address}` : '';
+  const description = `${clinic.name}${where}. See our doctors, services and clinic hours, and book an appointment online.`;
+  const url = await clinicPageUrl('/');
+  return {
+    title: { absolute: clinic.name },
+    description,
+    alternates: { canonical: url },
+    openGraph: { type: 'website', siteName: clinic.name, locale: 'en_PH', url, title: clinic.name, description },
+    twitter: { card: 'summary', title: clinic.name, description },
+  };
+}
 
 function Icon({ d, className = 'w-5 h-5' }: { d: string; className?: string }) {
   return (
@@ -152,7 +171,24 @@ const stats = [
   { value: 'eMCR', label: 'Patient app' },
 ];
 
+/** Today's weekday ("monday") in the clinic's time zone. */
+function weekdayIn(timeZone = 'Asia/Manila'): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone }).format(new Date()).toLowerCase();
+  } catch {
+    return new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: 'Asia/Manila' }).format(new Date()).toLowerCase();
+  }
+}
+
 export default async function HomePage() {
+  // A clinic subdomain is that clinic's public website.
+  const { tenant, subdomain } = await getTenantContext();
+  if (subdomain && !tenant) notFound();
+  if (tenant) {
+    const clinic = await getClinicWebsite(tenant);
+    return <ClinicWebsite clinic={clinic} today={weekdayIn(tenant.settings?.timezone)} />;
+  }
+
   // Check if user is already logged in, redirect to dashboard
   const session = await verifySession();
   if (session) {

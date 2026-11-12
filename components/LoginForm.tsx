@@ -298,15 +298,17 @@ export default function LoginForm() {
         </button>
       </div>
 
-      {/* Sign Up Link */}
-      <div>
-        <p className="text-sm sm:text-base text-gray-600 text-center">
-          Don&apos;t have an account?{' '}
-          <Link href="/tenant-onboard" className="text-brand-teal-dark hover:text-brand-teal font-semibold underline decoration-2 underline-offset-2">
-            Register your clinic
-          </Link>
-        </p>
-      </div>
+      {/* Sign-up link: clinic registration lives on the main site only. */}
+      {subdomain === '' && (
+        <div>
+          <p className="text-sm sm:text-base text-gray-600 text-center">
+            Don&apos;t have an account?{' '}
+            <Link href="/tenant-onboard" className="text-brand-teal-dark hover:text-brand-teal font-semibold underline decoration-2 underline-offset-2">
+              Register your clinic
+            </Link>
+          </p>
+        </div>
+      )}
     </form>
   );
 }

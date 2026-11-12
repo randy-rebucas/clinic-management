@@ -1,8 +1,69 @@
+import type { Metadata } from 'next';
 import LoginForm from '@/components/LoginForm';
 import BrandLogo from '@/components/BrandLogo';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { verifySession } from '@/app/lib/dal';
+import { getTenantContext } from '@/lib/tenant';
+import { getClinicIdentity, type ClinicIdentity } from '@/lib/clinic-website';
+import { mainSiteHost } from '@/lib/subdomain';
+import ClinicMark from '@/components/clinic-site/ClinicMark';
+
+const PIN = 'M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z';
+const PHONE =
+  'M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z';
+const GLOBE = 'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9';
+
+function Icon({ d, className }: { d: string; className: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d={d} />
+    </svg>
+  );
+}
+
+/**
+ * Which clinic this sign-in is for, pinned to the top so staff can tell they're on the right one
+ * before typing a password. "Not your clinic?" goes to the main site's sign-in, where they pick
+ * their clinic. Fixed over the form column only: on desktop it starts where the branding panel
+ * (lg:w-1/2 xl:w-5/12) ends.
+ */
+function SigningInTo({ clinic, host, switchUrl }: { clinic: ClinicIdentity; host: string; switchUrl: string }) {
+  return (
+    <section
+      aria-label="Clinic"
+      className="fixed top-0 right-0 left-0 lg:left-1/2 xl:left-[41.666667%] z-50 h-16 border-b border-gray-200 bg-white/95 backdrop-blur-md"
+    >
+      <div className="flex h-full items-center gap-3 px-4 sm:px-6 lg:px-8">
+        <ClinicMark name={clinic.name} logo={clinic.logo} size={36} />
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 leading-none">Signing in to</p>
+          <p className="mt-1 truncate font-bold text-gray-900 leading-tight" title={clinic.address ? `${clinic.name} · ${clinic.address}` : clinic.name}>
+            {clinic.name}
+            {clinic.address && (
+              <span className="hidden md:inline font-normal text-sm text-gray-500"> · {clinic.address}</span>
+            )}
+          </p>
+        </div>
+        <span className="hidden xl:inline text-xs text-gray-500 shrink-0">{host}</span>
+        <a
+          href={switchUrl}
+          className="shrink-0 rounded-md border border-gray-300 px-3 py-1.5 text-xs sm:text-sm font-semibold text-gray-700 hover:border-gray-900 hover:text-gray-900 transition-colors"
+        >
+          <span className="hidden sm:inline">Not your clinic? </span>Switch
+        </a>
+      </div>
+    </section>
+  );
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const { tenant } = await getTenantContext();
+  if (!tenant) return {};
+  const clinic = await getClinicIdentity(tenant);
+  return { title: { absolute: `Staff sign in | ${clinic.name}` } };
+}
 
 export default async function LoginPage() {
   const session = await verifySession();
@@ -12,8 +73,17 @@ export default async function LoginPage() {
     redirect('/dashboard');
   }
 
+  // On a clinic subdomain, show staff which clinic they are signing in to.
+  const { tenant } = await getTenantContext();
+  const clinic = tenant ? await getClinicIdentity(tenant) : null;
+  const h = await headers();
+  const host = (h.get('x-forwarded-host') || h.get('host') || '').toLowerCase();
+  const proto = h.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https');
+  const switchUrl = `${proto}://${mainSiteHost(host)}/login`;
+
   return (
     <div className="min-h-screen flex bg-white">
+      {clinic && <SigningInTo clinic={clinic} host={host} switchUrl={switchUrl} />}
       {/* Left branding panel — hidden on mobile */}
       <div className="hidden lg:flex lg:w-1/2 xl:w-5/12 relative flex-col justify-between p-12 bg-brand-navy overflow-hidden">
         {/* Background decoration — grid pattern, consistent with homepage */}
@@ -57,12 +127,47 @@ export default async function LoginPage() {
         {/* Logo */}
         <div className="relative z-10">
           <Link href="/" className="flex items-center gap-3">
-            <BrandLogo size={48} rounded="rounded-2xl" />
-            <span className="text-white font-bold text-lg">MyClinicSoft</span>
+            {clinic ? (
+              <ClinicMark name={clinic.name} logo={clinic.logo} size={48} />
+            ) : (
+              <BrandLogo size={48} rounded="rounded-2xl" />
+            )}
+            <span className="text-white font-bold text-lg">{clinic ? clinic.name : 'MyClinicSoft'}</span>
           </Link>
         </div>
 
         {/* Center content */}
+        {clinic ? (
+          <div className="relative z-10 space-y-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Staff portal</p>
+            <div>
+              <h2 className="text-3xl xl:text-4xl font-extrabold text-white leading-tight mb-3 tracking-tight text-balance">
+                {clinic.name}
+              </h2>
+              <p className="text-slate-300 text-base xl:text-lg leading-relaxed">
+                For doctors, nurses, front desk and administrators of this clinic.
+              </p>
+            </div>
+            <ul className="flex flex-col gap-3 pt-2 text-sm text-slate-300">
+              {clinic.address && (
+                <li className="flex items-start gap-3">
+                  <Icon d={PIN} className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
+                  {clinic.address}
+                </li>
+              )}
+              {clinic.phone && (
+                <li className="flex items-center gap-3">
+                  <Icon d={PHONE} className="w-4 h-4 text-slate-400 shrink-0" />
+                  {clinic.phone}
+                </li>
+              )}
+              <li className="flex items-center gap-3">
+                <Icon d={GLOBE} className="w-4 h-4 text-slate-400 shrink-0" />
+                {host}
+              </li>
+            </ul>
+          </div>
+        ) : (
         <div className="relative z-10 space-y-6">
           <div className="w-14 h-14 bg-white/15 rounded-2xl flex items-center justify-center border border-white/20">
             <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -96,17 +201,18 @@ export default async function LoginPage() {
             ))}
           </div>
         </div>
+        )}
 
         {/* Bottom tagline */}
         <div className="relative z-10">
           <p className="text-slate-400 text-sm">
-            &copy; {new Date().getFullYear()} MyClinicSoft. All rights reserved.
+            {clinic ? 'Powered by MyClinicSoft' : <>&copy; {new Date().getFullYear()} MyClinicSoft. All rights reserved.</>}
           </p>
         </div>
       </div>
 
       {/* Right form panel */}
-      <div className="flex-1 flex flex-col justify-center items-center px-6 py-12 sm:px-12 bg-white relative overflow-hidden">
+      <div className={`flex-1 flex flex-col justify-center items-center px-6 py-12 sm:px-12 bg-white relative overflow-hidden ${clinic ? 'pt-28' : ''}`}>
         {/* Subtle grid background for mobile */}
         <div
           className="pointer-events-none absolute inset-0 -z-10 lg:hidden"
@@ -121,15 +227,27 @@ export default async function LoginPage() {
 
         <div className="w-full max-w-md">
           {/* Mobile logo */}
-          <Link href="/" className="flex lg:hidden items-center justify-center gap-3 mb-10">
-            <BrandLogo size={44} rounded="rounded-2xl" className="shadow-lg" />
-            <span className="text-gray-900 font-bold text-lg">MyClinicSoft</span>
-          </Link>
+          {!clinic && (
+            <Link href="/" className="flex lg:hidden items-center justify-center gap-3 mb-10">
+              <BrandLogo size={44} rounded="rounded-2xl" className="shadow-lg" />
+              <span className="text-gray-900 font-bold text-lg">MyClinicSoft</span>
+            </Link>
+          )}
+
 
           {/* Heading */}
           <div className="mb-8">
             <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-2 tracking-tight">Welcome back</h1>
-            <p className="text-gray-500 text-sm sm:text-base">Sign in to your clinic account to continue.</p>
+            <p className="text-gray-500 text-sm sm:text-base">
+              {clinic ? `Sign in with your ${clinic.name} staff account.` : 'Sign in to your clinic account to continue.'}
+            </p>
+            {/* Phones get neither the branding panel nor the bar's address: say where, for clinics with branches. */}
+            {clinic?.address && (
+              <p className="md:hidden mt-2 flex items-start gap-1.5 text-xs text-gray-500">
+                <Icon d={PIN} className="w-3.5 h-3.5 mt-px shrink-0 text-gray-400" />
+                {clinic.address}
+              </p>
+            )}
           </div>
 
           <LoginForm />

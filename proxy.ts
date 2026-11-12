@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { decodeJwt } from 'jose';
 import { isAuthorizedCronRequest, safeEqual } from '@/lib/cron-auth';
+import { CLINIC_SIGNUP_API, extractSubdomain, isMarketingOnlyPath, mainSiteHost } from '@/lib/subdomain';
 
 /**
  * Next.js Proxy (proxy.ts — required name in Next.js 16.x)
@@ -19,7 +20,10 @@ import { isAuthorizedCronRequest, safeEqual } from '@/lib/cron-auth';
  * 4. View-as is read-only — a staff session minted for a platform admin viewing a clinic
  *    (`imp` claim) may not make any state-changing request, API or server action.
  *
- * 5. Security headers — adds a per-request nonce CSP and additional headers to every response.
+ * 5. Clinic websites — a clinic subdomain is that clinic's public site; MyClinicSoft's own
+ *    marketing pages there redirect to the main site, and clinic sign-up is not available.
+ *
+ * 6. Security headers — adds a per-request nonce CSP and additional headers to every response.
  */
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -52,15 +56,28 @@ function isTrustedSource(sourceHost: string, requestHost: string): boolean {
   return inRoot(hostnameOf(sourceHost)) && inRoot(hostnameOf(requestHost));
 }
 
+/** Pages of a clinic's website that are its own content (the rest copy the main site's). */
+const CLINIC_INDEXABLE_PATHS = new Set(['/', '/book']);
+
 /**
- * Clinic subdomains and Vercel preview deployments serve the same marketing pages as the main
- * site; keep them out of search so they don't compete with it as duplicate content.
+ * Vercel preview deployments, and clinic subdomains outside the clinic's own pages, serve the
+ * same pages as the main site; keep them out of search so they don't compete with it as
+ * duplicate content.
  */
-function isNonCanonicalHost(requestHost: string): boolean {
+function isNonCanonicalHost(requestHost: string, pathname: string): boolean {
   const hostname = hostnameOf(requestHost);
   if (hostname.endsWith('.vercel.app')) return true;
   const root = rootDomain();
-  return !!root && hostname.endsWith(`.${root}`) && hostname !== `www.${root}`;
+  const onClinicSubdomain = !!root && hostname.endsWith(`.${root}`) && hostname !== `www.${root}`;
+  return onClinicSubdomain && !CLINIC_INDEXABLE_PATHS.has(pathname);
+}
+
+/** The main site's address for this path, when the request is on a clinic subdomain; else null. */
+function mainSiteUrl(request: NextRequest): string | null {
+  const requestHost = request.headers.get('host') ?? request.nextUrl.host;
+  if (!extractSubdomain(requestHost)) return null;
+  const { protocol, pathname, search } = request.nextUrl;
+  return `${protocol}//${mainSiteHost(requestHost)}${pathname}${search}`;
 }
 
 function createNonce(): string {
@@ -126,7 +143,7 @@ export function proxy(request: NextRequest): NextResponse {
     requestHeaders.set('x-nonce', nonce);
     requestHeaders.set('Content-Security-Policy', csp);
     const response = addSecurityHeaders(NextResponse.next({ request: { headers: requestHeaders } }), csp);
-    if (isNonCanonicalHost(request.headers.get('host') ?? host)) {
+    if (isNonCanonicalHost(request.headers.get('host') ?? host, pathname)) {
       response.headers.set('X-Robots-Tag', 'noindex, nofollow');
     }
     return response;
@@ -169,12 +186,17 @@ export function proxy(request: NextRequest): NextResponse {
     return next();
   }
 
-  // ─── 4. View-as sessions are read-only ────────────────────────────────────
+  // ─── 4. No clinic sign-up on a clinic's subdomain (the page 404s itself) ──
+  if (pathname.startsWith(CLINIC_SIGNUP_API) && extractSubdomain(request.headers.get('host') ?? host)) {
+    return json(403, 'Clinic registration is not available on a clinic website.');
+  }
+
+  // ─── 5. View-as sessions are read-only ────────────────────────────────────
   if (!SAFE_METHODS.has(method) && isViewAsRequest(request)) {
     return json(403, 'Read-only: you are viewing this clinic from the platform console.');
   }
 
-  // ─── 5. CSRF protection for state-changing API requests ───────────────────
+  // ─── 6. CSRF protection for state-changing API requests ───────────────────
   if (!SAFE_METHODS.has(method) && pathname.startsWith('/api/')) {
     const hasSession =
       request.cookies.has('session') ||
@@ -207,7 +229,13 @@ export function proxy(request: NextRequest): NextResponse {
     }
   }
 
-  // ─── 6. Add security headers to all responses ────────────────────────────
+  // ─── 7. MyClinicSoft's marketing pages live on the main site, not a clinic's ──
+  if (SAFE_METHODS.has(method) && isMarketingOnlyPath(pathname)) {
+    const target = mainSiteUrl(request);
+    if (target) return addSecurityHeaders(NextResponse.redirect(target, 308), csp);
+  }
+
+  // ─── 8. Add security headers to all responses ────────────────────────────
   return next();
 }
 

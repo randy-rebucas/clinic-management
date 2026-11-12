@@ -13,6 +13,7 @@ import { buildSetPasswordUrl, generateInviteToken, inviteUpdate, randomUnusableP
 import { turnstileRejection } from '@/lib/turnstile';
 import { sendEmail } from '@/lib/email';
 import { lookupReferralCode, redeemReferralCode } from '@/lib/rep-referral';
+import { extractSubdomain } from '@/lib/subdomain';
 import { DATE_FORMATS, PH_DEFAULTS, formatClinicAddress, formatPhPhone, isPhZipCode, normalizePhPhone, subdomainError } from '@/lib/tenant-onboarding';
 
 function validateSubdomain(subdomain: string): { valid: boolean; error?: string } {
@@ -21,6 +22,14 @@ function validateSubdomain(subdomain: string): { valid: boolean; error?: string 
 }
 
 export async function POST(request: NextRequest) {
+  // New clinics register on the main site only (proxy.ts refuses this too).
+  if (extractSubdomain(request.headers.get('host'))) {
+    return NextResponse.json(
+      { success: false, message: 'Clinic registration is not available on a clinic website.' },
+      { status: 403 }
+    );
+  }
+
   // Rate-limit self-registration to 5 attempts per 15 minutes per IP
   const rateLimitResponse = await applyRateLimit(request, rateLimiters.auth);
   if (rateLimitResponse) {
