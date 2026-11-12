@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 import { tenantScope, newAccountCredentials, sendInviteInBackground, INITIAL_PASSWORD_LOCAL } from './staff-user-link';
+import { STANDARD_ROLE } from '@/lib/roles';
 
 export interface IMedicalRepresentative extends Document {
   // Tenant references for multi-tenant support
@@ -20,6 +21,17 @@ export interface IMedicalRepresentative extends Document {
   lastName: string;
   email: string;
   phone: string;
+  /** Set when the rep proved this number with a texted code (app sign-up). Only these numbers can sign in by code. */
+  phoneVerifiedAt?: Date;
+  /**
+   * An unpaid rep's short-lived pass to pay the activation fee and, once paid, to be signed in by
+   * the app without typing anything again (lib/medrep-app-signup.ts). sha256; the raw token is
+   * only in the app.
+   */
+  activationTokenHash?: string;
+  activationTokenExpiresAt?: Date;
+  /** The latest activation checkout (PayMongo `cs_…`), so the app can confirm a payment without waiting for the webhook. */
+  activationCheckoutId?: string;
 
   // Company and territory information
   company: string;
@@ -134,6 +146,10 @@ const MedicalRepresentativeSchema: Schema = new Schema(
       required: [true, 'Phone number is required'],
       trim: true,
     },
+    phoneVerifiedAt: { type: Date },
+    activationTokenHash: { type: String, select: false },
+    activationTokenExpiresAt: { type: Date },
+    activationCheckoutId: { type: String },
     company: {
       type: String,
       required: [true, 'Company is required'],
@@ -256,6 +272,10 @@ MedicalRepresentativeSchema.index({ tenantIds: 1, company: 1, status: 1 }); // F
 MedicalRepresentativeSchema.index({ tenantIds: 1, status: 1 }); // For status-based queries
 MedicalRepresentativeSchema.index({ tenantIds: 1, createdAt: -1 }); // For sorting by creation date
 MedicalRepresentativeSchema.index({ userId: 1 }); // For user lookup
+// App activation pass (POST /api/medical-representatives/onboard/app/{checkout,activation})
+MedicalRepresentativeSchema.index({ activationTokenHash: 1 }, { partialFilterExpression: { activationTokenHash: { $type: 'string' } } });
+// Sign-in by texted code: verified numbers only (POST /api/medical-representatives/auth/otp/*)
+MedicalRepresentativeSchema.index({ phone: 1 }, { partialFilterExpression: { phoneVerifiedAt: { $type: 'date' } } });
 
 // Pre-save hook to track if this is a new document
 MedicalRepresentativeSchema.pre('save', function (next) {
@@ -287,16 +307,27 @@ MedicalRepresentativeSchema.post('save', async function (doc) {
       return;
     }
 
-    // Find or create the medical-representative role (tenant-agnostic)
+    // Find or create the medical-representative role (tenant-agnostic). The old create here failed
+    // validation (no displayName; `permissions` holds Permission ids, not strings), so any database
+    // without this role made reps without a login. One upsert, so two signups can't race.
     let role = await Role.findOne({ name: 'medical-representative', ...tenantScope(null) });
     if (!role) {
-      console.log('Creating medical-representative role');
-      role = await Role.create({
-        name: 'medical-representative',
-        description: 'Medical Representative with access to their portal',
-        permissions: ['view_own_profile', 'update_own_profile'],
-        tenantId: undefined, // Tenant-agnostic role
-      });
+      const { DEFAULT_ROLE_PERMISSIONS } = await import('@/lib/permissions');
+      const standard = STANDARD_ROLE['medical-representative'];
+      role = await Role.findOneAndUpdate(
+        { name: 'medical-representative', ...tenantScope(null) },
+        {
+          $setOnInsert: {
+            name: 'medical-representative',
+            displayName: standard.displayName,
+            description: standard.description,
+            level: standard.level,
+            isActive: true,
+            defaultPermissions: DEFAULT_ROLE_PERMISSIONS['medical-representative'] ?? [],
+          },
+        },
+        { upsert: true, new: true, runValidators: true }
+      );
     }
 
     // No usable password until the rep follows the emailed set-password link, unless the rep chose

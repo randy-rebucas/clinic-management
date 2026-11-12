@@ -11,6 +11,7 @@ import { hashInviteToken, isInviteTokenFormat } from '@/lib/user-invite';
 import { createCheckoutSession, isPayMongoConfigured } from '@/lib/paymongo';
 import { getPlatformFees } from '@/lib/platform-config';
 import RepAppSignup, { type IRepAppSignup } from '@/models/RepAppSignup';
+import MedicalRepresentative from '@/models/MedicalRepresentative';
 
 /**
  * Medical rep signup from the rep app: details → emailed code → texted code → password → payment.
@@ -136,19 +137,25 @@ export async function createActivationCheckout(options: {
   rep: { _id: unknown; firstName: string; lastName: string; company: string; email: string };
   fee: number;
   origin: string;
+  /** The app's deep link (see isAllowedAppReturnUrl): the success page sends the browser back to it. */
+  returnUrl?: string | null;
 }): Promise<string> {
   const { rep, fee, origin } = options;
   const base = origin.replace(/\/$/, '');
+  const app = options.returnUrl && isAllowedAppReturnUrl(options.returnUrl) ? `&app=${encodeURIComponent(options.returnUrl)}` : '';
   const checkout = await createCheckoutSession({
     name: 'MyClinicSoft medical representative activation',
     amount: fee,
     description: `Activation for ${rep.firstName} ${rep.lastName}, ${rep.company}`,
     referenceNumber: activationReference(rep._id),
-    successUrl: `${base}/medical-representatives/onboard/success?id=${rep._id}&paid=1`,
-    cancelUrl: `${base}/medical-representatives/onboard/success?id=${rep._id}`,
+    successUrl: `${base}/medical-representatives/onboard/success?id=${rep._id}&paid=1${app}`,
+    cancelUrl: `${base}/medical-representatives/onboard/success?id=${rep._id}${app}`,
     email: rep.email,
     metadata: { purpose: 'medrep', repId: String(rep._id), amount: String(fee) },
   });
+  // Kept so /onboard/app/activation can ask PayMongo directly when the webhook is late or can't
+  // reach us (always the case in local development).
+  await MedicalRepresentative.updateOne({ _id: rep._id }, { $set: { activationCheckoutId: checkout.id } });
   return checkout.checkoutUrl;
 }
 
@@ -159,4 +166,52 @@ export function publicOrigin(fallback: string): string {
 
 export function isValidEmailCodeFormat(code: unknown): code is string {
   return typeof code === 'string' && EMAIL_CODE_FORMAT.test(code);
+}
+
+// ── App activation pass ──────────────────────────────────────────────────────
+
+/** How long the app can use the pass to pay and then be signed in once the payment lands. */
+export const ACTIVATION_TOKEN_TTL_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Give an unpaid rep, whose identity was just proven (password, texted code, or both sign-up codes),
+ * a pass the app keeps: it opens a checkout without asking again, and once the payment webhook
+ * activates the account it is traded for a session (POST /onboard/app/activation). A new pass
+ * replaces the old one.
+ */
+export async function issueActivationToken(repId: unknown): Promise<{ token: string; expiresAt: Date }> {
+  await connectDB();
+  const { id: token, hash } = newSignupId();
+  const expiresAt = new Date(Date.now() + ACTIVATION_TOKEN_TTL_MS);
+  await MedicalRepresentative.updateOne({ _id: repId }, { $set: { activationTokenHash: hash, activationTokenExpiresAt: expiresAt } });
+  return { token, expiresAt };
+}
+
+/** The rep this pass belongs to, while it lasts. */
+export async function findRepByActivationToken(token: unknown) {
+  if (!isInviteTokenFormat(token)) return null;
+  await connectDB();
+  return MedicalRepresentative.findOne({
+    activationTokenHash: hashInviteToken(token),
+    activationTokenExpiresAt: { $gt: new Date() },
+  });
+}
+
+/** The rep app's URL scheme (clinic-management-rep app.json `scheme`). */
+export const REP_APP_SCHEME = 'myclinicsoft-rep';
+
+/**
+ * Where the payment pages may send the browser back to: the rep app's own scheme, and in
+ * development Expo Go's `exp://` links. Anything else would make the success page an open redirect.
+ */
+export function isAllowedAppReturnUrl(url: unknown): url is string {
+  if (typeof url !== 'string' || url.length > 500) return false;
+  let protocol: string;
+  try {
+    protocol = new URL(url).protocol;
+  } catch {
+    return false;
+  }
+  if (protocol === `${REP_APP_SCHEME}:`) return true;
+  return process.env.NODE_ENV !== 'production' && (protocol === 'exp:' || protocol === 'exps:');
 }
