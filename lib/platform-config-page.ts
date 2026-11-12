@@ -1,11 +1,13 @@
 import 'server-only';
 import type { PlanPricing } from '@/lib/subscription-period';
+import type { SponsorshipPricing } from '@/lib/sponsorship-pricing';
 import type { BillingIssuer, PaymongoStatus, PlatformFees } from '@/lib/platform-config-schema';
 import {
   getBillingIssuer,
   getPaymongoStatus,
   getPlanPricing,
   getPlatformFees,
+  getSponsorshipPricing,
   lastIssuedSerial,
   sectionMeta,
   sectionsOnFallback,
@@ -23,21 +25,24 @@ export interface PlatformConfigView {
   paymongoWebhookUrl: string;
   pricing: PlanPricing;
   fees: PlatformFees;
-  updated: Record<'billing-issuer' | 'paymongo' | 'pricing' | 'fees', Meta>;
+  sponsorship: SponsorshipPricing;
+  updated: Record<'billing-issuer' | 'paymongo' | 'pricing' | 'fees' | 'sponsorship', Meta>;
   fallbacks: string[];
 }
 
 export async function loadPlatformConfig(): Promise<PlatformConfigView> {
-  const [issuer, paymongo, pricing, fees, fallbacks, mIssuer, mPaymongo, mPricing, mFees] = await Promise.all([
+  const [issuer, paymongo, pricing, fees, sponsorship, fallbacks, mIssuer, mPaymongo, mPricing, mFees, mSponsorship] = await Promise.all([
     getBillingIssuer(),
     getPaymongoStatus(),
     getPlanPricing(),
     getPlatformFees(),
+    getSponsorshipPricing(),
     sectionsOnFallback(),
     sectionMeta('billing-issuer'),
     sectionMeta('paymongo'),
     sectionMeta('pricing'),
     sectionMeta('fees'),
+    sectionMeta('sponsorship'),
   ]);
   let serials: PlatformConfigView['serials'] = null;
   if (issuer) {
@@ -53,7 +58,8 @@ export async function loadPlatformConfig(): Promise<PlatformConfigView> {
     paymongoWebhookUrl: `${base}/api/paymongo/webhook`,
     pricing,
     fees,
-    updated: { 'billing-issuer': mIssuer, paymongo: mPaymongo, pricing: mPricing, fees: mFees },
+    sponsorship,
+    updated: { 'billing-issuer': mIssuer, paymongo: mPaymongo, pricing: mPricing, fees: mFees, sponsorship: mSponsorship },
     fallbacks,
   };
 }

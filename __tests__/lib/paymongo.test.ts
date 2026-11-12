@@ -9,13 +9,15 @@ vi.mock('@/models/Invoice', () => ({ default: { exists: vi.fn() } }));
 vi.mock('@/models/MedicalRepresentative', () => ({ default: { updateOne: vi.fn() } }));
 vi.mock('@/lib/subscription', () => ({ activateSubscriptionFromOrder: vi.fn() }));
 vi.mock('@/lib/invoice-payments', () => ({ recordInvoicePayments: vi.fn() }));
+vi.mock('@/lib/clinic-sponsorship', () => ({ applySponsorshipPayment: vi.fn() }));
 
 import Invoice from '@/models/Invoice';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
 import SubscriptionOrder from '@/models/SubscriptionOrder';
 import { activateSubscriptionFromOrder } from '@/lib/subscription';
 import { recordInvoicePayments } from '@/lib/invoice-payments';
-import { verifyPaymongoSignature, type CheckoutSession } from '@/lib/paymongo';
+import { applySponsorshipPayment } from '@/lib/clinic-sponsorship';
+import { checkoutMethods, createCheckoutSession, verifyPaymongoSignature, type CheckoutPurpose, type CheckoutSession } from '@/lib/paymongo';
 import { applyPaidCheckout } from '@/lib/paymongo-apply';
 
 const SECRET = 'whsk_test_secret';
@@ -83,9 +85,40 @@ describe('applyPaidCheckout', () => {
     expect(await applyPaidCheckout(session({ purpose: 'medrep', repId, amount: '1000' }, 1000))).toEqual({ ok: true, applied: true });
   });
 
+  it('hands a rep sponsorship to its own apply, with the payment and session ids', async () => {
+    vi.mocked(applySponsorshipPayment).mockResolvedValue({ ok: true, applied: true });
+    const meta = { purpose: 'clinic-sponsorship', orderId: 'pm_s', tenantId: TENANT, sponsorshipId: TENANT, repId: TENANT, months: '3', amount: '7125' };
+    expect(await applyPaidCheckout(session(meta, 7125))).toEqual({ ok: true, applied: true });
+    expect(vi.mocked(applySponsorshipPayment).mock.calls[0].slice(0, 3)).toEqual([expect.objectContaining({ months: '3' }), 7125, 'pay_1']);
+    vi.mocked(applySponsorshipPayment).mockResolvedValue({ ok: false, retry: true, error: 'busy' });
+    expect(await applyPaidCheckout(session(meta, 7125))).toEqual({ ok: false, retry: true, error: 'busy' });
+  });
+
   it('does nothing for an unpaid checkout', async () => {
     const r = await applyPaidCheckout({ ...session({ purpose: 'subscription' }), payments: [] });
     expect(r).toMatchObject({ ok: true, applied: false });
     expect(activateSubscriptionFromOrder).not.toHaveBeenCalled();
+  });
+});
+
+describe('checkout payment methods', () => {
+  it.each<CheckoutPurpose>(['medrep', 'medrep-subscription', 'medrep-team', 'clinic-sponsorship'])('medical reps pay by card only (%s)', async (purpose) => {
+    expect(checkoutMethods(purpose)).toEqual(['card']);
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: { id: 'cs_1', attributes: { checkout_url: 'https://pm/x' } } }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await createCheckoutSession(
+        { name: 'x', amount: 100, description: 'x', referenceNumber: 'R', successUrl: 'https://a/s', cancelUrl: 'https://a/c', metadata: { purpose } },
+        'sk_test_x'
+      );
+      const body = JSON.parse((fetchMock.mock.calls[0] as any[])[1].body);
+      expect(body.data.attributes.payment_method_types).toEqual(['card']);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each<CheckoutPurpose>(['subscription', 'invoice'])('clinics and patients keep e-wallets and QR Ph (%s)', (purpose) => {
+    expect(checkoutMethods(purpose)).toEqual(expect.arrayContaining(['gcash', 'paymaya', 'card', 'qrph']));
   });
 });

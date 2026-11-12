@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import { MedicalRepresentative, User } from '@/models';
+import ClinicSponsorship from '@/models/ClinicSponsorship';
 import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { sanitizeSearch } from '@/lib/utils';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
@@ -75,10 +76,16 @@ export async function GET(request: NextRequest) {
         .lean(),
       MedicalRepresentative.countDocuments(query),
     ]);
+    // The rep (if any) paying for this clinic's plan, to badge on the list.
+    const sponsorRow = await ClinicSponsorship.findOne({ tenantId: tenantObjectId, status: 'accepted' }).select('repId').lean<{ repId: unknown } | null>();
+    const sponsorId = sponsorRow ? String(sponsorRow.repId) : null;
 
     return NextResponse.json({
       success: true,
-      data: representatives.map((rep) => hideOtherClinicsNotes(rep as { tenantIds?: unknown[]; notes?: string }, tenantObjectId)),
+      data: representatives.map((rep) => ({
+        ...hideOtherClinicsNotes(rep as { tenantIds?: unknown[]; notes?: string }, tenantObjectId),
+        sponsoring: sponsorId !== null && String((rep as { _id: unknown })._id) === sponsorId,
+      })),
       pagination: {
         page,
         limit,

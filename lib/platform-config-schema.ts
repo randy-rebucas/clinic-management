@@ -60,6 +60,15 @@ export const pricingSchema = z
   })
   .strict();
 
+/** Clinic sponsorship by a medical rep (lib/sponsorship-pricing.ts): monthly price and term discounts. */
+const percentOff = z.number().min(0, 'At least 0%').max(50, 'At most 50%');
+export const sponsorshipPricingSchema = z
+  .object({
+    monthly: peso.min(20, 'At least ₱20 (PayMongo minimum)'),
+    discounts: z.object({ '3': percentOff, '6': percentOff, '12': percentOff }).strict(),
+  })
+  .strict();
+
 export const feesSchema = z
   .object({
     /** 0 = reps are activated by hand, no online fee. */

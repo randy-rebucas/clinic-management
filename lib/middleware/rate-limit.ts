@@ -205,6 +205,14 @@ export const rateLimiters = {
     message: 'Too many attempts for this email. Please try again later.',
   }),
 
+  // Rep referral code checks on the public signup page (codes are guessable only by brute force).
+  referralLookup: rateLimit({
+    name: 'referral-lookup',
+    windowMs: 15 * 60 * 1000,
+    maxRequests: 30,
+    message: 'Too many code checks. Please try again later.',
+  }),
+
   // Public code sends: anyone can trigger these, and each one is a paid text.
   publicCodeIp: rateLimit({
     name: 'public-code-ip',

@@ -28,6 +28,10 @@ export interface IPlatformInvoice extends Document {
   lockAt?: Date;
   plan: string;
   billingCycle: 'monthly' | 'yearly';
+  /** Months bought when not a plain month or year (rep sponsorship). */
+  months?: number;
+  /** For a rep-sponsored payment: the clinic the rep paid for (the rep is the buyer). */
+  sponsoredClinic?: string;
   /** The paid-until date the payment brought the clinic to, at activation. */
   paidThrough?: Date;
   paidAt: Date;
@@ -57,6 +61,8 @@ const PlatformInvoiceSchema = new Schema<IPlatformInvoice>(
     lockAt: { type: Date },
     plan: { type: String, required: true },
     billingCycle: { type: String, enum: ['monthly', 'yearly'], required: true },
+    months: { type: Number },
+    sponsoredClinic: { type: String },
     paidThrough: { type: Date },
     paidAt: { type: Date, required: true },
     amount: { type: Number, required: true },

@@ -4,10 +4,12 @@ import PlatformSetting, { type PlatformSettingKey } from '@/models/PlatformSetti
 import Counter from '@/models/Counter';
 import { decryptData, encryptData } from '@/lib/encryption';
 import { DEFAULT_PRICING, type PlanPricing } from '@/lib/subscription-period';
+import { DEFAULT_SPONSORSHIP_PRICING, type SponsorshipPricing } from '@/lib/sponsorship-pricing';
 import {
   billingIssuerSchema,
   feesSchema,
   pricingSchema,
+  sponsorshipPricingSchema,
   type BillingIssuer,
   type PaymongoStatus,
   type PlatformFees,
@@ -70,6 +72,12 @@ export async function sectionMeta(key: PlatformSettingKey): Promise<{ updatedAt:
 export async function getPlanPricing(): Promise<PlanPricing> {
   const parsed = pricingSchema.safeParse((await readSection('pricing'))?.data);
   return parsed.success ? parsed.data : DEFAULT_PRICING;
+}
+
+/** What a medical rep pays to sponsor a clinic's subscription. */
+export async function getSponsorshipPricing(): Promise<SponsorshipPricing> {
+  const parsed = sponsorshipPricingSchema.safeParse((await readSection('sponsorship'))?.data);
+  return parsed.success ? parsed.data : DEFAULT_SPONSORSHIP_PRICING;
 }
 
 // ── Fees ─────────────────────────────────────────────────────────────────────
@@ -150,6 +158,7 @@ export async function sectionsOnFallback(): Promise<string[]> {
   if ((await getPaymongoStatus()).source !== 'console') out.push('PayMongo account');
   if (!pricingSchema.safeParse((await readSection('pricing'))?.data).success) out.push('Plan prices');
   if (!feesSchema.safeParse((await readSection('fees'))?.data).success) out.push('Fees');
+  if (!sponsorshipPricingSchema.safeParse((await readSection('sponsorship'))?.data).success) out.push('Sponsorship prices');
   return out;
 }
 

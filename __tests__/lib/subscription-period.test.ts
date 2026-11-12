@@ -26,4 +26,10 @@ describe('periodEndAfterPayment', () => {
     const ended = { status: 'expired', plan: 'basic', expiresAt: new Date('2025-12-01T00:00:00Z') };
     expect(day(periodEndAfterPayment(ended, 'monthly', NOW, { plan: 'basic' }))).toBe('2026-02-01');
   });
+
+  it('a sponsorship buys its own number of months from the current end', () => {
+    const current = { status: 'active', plan: 'professional', billingCycle: 'monthly', expiresAt: new Date('2026-01-31T00:00:00Z') };
+    expect(day(periodEndAfterPayment(current, 'monthly', NOW, { plan: 'professional', months: 3 }))).toBe('2026-04-30');
+    expect(day(periodEndAfterPayment(null, 'monthly', NOW, { plan: 'professional', months: 6 }))).toBe('2026-07-01');
+  });
 });

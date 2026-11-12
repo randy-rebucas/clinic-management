@@ -6,9 +6,9 @@ import { requirePlatformApi, isPlatformError } from '@/lib/platform-auth';
 import { createAuditLog } from '@/lib/audit';
 import logger from '@/lib/logger';
 import { testPaymongoKey } from '@/lib/paymongo';
-import { getBillingIssuer, getPlanPricing, getPlatformFees, lastIssuedSerial, savePlatformSection } from '@/lib/platform-config';
+import { getBillingIssuer, getPlanPricing, getPlatformFees, getSponsorshipPricing, lastIssuedSerial, savePlatformSection } from '@/lib/platform-config';
 import { loadPlatformConfig } from '@/lib/platform-config-page';
-import { billingIssuerSchema, feesSchema, paymongoSectionSchema, pricingSchema } from '@/lib/platform-config-schema';
+import { billingIssuerSchema, feesSchema, paymongoSectionSchema, pricingSchema, sponsorshipPricingSchema } from '@/lib/platform-config-schema';
 import { formatSerial } from '@/lib/bir';
 
 /** GET /api/platform/configuration: every section as the console shows it (no secrets). */
@@ -19,7 +19,7 @@ export async function GET() {
 }
 
 const BodySchema = z.object({
-  section: z.enum(['billing-issuer', 'paymongo', 'pricing', 'fees']),
+  section: z.enum(['billing-issuer', 'paymongo', 'pricing', 'fees', 'sponsorship']),
   values: z.unknown(),
 });
 
@@ -70,6 +70,13 @@ export async function PUT(request: NextRequest) {
       await savePlatformSection(section, parsed.data, admin.email);
       revalidatePath('/pricing');
       revalidatePath('/compare');
+    } else if (section === 'sponsorship') {
+      const parsed = sponsorshipPricingSchema.safeParse(values);
+      if (!parsed.success) return invalid(parsed.error);
+      before = await getSponsorshipPricing();
+      after = parsed.data;
+      // Checkouts already started keep the amount they were created with.
+      await savePlatformSection(section, parsed.data, admin.email);
     } else if (section === 'fees') {
       const parsed = feesSchema.safeParse(values);
       if (!parsed.success) return invalid(parsed.error);

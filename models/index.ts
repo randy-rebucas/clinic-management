@@ -131,6 +131,12 @@ export type { IMedicalRepresentative } from './MedicalRepresentative';
 export { default as RepTeam } from './RepTeam';
 export type { IRepTeam } from './RepTeam';
 
+export { default as ClinicSponsorship } from './ClinicSponsorship';
+export type { IClinicSponsorship } from './ClinicSponsorship';
+
+export { default as RepReferralCode } from './RepReferralCode';
+export type { IRepReferralCode } from './RepReferralCode';
+
 export { default as MedicalTechnologist } from './MedicalTechnologist';
 export type { IMedicalTechnologist } from './MedicalTechnologist';
 
@@ -269,6 +275,8 @@ export function registerAllModels(): void {
    
   require('./MedicalRepresentative');
   require('./RepTeam');
+  require('./ClinicSponsorship');
+  require('./RepReferralCode');
    
   require('./MedicalTechnologist');
    
@@ -356,6 +364,8 @@ const models = {
   Accountant: require('./Accountant').default,
   MedicalRepresentative: require('./MedicalRepresentative').default,
   RepTeam: require('./RepTeam').default,
+  ClinicSponsorship: require('./ClinicSponsorship').default,
+  RepReferralCode: require('./RepReferralCode').default,
   MedicalTechnologist: require('./MedicalTechnologist').default,
   Staff: require('./Staff').default,
   

@@ -12,6 +12,7 @@ import Settings from '../models/Settings';
 import Admin from '../models/Admin';
 import bcrypt from 'bcryptjs';
 import { DEFAULT_ROLE_PERMISSIONS } from '../lib/permissions';
+import { DATE_FORMATS, PH_DEFAULTS, formatClinicAddress, formatPhPhone, isPhZipCode, normalizePhPhone, subdomainError } from '../lib/tenant-onboarding';
 
 // Load environment variables
 config({ path: resolve(process.cwd(), '.env.local') });
@@ -36,38 +37,9 @@ function log(message: string, type: 'info' | 'success' | 'error' | 'warning' = '
   console.log(`${icons[type]} ${message}`);
 }
 
-const RESERVED_WORDS = [
-  'www',
-  'api',
-  'admin',
-  'app',
-  'mail',
-  'ftp',
-  'localhost',
-  'staging',
-  'dev',
-  'test',
-  'demo',
-];
-
 function validateSubdomain(subdomain: string): { valid: boolean; error?: string } {
-  if (!subdomain || subdomain.length < 2) {
-    return { valid: false, error: 'Subdomain must be at least 2 characters long' };
-  }
-  
-  if (subdomain.length > 63) {
-    return { valid: false, error: 'Subdomain must be at most 63 characters long' };
-  }
-  
-  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(subdomain)) {
-    return { valid: false, error: 'Subdomain must contain only lowercase letters, numbers, and hyphens' };
-  }
-  
-  if (RESERVED_WORDS.includes(subdomain.toLowerCase())) {
-    return { valid: false, error: `Subdomain "${subdomain}" is reserved and cannot be used` };
-  }
-  
-  return { valid: true };
+  const error = subdomainError(subdomain);
+  return error ? { valid: false, error } : { valid: true };
 }
 
 async function checkSubdomainExists(subdomain: string): Promise<boolean> {
@@ -283,21 +255,34 @@ async function onboardTenant() {
     // Step 3: Contact Information
     log('\nStep 3: Contact Information', 'info');
     const email = await question('Contact Email (optional): ');
-    const phone = await question('Contact Phone (optional): ');
+    const phoneInput = await question('Contact Phone, PH mobile or landline (optional): ');
+    const phone = phoneInput.trim() ? normalizePhPhone(phoneInput) : '';
+    if (phone === null) {
+      log('Enter a Philippine mobile (0917 123 4567) or landline ((02) 8123 4567)', 'error');
+      rl.close();
+      process.exit(1);
+    }
 
     // Step 4: Address (optional)
     log('\nStep 4: Address (optional, press Enter to skip)', 'info');
     const street = await question('Street Address: ');
     const city = await question('City: ');
-    const state = await question('State/Province: ');
-    const zipCode = await question('Zip/Postal Code: ');
-    const country = await question('Country: ');
+    const state = await question('Province: ');
+    const zipCode = await question('ZIP Code (4 digits): ');
+    if (zipCode.trim() && !isPhZipCode(zipCode)) {
+      log('ZIP code must be 4 digits', 'error');
+      rl.close();
+      process.exit(1);
+    }
 
-    // Step 5: Settings
-    log('\nStep 5: Tenant Settings', 'info');
-    const timezone = await question('Timezone (default: UTC): ') || 'UTC';
-    const currency = await question('Currency Code (default: USD): ') || 'USD';
-    const dateFormat = await question('Date Format (default: MM/DD/YYYY): ') || 'MM/DD/YYYY';
+    // Step 5: Settings (clinics are in the Philippines: Asia/Manila, PHP)
+    log(`\nStep 5: Tenant Settings (${PH_DEFAULTS.country}, ${PH_DEFAULTS.timezone}, ${PH_DEFAULTS.currency})`, 'info');
+    const dateFormat = (await question(`Date Format [${DATE_FORMATS.join(' | ')}] (default: ${PH_DEFAULTS.dateFormat}): `)).trim() || PH_DEFAULTS.dateFormat;
+    if (!(DATE_FORMATS as readonly string[]).includes(dateFormat)) {
+      log(`Date format must be one of ${DATE_FORMATS.join(', ')}`, 'error');
+      rl.close();
+      process.exit(1);
+    }
 
     // Step 6: Admin User
     log('\nStep 6: Create Admin User', 'info');
@@ -347,9 +332,9 @@ async function onboardTenant() {
       subdomain: subdomain!,
       status: 'active',
       settings: {
-        timezone: timezone.trim() || 'UTC',
-        currency: currency.trim().toUpperCase() || 'USD',
-        dateFormat: dateFormat.trim() || 'MM/DD/YYYY',
+        timezone: PH_DEFAULTS.timezone,
+        currency: PH_DEFAULTS.currency,
+        dateFormat,
       },
       subscription: {
         plan: 'trial',
@@ -366,18 +351,15 @@ async function onboardTenant() {
       tenantData.email = email.trim().toLowerCase();
     }
 
-    if (phone && phone.trim()) {
-      tenantData.phone = phone.trim();
+    if (phone) {
+      tenantData.phone = phone;
     }
 
-    if (street || city || state || zipCode || country) {
-      tenantData.address = {};
-      if (street) tenantData.address.street = street.trim();
-      if (city) tenantData.address.city = city.trim();
-      if (state) tenantData.address.state = state.trim();
-      if (zipCode) tenantData.address.zipCode = zipCode.trim();
-      if (country) tenantData.address.country = country.trim();
-    }
+    tenantData.address = { country: PH_DEFAULTS.country };
+    if (street.trim()) tenantData.address.street = street.trim();
+    if (city.trim()) tenantData.address.city = city.trim();
+    if (state.trim()) tenantData.address.state = state.trim();
+    if (zipCode.trim()) tenantData.address.zipCode = zipCode.trim();
 
     const tenant = await Tenant.create(tenantData);
     const tenantId = tenant._id;
@@ -500,29 +482,27 @@ async function onboardTenant() {
 
     // Step 11: Create Tenant Settings
     log('\nCreating tenant settings...', 'info');
-    const clinicAddress = tenant.address?.street
-      ? `${tenant.address.street}${tenant.address.city ? `, ${tenant.address.city}` : ''}${tenant.address.state ? `, ${tenant.address.state}` : ''}${tenant.address.zipCode ? ` ${tenant.address.zipCode}` : ''}`
-      : '';
+    const clinicAddress = formatClinicAddress(tenant.address);
     
     await Settings.create({
       tenantId,
       clinicName: tenant.displayName || tenant.name,
       clinicAddress: clinicAddress,
-      clinicPhone: tenant.phone || '',
+      clinicPhone: tenant.phone ? formatPhPhone(tenant.phone) : '',
       clinicEmail: tenant.email || '',
       clinicWebsite: '',
       taxId: '',
       licenseNumber: '',
       generalSettings: {
-        timezone: tenant.settings?.timezone || 'UTC',
-        dateFormat: tenant.settings?.dateFormat || 'MM/DD/YYYY',
+        timezone: tenant.settings?.timezone || PH_DEFAULTS.timezone,
+        dateFormat: tenant.settings?.dateFormat || PH_DEFAULTS.dateFormat,
         timeFormat: '12h',
         itemsPerPage: 20,
         enableAuditLog: true,
         sessionTimeoutMinutes: 480,
       },
       billingSettings: {
-        currency: tenant.settings?.currency || 'USD',
+        currency: tenant.settings?.currency || PH_DEFAULTS.currency,
         taxRate: 0,
         paymentTerms: 30,
         lateFeePercentage: 0,

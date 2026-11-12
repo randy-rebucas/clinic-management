@@ -2,6 +2,7 @@ import 'server-only';
 import { escapeHtml as e, protectionHead } from '@/lib/document-protection';
 import { BIR_INVOICE_STYLES, birPermitFooter, birSellerHeader } from '@/lib/bir-invoice-parts';
 import { planLabel } from '@/lib/subscription-period';
+import { termLabel } from '@/lib/sponsorship-pricing';
 import type { BillingIssuer } from '@/lib/platform-config-schema';
 import type { PlatformInvoiceBuyer } from '@/models/PlatformInvoice';
 
@@ -16,6 +17,8 @@ export function platformInvoiceHTML(opts: {
     status: string;
     plan: string;
     billingCycle: 'monthly' | 'yearly';
+    months?: number;
+    sponsoredClinic?: string;
     paidThrough?: Date | string;
     paidAt: Date | string;
     issuedAt?: Date | string;
@@ -38,8 +41,9 @@ export function platformInvoiceHTML(opts: {
   const money = (n: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: inv.currency || 'PHP' }).format(Number(n) || 0);
   const day = (d?: Date | string) => (d ? new Date(d).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric', timeZone: timezone }) : '');
   const buyer = inv.buyer ?? { registeredName: '', tin: '', address: '', email: '' };
-  const cycle = inv.billingCycle === 'yearly' ? 'one year' : 'one month';
-  const description = `MyClinicSoft ${planLabel(inv.plan)} plan, ${cycle}${inv.paidThrough ? ` (paid through ${day(inv.paidThrough)})` : ''}`;
+  const cycle = inv.months ? termLabel(inv.months) : inv.billingCycle === 'yearly' ? 'one year' : 'one month';
+  const sponsored = inv.sponsoredClinic ? ` for ${inv.sponsoredClinic} (sponsorship)` : '';
+  const description = `MyClinicSoft ${planLabel(inv.plan)} plan, ${cycle}${sponsored}${inv.paidThrough ? ` (paid through ${day(inv.paidThrough)})` : ''}`;
   const row = (label: string, value: string, strong = false) =>
     `<tr${strong ? ' class="strong"' : ''}><td>${e(label)}</td><td class="num">${value}</td></tr>`;
   const cancelled = inv.status === 'cancelled';

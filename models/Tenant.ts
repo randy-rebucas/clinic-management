@@ -35,6 +35,13 @@ export interface ITenant extends Document {
     country?: string;
   };
   settings?: ITenantSettings;
+  /** The medical rep whose referral code the clinic used first (models/RepReferralCode.ts). */
+  referral?: {
+    codeId: Types.ObjectId;
+    code: string;
+    repId: Types.ObjectId;
+    at: Date;
+  };
   status: 'active' | 'inactive' | 'suspended';
   /** Who DevCom Digital's subscription sales invoices are made out to (blank = clinic name). */
   billingProfile?: {
@@ -55,6 +62,13 @@ export interface ITenant extends Document {
     paypalOrderId?: string;
     trialWarningsSent?: number[];
     usageAlertLevels?: Record<string, number>;
+    /** Set while the current period was paid by a medical rep (models/ClinicSponsorship.ts). */
+    sponsor?: {
+      sponsorshipId: Types.ObjectId;
+      repId: Types.ObjectId;
+      repName: string;
+      company?: string;
+    } | null;
     paymentHistory?: Array<{
       transactionId: string;
       orderId: string;
@@ -63,6 +77,10 @@ export interface ITenant extends Document {
       payerEmail?: string;
       plan: string;
       billingCycle: 'monthly' | 'yearly';
+      /** Months bought when not a plain month or year (rep sponsorship). */
+      months?: number;
+      /** The rep sponsorship that paid, if any. */
+      sponsorshipId?: Types.ObjectId;
       status: 'completed' | 'refunded' | 'failed';
       paidAt: Date;
     }>;
@@ -120,6 +138,12 @@ const TenantSchema = new Schema<ITenant>(
       zipCode: { type: String, trim: true },
       country: { type: String, trim: true },
     },
+    referral: {
+      codeId: { type: Schema.Types.ObjectId, ref: 'RepReferralCode' },
+      code: { type: String },
+      repId: { type: Schema.Types.ObjectId, ref: 'MedicalRepresentative' },
+      at: { type: Date },
+    },
     billingProfile: {
       registeredName: { type: String, trim: true, maxlength: 200 },
       tin: { type: String, trim: true, maxlength: 20 },
@@ -157,6 +181,18 @@ const TenantSchema = new Schema<ITenant>(
       paypalOrderId: { type: String },
       trialWarningsSent: { type: [Number], default: undefined }, // days-before thresholds already warned
       usageAlertLevels: { type: Schema.Types.Mixed }, // { patients: 90, storage: 80, ... } last alerted threshold
+      sponsor: {
+        type: new Schema(
+          {
+            sponsorshipId: { type: Schema.Types.ObjectId, ref: 'ClinicSponsorship', required: true },
+            repId: { type: Schema.Types.ObjectId, ref: 'MedicalRepresentative', required: true },
+            repName: { type: String, required: true },
+            company: { type: String },
+          },
+          { _id: false }
+        ),
+        default: undefined,
+      },
       paymentHistory: [
         {
           transactionId: { type: String, required: true },
@@ -166,6 +202,8 @@ const TenantSchema = new Schema<ITenant>(
           payerEmail: { type: String },
           plan: { type: String, required: true },
           billingCycle: { type: String, enum: ['monthly', 'yearly'], default: 'monthly' },
+          months: { type: Number },
+          sponsorshipId: { type: Schema.Types.ObjectId, ref: 'ClinicSponsorship' },
           status: { type: String, enum: ['completed', 'refunded', 'failed'], default: 'completed' },
           paidAt: { type: Date, default: Date.now },
         },
@@ -185,6 +223,7 @@ TenantSchema.index({ 'subscription.status': 1 });
 TenantSchema.index({ 'subscription.lastOrderId': 1 });
 TenantSchema.index({ 'subscription.paypalOrderId': 1 });
 TenantSchema.index({ createdAt: -1 });
+TenantSchema.index({ 'referral.repId': 1, createdAt: -1 }, { partialFilterExpression: { 'referral.repId': { $exists: true } } });
 
 // Validation: Ensure subdomain doesn't conflict with reserved words
 TenantSchema.pre('save', async function (next) {

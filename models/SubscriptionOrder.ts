@@ -19,6 +19,10 @@ export interface ISubscriptionOrder extends Document {
   provider?: 'paypal' | 'paymongo';
   /** PayMongo checkout session id (orderId is then our own reference). */
   gatewayId?: string;
+  /** Months the order buys when it isn't a plain month or year (rep sponsorship: 1, 3, 6, 12). */
+  months?: number;
+  /** Set when a medical rep pays for the clinic (models/ClinicSponsorship.ts). */
+  sponsorshipId?: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,6 +38,8 @@ const SubscriptionOrderSchema = new Schema<ISubscriptionOrder>(
     status:       { type: String, enum: ['pending', 'processing', 'completed', 'failed'], default: 'pending' },
     provider:     { type: String, enum: ['paypal', 'paymongo'], default: 'paymongo' },
     gatewayId:    { type: String, index: true, sparse: true },
+    months:       { type: Number, min: 1, max: 12 },
+    sponsorshipId: { type: Schema.Types.ObjectId, ref: 'ClinicSponsorship' },
   },
   { timestamps: true }
 );

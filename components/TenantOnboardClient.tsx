@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect, useSyncExternalStore } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { detectCountry } from '@/lib/country-detection';
+import { DATE_FORMATS, PH_DEFAULTS, isPhZipCode, normalizePhPhone, subdomainError } from '@/lib/tenant-onboarding';
 import BrandLogo from '@/components/BrandLogo';
 import TurnstileWidget, { TURNSTILE_SITE_KEY } from '@/components/TurnstileWidget';
 
@@ -11,15 +10,35 @@ interface FormErrors {
   tenantName?: string[];
   subdomain?: string[];
   email?: string[];
+  phone?: string[];
+  zipCode?: string[];
+  country?: string[];
+  timezone?: string[];
+  currency?: string[];
+  dateFormat?: string[];
   adminName?: string[];
   adminEmail?: string[];
+  adminPhone?: string[];
+  referralCode?: string[];
   general?: string;
 }
 
+type ReferralCheck =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'ok'; code: string; rep: { name: string; company: string | null } }
+  | { state: 'error'; message: string };
+
+/** Which step shows each field, so a server-side error sends the user back to it. */
+const FIELD_STEP: Record<string, number> = {
+  tenantName: 1, subdomain: 1,
+  email: 2, phone: 2, zipCode: 2, country: 2, timezone: 2, currency: 2, dateFormat: 2,
+  adminName: 3, adminEmail: 3, adminPhone: 3, referralCode: 3,
+};
+
 const subscribeNoop = () => () => {};
 
-export default function TenantOnboardClient() {
-  const router = useRouter();
+export default function TenantOnboardClient({ initialReferralCode = '' }: { initialReferralCode?: string }) {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
@@ -28,7 +47,6 @@ export default function TenantOnboardClient() {
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   // Turnstile tokens are single-use: bumping this remounts the widget after each attempt.
   const [captchaKey, setCaptchaKey] = useState(0);
-  const [detectingCountry, setDetectingCountry] = useState(true);
   const rootDomain = useSyncExternalStore(
     subscribeNoop,
     () => window.location.hostname.split('.').slice(-2).join('.'),
@@ -48,15 +66,35 @@ export default function TenantOnboardClient() {
     city: '',
     state: '',
     zipCode: '',
-    country: '',
-    // Settings
-    timezone: 'UTC',
-    currency: 'PHP',
-    dateFormat: 'MM/DD/YYYY',
+    // Settings — clinics are in the Philippines (Asia/Manila, PHP); only the date format is a choice.
+    dateFormat: PH_DEFAULTS.dateFormat as string,
     // Admin User
     adminName: '',
     adminEmail: '',
+    // A medical rep's referral code (from their signup link, or typed in)
+    referralCode: initialReferralCode,
   });
+  const [referral, setReferral] = useState<ReferralCheck>({ state: 'idle' });
+
+  const checkReferral = useCallback(async (raw: string) => {
+    const code = raw.trim();
+    if (!code) return setReferral({ state: 'idle' });
+    setReferral({ state: 'checking' });
+    try {
+      const res = await fetch(`/api/tenants/referral-code?code=${encodeURIComponent(code)}`);
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success) setReferral({ state: 'ok', code: json.data.code, rep: json.data.rep });
+      else setReferral({ state: 'error', message: json?.error || 'That code isn’t valid. Check it with your rep.' });
+    } catch {
+      setReferral({ state: 'error', message: 'Couldn’t check the code. You can try again.' });
+    }
+  }, []);
+
+  // A rep's signup link: check the code straight away so the rep's name shows from the start.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one lookup for the link's code on mount
+    if (initialReferralCode) void checkReferral(initialReferralCode);
+  }, [initialReferralCode, checkReferral]);
 
   const generateSubdomain = (name: string): string => {
     if (!name || !name.trim()) return '';
@@ -86,23 +124,6 @@ export default function TenantOnboardClient() {
     }
     
     return subdomain;
-  };
-
-  const validateSubdomain = (subdomain: string): string | null => {
-    if (!subdomain || subdomain.length < 2) {
-      return 'Subdomain must be at least 2 characters long';
-    }
-    if (subdomain.length > 63) {
-      return 'Subdomain must be at most 63 characters long';
-    }
-    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/.test(subdomain)) {
-      return 'Subdomain must contain only lowercase letters, numbers, and hyphens';
-    }
-    const reserved = ['www', 'api', 'admin', 'app', 'mail', 'ftp', 'localhost', 'staging', 'dev', 'test', 'demo'];
-    if (reserved.includes(subdomain.toLowerCase())) {
-      return `Subdomain "${subdomain}" is reserved and cannot be used`;
-    }
-    return null;
   };
 
   const handleInputChange = (field: string, value: string) => {
@@ -137,33 +158,6 @@ export default function TenantOnboardClient() {
     }
   };
 
-  // Detect country and auto-fill form fields on mount
-  useEffect(() => {
-    const detectAndFill = async () => {
-      try {
-        setDetectingCountry(true);
-        const countryData = await detectCountry();
-        
-        if (countryData) {
-          setFormData(prev => ({
-            ...prev,
-            country: countryData.country,
-            timezone: countryData.timezone,
-            currency: countryData.currency,
-            dateFormat: countryData.dateFormat,
-          }));
-        }
-      } catch (error) {
-        console.warn('Failed to detect country:', error);
-        // Keep defaults if detection fails
-      } finally {
-        setDetectingCountry(false);
-      }
-    };
-
-    detectAndFill();
-  }, []);
-
   const validateStep = (stepNum: number): boolean => {
     const newErrors: FormErrors = {};
 
@@ -174,9 +168,9 @@ export default function TenantOnboardClient() {
       if (!formData.subdomain.trim()) {
         newErrors.subdomain = ['Subdomain is required'];
       } else {
-        const subdomainError = validateSubdomain(formData.subdomain.toLowerCase());
-        if (subdomainError) {
-          newErrors.subdomain = [subdomainError];
+        const problem = subdomainError(formData.subdomain.toLowerCase());
+        if (problem) {
+          newErrors.subdomain = [problem];
         }
       }
     }
@@ -184,6 +178,12 @@ export default function TenantOnboardClient() {
     if (stepNum === 2) {
       if (formData.email && !/^\S+@\S+\.\S+$/.test(formData.email)) {
         newErrors.email = ['Please enter a valid email address'];
+      }
+      if (formData.phone.trim() && !normalizePhPhone(formData.phone)) {
+        newErrors.phone = ['Enter a Philippine mobile (0917 123 4567) or landline ((02) 8123 4567)'];
+      }
+      if (formData.zipCode.trim() && !isPhZipCode(formData.zipCode)) {
+        newErrors.zipCode = ['ZIP codes are 4 digits'];
       }
     }
 
@@ -218,6 +218,10 @@ export default function TenantOnboardClient() {
     if (!validateStep(3)) {
       return;
     }
+    if (formData.referralCode.trim() && referral.state === 'error') {
+      setErrors({ referralCode: [referral.message] });
+      return;
+    }
 
     setLoading(true);
     setErrors({});
@@ -248,22 +252,21 @@ export default function TenantOnboardClient() {
         subdomain: ensureValue(normalizedSubdomain),
         email: cleanOptional(formData.email),
         phone: cleanOptional(formData.phone),
-        address: (formData.street || formData.city || formData.state || formData.zipCode || formData.country) ? {
+        address: {
           street: cleanOptional(formData.street),
           city: cleanOptional(formData.city),
           state: cleanOptional(formData.state),
           zipCode: cleanOptional(formData.zipCode),
-          country: cleanOptional(formData.country),
-        } : undefined,
+          country: PH_DEFAULTS.country,
+        },
         settings: {
-          timezone: formData.timezone || 'UTC',
-          currency: formData.currency || 'USD',
-          dateFormat: formData.dateFormat || 'MM/DD/YYYY',
+          dateFormat: formData.dateFormat || PH_DEFAULTS.dateFormat,
         },
         admin: {
           name: ensureValue(formData.adminName),
           email: ensureValue(formData.adminEmail),
         },
+        referralCode: cleanOptional(formData.referralCode),
         turnstileToken: captchaToken ?? undefined,
       };
 
@@ -347,7 +350,13 @@ export default function TenantOnboardClient() {
                             `Failed to create tenant (${response.status} ${response.statusText})`;
 
         if (data?.errors) {
-          setErrors(data.errors);
+          // Field errors only show on their own step: go back to the first step that has one,
+          // and keep a general message so nothing fails silently.
+          const fields = Object.keys(data.errors).filter((k) => k !== 'general');
+          const target = fields.map((k) => FIELD_STEP[k]).filter(Boolean).sort()[0];
+          if (target) setStep(target);
+          const general = Array.isArray(data.errors.general) ? data.errors.general[0] : data.errors.general;
+          setErrors({ ...data.errors, general: general || (target ? undefined : errorMessage) });
         } else {
           setErrors({ general: errorMessage });
         }
@@ -543,6 +552,13 @@ export default function TenantOnboardClient() {
           <div className="mb-8">
             <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-2 tracking-tight">Register Your Clinic</h1>
             <p className="text-gray-500 text-sm sm:text-base">Get started with MyClinicSoft in minutes.</p>
+            {referral.state === 'ok' && (
+              <p className="mt-3 inline-flex items-center gap-2 rounded-md border border-brand-teal/30 bg-brand-teal-light/40 px-3 py-1.5 text-sm text-brand-teal-deep">
+                <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                Referred by <span className="font-semibold">{referral.rep.name}</span>
+                {referral.rep.company && <span>· {referral.rep.company}</span>}
+              </p>
+            )}
           </div>
 
           {/* Compact horizontal stepper */}
@@ -710,11 +726,21 @@ export default function TenantOnboardClient() {
                   <input
                     id="tenant-contact-phone"
                     type="tel"
+                    inputMode="tel"
+                    autoComplete="tel-national"
+                    maxLength={30}
                     value={formData.phone}
                     onChange={(e) => handleInputChange('phone', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base"
-                    placeholder="+1-555-0123"
+                    aria-invalid={errors.phone ? true : undefined}
+                    aria-describedby="tenant-contact-phone-hint"
+                    className={`w-full px-4 py-3 border rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base ${errors.phone ? 'border-red-300' : 'border-gray-300'}`}
+                    placeholder="0917 123 4567"
                   />
+                  {errors.phone ? (
+                    <p id="tenant-contact-phone-hint" className="mt-1 text-sm text-red-600">{errors.phone[0]}</p>
+                  ) : (
+                    <p id="tenant-contact-phone-hint" className="mt-1 text-xs text-gray-500">Mobile or landline, e.g. (02) 8123 4567</p>
+                  )}
                 </div>
               </div>
 
@@ -724,46 +750,54 @@ export default function TenantOnboardClient() {
                   <input
                     type="text"
                     value={formData.street}
-                    aria-label="Street address"
+                    aria-label="Street, building and barangay"
+                    autoComplete="street-address"
                     onChange={(e) => handleInputChange('street', e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base"
-                    placeholder="Street Address"
+                    className="w-full px-4 py-3 border rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base border-gray-300"
+                    placeholder="Unit / building, street, barangay"
                   />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <input
                       type="text"
                       value={formData.city}
-                      aria-label="City"
+                      aria-label="City or municipality"
+                      autoComplete="address-level2"
                       onChange={(e) => handleInputChange('city', e.target.value)}
-                      className="px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base"
-                      placeholder="City"
+                      className="w-full px-4 py-3 border rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base border-gray-300"
+                      placeholder="City / Municipality"
                     />
                     <input
                       type="text"
                       value={formData.state}
-                      aria-label="State or province"
+                      aria-label="Province"
+                      autoComplete="address-level1"
                       onChange={(e) => handleInputChange('state', e.target.value)}
-                      className="px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base"
-                      placeholder="State/Province"
+                      className="w-full px-4 py-3 border rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base border-gray-300"
+                      placeholder="Province"
                     />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="postal-code"
+                        maxLength={4}
+                        value={formData.zipCode}
+                        aria-label="ZIP code"
+                        aria-invalid={errors.zipCode ? true : undefined}
+                        onChange={(e) => handleInputChange('zipCode', e.target.value.replace(/\D/g, ''))}
+                        className={`w-full px-4 py-3 border rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base ${errors.zipCode ? 'border-red-300' : 'border-gray-300'}`}
+                        placeholder="ZIP code (e.g. 1200)"
+                      />
+                      {errors.zipCode && <p className="mt-1 text-sm text-red-600">{errors.zipCode[0]}</p>}
+                    </div>
                     <input
                       type="text"
-                      value={formData.zipCode}
-                      aria-label="Zip or postal code"
-                      onChange={(e) => handleInputChange('zipCode', e.target.value)}
-                      className="px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base"
-                      placeholder="Zip/Postal Code"
-                    />
-                    <input
-                      type="text"
-                      value={formData.country}
+                      value={PH_DEFAULTS.country}
                       aria-label="Country"
-                      onChange={(e) => handleInputChange('country', e.target.value)}
-                      disabled={detectingCountry}
-                      className="px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base disabled:opacity-50 disabled:cursor-not-allowed"
-                      placeholder={detectingCountry ? "Detecting..." : "Country"}
+                      readOnly
+                      className="w-full px-4 py-3 border rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base border-gray-200 bg-gray-50 text-gray-600 cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -771,107 +805,33 @@ export default function TenantOnboardClient() {
 
               <div className="border-t pt-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Settings</h3>
-                {detectingCountry && (
-                  <div className="mb-4 flex items-center gap-2 text-sm text-brand-teal-dark">
-                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>Detecting your location...</span>
+                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 text-sm">
+                  <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3">
+                    <dt className="text-gray-500">Timezone</dt>
+                    <dd className="font-medium text-gray-900">Philippine Time (Asia/Manila)</dd>
                   </div>
-                )}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label htmlFor="tenant-timezone" className="block text-sm font-medium text-gray-700 mb-2">Timezone</label>
-                    <select
-                      id="tenant-timezone"
-                      value={formData.timezone}
-                      onChange={(e) => handleInputChange('timezone', e.target.value)}
-                      disabled={detectingCountry}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <option value="UTC">UTC</option>
-                      <option value="Asia/Manila">Asia/Manila (Philippines)</option>
-                      <option value="Asia/Singapore">Asia/Singapore</option>
-                      <option value="Asia/Kuala_Lumpur">Asia/Kuala_Lumpur (Malaysia)</option>
-                      <option value="Asia/Bangkok">Asia/Bangkok (Thailand)</option>
-                      <option value="Asia/Jakarta">Asia/Jakarta (Indonesia)</option>
-                      <option value="Asia/Ho_Chi_Minh">Asia/Ho_Chi_Minh (Vietnam)</option>
-                      <option value="Asia/Seoul">Asia/Seoul (South Korea)</option>
-                      <option value="Asia/Tokyo">Asia/Tokyo (Japan)</option>
-                      <option value="Asia/Shanghai">Asia/Shanghai (China)</option>
-                      <option value="Asia/Kolkata">Asia/Kolkata (India)</option>
-                      <option value="America/New_York">America/New_York (US Eastern)</option>
-                      <option value="America/Chicago">America/Chicago (US Central)</option>
-                      <option value="America/Denver">America/Denver (US Mountain)</option>
-                      <option value="America/Los_Angeles">America/Los_Angeles (US Pacific)</option>
-                      <option value="America/Toronto">America/Toronto (Canada)</option>
-                      <option value="America/Mexico_City">America/Mexico_City (Mexico)</option>
-                      <option value="America/Sao_Paulo">America/Sao_Paulo (Brazil)</option>
-                      <option value="Europe/London">Europe/London (UK)</option>
-                      <option value="Europe/Paris">Europe/Paris (France)</option>
-                      <option value="Europe/Berlin">Europe/Berlin (Germany)</option>
-                      <option value="Europe/Madrid">Europe/Madrid (Spain)</option>
-                      <option value="Europe/Rome">Europe/Rome (Italy)</option>
-                      <option value="Europe/Amsterdam">Europe/Amsterdam (Netherlands)</option>
-                      <option value="Europe/Stockholm">Europe/Stockholm (Sweden)</option>
-                      <option value="Australia/Sydney">Australia/Sydney</option>
-                      <option value="Pacific/Auckland">Pacific/Auckland (New Zealand)</option>
-                      <option value="Africa/Johannesburg">Africa/Johannesburg (South Africa)</option>
-                      <option value="Asia/Dubai">Asia/Dubai (UAE)</option>
-                      <option value="Asia/Riyadh">Asia/Riyadh (Saudi Arabia)</option>
-                    </select>
+                  <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3">
+                    <dt className="text-gray-500">Currency</dt>
+                    <dd className="font-medium text-gray-900">Philippine Peso (₱ PHP)</dd>
                   </div>
-                  <div>
-                    <label htmlFor="tenant-currency" className="block text-sm font-medium text-gray-700 mb-2">Currency</label>
-                    <select
-                      id="tenant-currency"
-                      value={formData.currency}
-                      onChange={(e) => handleInputChange('currency', e.target.value)}
-                      disabled={detectingCountry}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <option value="PHP">PHP (Philippine Peso)</option>
-                      <option value="USD">USD (US Dollar)</option>
-                      <option value="EUR">EUR (Euro)</option>
-                      <option value="GBP">GBP (British Pound)</option>
-                      <option value="JPY">JPY (Japanese Yen)</option>
-                      <option value="CAD">CAD (Canadian Dollar)</option>
-                      <option value="AUD">AUD (Australian Dollar)</option>
-                      <option value="SGD">SGD (Singapore Dollar)</option>
-                      <option value="MYR">MYR (Malaysian Ringgit)</option>
-                      <option value="THB">THB (Thai Baht)</option>
-                      <option value="IDR">IDR (Indonesian Rupiah)</option>
-                      <option value="VND">VND (Vietnamese Dong)</option>
-                      <option value="KRW">KRW (South Korean Won)</option>
-                      <option value="CNY">CNY (Chinese Yuan)</option>
-                      <option value="INR">INR (Indian Rupee)</option>
-                      <option value="MXN">MXN (Mexican Peso)</option>
-                      <option value="BRL">BRL (Brazilian Real)</option>
-                      <option value="ZAR">ZAR (South African Rand)</option>
-                      <option value="NZD">NZD (New Zealand Dollar)</option>
-                      <option value="CHF">CHF (Swiss Franc)</option>
-                      <option value="AED">AED (UAE Dirham)</option>
-                      <option value="SAR">SAR (Saudi Riyal)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="tenant-date-format" className="block text-sm font-medium text-gray-700 mb-2">Date Format</label>
-                    <select
-                      id="tenant-date-format"
-                      value={formData.dateFormat}
-                      onChange={(e) => handleInputChange('dateFormat', e.target.value)}
-                      disabled={detectingCountry}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                      <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                      <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                      <option value="DD.MM.YYYY">DD.MM.YYYY</option>
-                      <option value="DD-MM-YYYY">DD-MM-YYYY</option>
-                    </select>
-                  </div>
+                </dl>
+                <div>
+                  <label htmlFor="tenant-date-format" className="block text-sm font-medium text-gray-700 mb-2">Date Format</label>
+                  <select
+                    id="tenant-date-format"
+                    value={formData.dateFormat}
+                    onChange={(e) => handleInputChange('dateFormat', e.target.value)}
+                    className="w-full px-4 py-3 border rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base border-gray-300"
+                  >
+                    {DATE_FORMATS.map((f) => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                  {errors.dateFormat && <p className="mt-1 text-sm text-red-600">{errors.dateFormat[0]}</p>}
                 </div>
+                {(errors.timezone || errors.currency || errors.country) && (
+                  <p className="mt-2 text-sm text-red-600">{(errors.timezone || errors.currency || errors.country)![0]}</p>
+                )}
               </div>
 
               <div className="flex gap-4 pt-4">
@@ -920,7 +880,7 @@ export default function TenantOnboardClient() {
                     className={`w-full px-4 py-3 border rounded-md focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base ${
                       errors.adminName ? 'border-red-300' : 'border-gray-300'
                     }`}
-                  placeholder="Dr. John Smith"
+                  placeholder="Dr. Juan dela Cruz"
                 />
                 {errors.adminName && (
                   <p className="mt-1 text-sm text-red-600">{errors.adminName[0]}</p>
@@ -944,6 +904,44 @@ export default function TenantOnboardClient() {
                 {errors.adminEmail && (
                   <p className="mt-1 text-sm text-red-600">{errors.adminEmail[0]}</p>
                 )}
+              </div>
+
+              <div>
+                <label htmlFor="tenant-referral-code" className="block text-sm font-medium text-gray-700 mb-2">
+                  Medical rep referral code (optional)
+                </label>
+                <input
+                  id="tenant-referral-code"
+                  type="text"
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  spellCheck={false}
+                  maxLength={24}
+                  value={formData.referralCode}
+                  onChange={(e) => {
+                    handleInputChange('referralCode', e.target.value.toUpperCase());
+                    setReferral({ state: 'idle' });
+                  }}
+                  onBlur={(e) => void checkReferral(e.target.value)}
+                  aria-invalid={referral.state === 'error' || errors.referralCode ? true : undefined}
+                  aria-describedby="tenant-referral-code-hint"
+                  className={`w-full px-4 py-3 border rounded-md font-mono tracking-wide uppercase focus:ring-2 focus:ring-brand-teal/30 focus:border-brand-teal outline-none transition-all bg-white hover:border-gray-400 text-base ${
+                    referral.state === 'error' || errors.referralCode ? 'border-red-300' : 'border-gray-300'
+                  }`}
+                  placeholder="REP-7K2PQX"
+                />
+                <p id="tenant-referral-code-hint" aria-live="polite" className="mt-1 text-sm">
+                  {referral.state === 'checking' && <span className="text-gray-500">Checking…</span>}
+                  {referral.state === 'ok' && (
+                    <span className="text-brand-teal-deep">
+                      ✓ {referral.rep.name}{referral.rep.company ? ` · ${referral.rep.company}` : ''} will be added to your reps.
+                    </span>
+                  )}
+                  {referral.state === 'error' && <span className="text-red-600">{referral.message}</span>}
+                  {referral.state === 'idle' && (errors.referralCode
+                    ? <span className="text-red-600">{errors.referralCode[0]}</span>
+                    : <span className="text-xs text-gray-500">From a medical rep you work with. They can sponsor your plan later.</span>)}
+                </p>
               </div>
 
               <p className="text-sm text-gray-600">
