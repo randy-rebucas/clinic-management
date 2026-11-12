@@ -1,11 +1,41 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatApiError } from '../utils/apiError';
+import { FOCUS_RING } from '../appointments/shared';
 import { USER_STATE, type UserRow, type UserState } from '@/lib/users';
 
 export const ROLE_LABEL = (role: UserRow['role']) =>
   role ? role.displayName || role.name.replace(/-/g, ' ').replace(/^\w/, (c) => c.toUpperCase()) : 'No role';
+
+/**
+ * Admin-generated temporary password, shown with a copy button. Gone once they change it.
+ * `size="lg"` for the staff detail dialog; the default fits a list row.
+ */
+export function TempPassword({ value, name, size = 'sm' }: { value: string; name: string; size?: 'sm' | 'lg' }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard blocked: the password is on screen to copy by hand.
+    }
+  };
+  const lg = size === 'lg';
+  const BTN = `rounded px-1.5 py-0.5 ${lg ? 'text-sm' : 'text-xs'} font-semibold text-brand-teal-dark hover:bg-gray-100 hover:text-brand-teal-deep ${FOCUS_RING}`;
+  return (
+    <span className={`flex flex-wrap items-center gap-x-1.5 ${lg ? 'text-sm' : 'mt-0.5 text-xs'} text-gray-500`}>
+      <span>Temp password:</span>
+      <span className={`select-all font-mono ${lg ? 'rounded bg-gray-100 px-2 py-0.5 text-base font-semibold tracking-wide' : ''} text-gray-900`}>{value}</span>
+      <button type="button" onClick={copy} aria-label={`Copy ${name}’s temporary password`} className={BTN}>
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+    </span>
+  );
+}
 
 export function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);

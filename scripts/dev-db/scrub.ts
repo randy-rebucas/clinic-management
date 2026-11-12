@@ -183,7 +183,7 @@ export async function scrubDatabase(db: Db, log: (msg: string) => void = console
             email, name: `${first} ${last}`, password: passwordHash,
             mustSetPassword: false, status: 'active', isActive: true, totpEnabled: false, revokedSessions: [],
           },
-          $unset: { totpSecret: '', totpPendingSecret: '', inviteTokenHash: '' },
+          $unset: { totpSecret: '', totpPendingSecret: '', inviteTokenHash: '', tempPassword: '' },
         },
       },
     });

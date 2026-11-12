@@ -17,6 +17,8 @@ vi.mock('@/models/LabResult', () => ({ default: { findOne: vi.fn(), findOneAndUp
 vi.mock('@/lib/automations/lab-notifications', () => ({
   sendLabResultNotification: vi.fn().mockResolvedValue({ success: true, sent: true }),
   notifyDoctorToReview: vi.fn(),
+  sendResultsInNotice: vi.fn().mockResolvedValue({ sent: false, tests: 0 }),
+  RESULTS_IN_SETTLE_MS: 0,
 }));
 
 import { verifySession } from '@/app/lib/dal';

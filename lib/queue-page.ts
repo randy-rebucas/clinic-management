@@ -10,6 +10,8 @@ export interface QueuePermissions {
   canUpdate: boolean;
   /** visits:write — start the visit from the queue */
   canStartVisit: boolean;
+  /** lab-results:write — order lab tests for a patient at the lab */
+  canOrderLab: boolean;
 }
 
 /** The queue screen's permissions and doctor roster, read on the server. */
@@ -24,6 +26,7 @@ export async function loadQueuePageContext() {
     canAdd: can('queue', 'write'),
     canUpdate: can('queue', 'update'),
     canStartVisit: can('visits', 'write'),
+    canOrderLab: can('lab-results', 'write'),
   };
   return { permissions, doctors: session.tenantId ? await loadClinicDoctors(session.tenantId) : [] };
 }

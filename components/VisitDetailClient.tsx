@@ -68,6 +68,8 @@ interface VisitContext {
   prescriptions: { _id: string; prescriptionCode: string; issuedAt: string; status: string; medications?: { name: string }[] }[] | null;
   labs: { _id: string; requestCode?: string; orderDate: string; status: string; request?: { testType?: string; urgency?: string } }[] | null;
   invoice: { _id: string; invoiceNumber: string; status: string; total?: number; outstandingBalance?: number } | null;
+  /** The patient's live queue entry while the visit is open: in consult, or away (at the lab / not here). */
+  queue?: { _id: string; queueNumber?: string; status: 'in-progress' | 'away'; awayReason?: 'lab' | 'missed' } | null;
   access: { prescriptions: boolean; labs: boolean; invoices: boolean };
 }
 
@@ -76,6 +78,7 @@ const ICONS = {
   pen: 'M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z',
   print: 'M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z',
   undo: 'M3 10h10a5 5 0 015 5v2M3 10l5-5m-5 5l5 5',
+  beaker: 'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z',
   doc: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
   clip: 'M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13',
   download: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4',
@@ -226,6 +229,34 @@ export default function VisitDetailClient({ visitId, permissions }: { visitId: s
     }
   };
 
+  // Same as the queue's "Send to lab": the patient keeps their place in line, and coming back reopens this visit.
+  const sendToLab = async (queueId: string) => {
+    setActionError(null);
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/queue/${queueId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'away', awayReason: 'lab' }),
+      });
+      if (res.status === 401) {
+        router.push('/login');
+        return;
+      }
+      const json = await readJson(res);
+      if (!res.ok || !json.success) {
+        setActionError(formatApiError(json, 'The patient could not be sent to the lab'));
+        return;
+      }
+      setNotice(`${visit ? patientName(visit) : 'The patient'} is at the lab. Their place in line is kept.`);
+    } catch {
+      setActionError('The patient could not be sent to the lab. Check your connection and try again.');
+    } finally {
+      setBusy(false);
+      reloadContext();
+    }
+  };
+
   const handleUpdate = async (formData: VisitFormData): Promise<boolean> => {
     if (!visit) return false;
     const { _id: _ignored, status: _formStatus, ...fields } = formData;
@@ -338,6 +369,10 @@ export default function VisitDetailClient({ visitId, permissions }: { visitId: s
   // Only a written-up visit (open or closed) can be certified, as on the patient page.
   const certifiable = permissions.canIssueCertificate && (v.status === 'open' || v.status === 'closed');
   const labRequest = `/api/visits/${v._id}/print/lab-request`;
+  const queue = ctx?.queue ?? null;
+  const visitLive = v.status === 'open' || v.status === 'draft';
+  const inConsult = permissions.canSendToLab && visitLive && queue?.status === 'in-progress';
+  const atLab = visitLive && queue?.status === 'away' && queue.awayReason === 'lab';
   const more: MoreMenuItem[] = [
     // Lab requests can't be printed for a cancelled visit.
     ...(!cancelled
@@ -363,6 +398,7 @@ export default function VisitDetailClient({ visitId, permissions }: { visitId: s
             <h1 className={`text-2xl sm:text-3xl font-extrabold tracking-tight ${cancelled ? 'text-gray-500 line-through decoration-gray-400 decoration-2' : 'text-gray-900'}`}>{who}</h1>
             <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${STATUS_BADGE[v.status] ?? STATUS_BADGE.open}`}>{STATUS_LABEL[v.status] ?? v.status}</span>
             <span className="font-mono text-sm text-gray-500">{v.visitCode}</span>
+            {atLab && <span className="inline-block rounded bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800 ring-1 ring-inset ring-amber-200">At the lab</span>}
           </div>
           <p className="mt-1 text-sm sm:text-base text-gray-600">
             {visitTypeLabel(v.visitType)} · {longDate(v.date)} at <span className="font-mono">{clock(v.date)}</span> · {v.provider?.name ?? 'No doctor recorded'}
@@ -371,6 +407,18 @@ export default function VisitDetailClient({ visitId, permissions }: { visitId: s
 
         {!editing && (
           <div className={`flex flex-wrap items-center gap-2 transition-opacity ${busy || refreshing ? 'opacity-60' : ''}`}>
+            {inConsult && (
+              <button
+                type="button"
+                onClick={() => sendToLab(queue!._id)}
+                disabled={busy}
+                title="Send the patient to the lab; their place in line is kept"
+                className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-brand-teal-dark hover:bg-brand-teal-light/50 hover:text-brand-teal-deep disabled:cursor-wait ${FOCUS_RING}`}
+              >
+                <Svg d={ICONS.beaker} />
+                Send to lab
+              </button>
+            )}
             {permissions.canUpdate && (v.status === 'draft' || v.status === 'open') && (
               <button
                 type="button"

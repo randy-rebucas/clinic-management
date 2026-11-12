@@ -60,10 +60,20 @@ export async function GET(
           .lean()
       : [];
 
+    // Every test placed in the same order (this one included), so staff can move between them.
+    const orderTests = labResult.orderCode
+      ? await LabResult.find(tenantFilter(tenantId, { orderCode: labResult.orderCode }))
+          // Values too: results for the whole order are entered on one screen.
+          .select('requestCode request.testType request.urgency status results referenceRanges abnormalFlags interpretation resultDate')
+          .sort({ requestCode: 1 })
+          .limit(50)
+          .lean()
+      : [];
+
     after(() =>
       logRecordOpened({ session, tenantId, resource: 'lab_result', resourceId: id, patientId: (labResult.patient as any)?._id, request })
     );
-    return NextResponse.json({ success: true, data: labResult, history });
+    return NextResponse.json({ success: true, data: labResult, history, orderTests: orderTests.length > 1 ? orderTests : [] });
   } catch (error: any) {
     console.error('Error fetching lab result:', error);
     return NextResponse.json(
@@ -202,6 +212,14 @@ export async function PUT(
           await notifyDoctorToReview(held, tenantObjectId);
         } catch (error) {
           console.error('Error asking for lab result review:', error);
+        }
+        // The patient hears their results are in (values hidden until review): one message for the
+        // order, sent once the rest of it, saved right after this, has had a moment to land.
+        try {
+          const { sendResultsInNotice, RESULTS_IN_SETTLE_MS } = await import('@/lib/automations/lab-notifications');
+          await sendResultsInNotice(held._id, tenantObjectId, { settleMs: RESULTS_IN_SETTLE_MS });
+        } catch (error) {
+          console.error('Error telling the patient their lab results are in:', error);
         }
       });
     }

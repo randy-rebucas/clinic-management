@@ -37,6 +37,8 @@ export interface StaffAccount {
   mustSetPassword: boolean;
   inviteExpiresAt: string | null;
   lastLogin: string | null;
+  /** Admin-generated temporary password, until the person chooses their own. Admin-only data. */
+  tempPassword: string | null;
 }
 
 export interface StaffRow {

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { Types } from 'mongoose';
 import LabResult from '@/models/LabResult';
 import { zObjectId } from '@/lib/api/validate';
-import { nextSequence, formatCode, maxCodeSeed } from '@/lib/counters';
+import { nextSequence, formatCode } from '@/lib/counters';
 
 /**
  * Fields staff may set on a lab result. tenantId, requestCode, attachments, notification
@@ -58,13 +58,59 @@ export const labResultFieldsSchema = z.object({
 export const createLabResultSchema = labResultFieldsSchema;
 export const updateLabResultSchema = labResultFieldsSchema.partial();
 
-/** LAB-000123 (counter key 'labRequest'). */
+export const MAX_TESTS_PER_ORDER = 30;
+
+/**
+ * Several tests ordered together: the shared details once, then the tests. Each test becomes
+ * its own lab request (results are entered and reviewed test by test) under one order code.
+ */
+export const createLabOrderSchema = labResultFieldsSchema
+  .pick({ patient: true, visit: true, orderedBy: true, orderDate: true, thirdPartyLab: true })
+  .extend({
+    status: z.enum(['ordered', 'in-progress']).optional(),
+    request: labResultFieldsSchema.shape.request.omit({ testType: true, testCode: true, description: true }).optional(),
+    tests: z
+      .array(
+        z.object({
+          testType: z.string().trim().min(1).max(300),
+          testCode: s(100).optional(),
+          description: s().optional(),
+        })
+      )
+      .min(1)
+      .max(MAX_TESTS_PER_ORDER),
+  })
+  .superRefine((v, ctx) => {
+    const seen = new Set<string>();
+    v.tests.forEach((t, i) => {
+      const name = t.testType.toLowerCase();
+      if (seen.has(name)) ctx.addIssue({ code: 'custom', path: ['tests', i, 'testType'], message: `${t.testType} is on the order twice` });
+      seen.add(name);
+    });
+  });
+export type CreateLabOrder = z.infer<typeof createLabOrderSchema>;
+
+/** Request codes of an order's tests: the order code alone for one test, LAB-000123-1, -2… for several. */
+export function orderRequestCodes(orderCode: string, count: number): string[] {
+  return count === 1 ? [orderCode] : Array.from({ length: count }, (_, i) => `${orderCode}-${i + 1}`);
+}
+
+/** LAB-000123 (counter key 'labRequest'). Used for an order's code; its tests' codes derive from it. */
 export async function nextLabRequestCode(tenantId: string | Types.ObjectId): Promise<string> {
   const tid = new Types.ObjectId(String(tenantId));
-  const seq = await nextSequence(
-    tid,
-    'labRequest',
-    maxCodeSeed(LabResult, 'requestCode', { tenantId: tid, requestCode: { $exists: true, $ne: null } })
-  );
+  const seq = await nextSequence(tid, 'labRequest', async () => {
+    // Read the LAB-<n> part only: a test code like LAB-000123-2 must not seed as 2.
+    const docs = await LabResult.find({ tenantId: tid, $or: [{ requestCode: { $type: 'string' } }, { orderCode: { $type: 'string' } }] })
+      .select('requestCode orderCode')
+      .lean<{ requestCode?: string; orderCode?: string }[]>();
+    let max = 0;
+    for (const d of docs) {
+      for (const code of [d.requestCode, d.orderCode]) {
+        const m = String(code ?? '').match(/^LAB-(\d+)/i);
+        if (m) max = Math.max(max, parseInt(m[1], 10));
+      }
+    }
+    return max;
+  });
   return formatCode('LAB', seq);
 }

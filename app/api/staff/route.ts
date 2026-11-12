@@ -9,6 +9,10 @@ import { parseBody, isValidationError, zEmail, zPhone, zShortText } from '@/lib/
 import { checkSubscriptionLimit } from '@/lib/subscription-limits';
 import { STAFF_STATUSES, STAFF_TYPE, STAFF_TYPES, isStaffStatus, type StaffRow, type StaffType } from '@/lib/staff';
 import type { UserStatus } from '@/lib/users';
+import bcrypt from 'bcryptjs';
+import { generateTempPassword } from '@/lib/user-invite';
+import { decryptData, encryptData } from '@/lib/encryption';
+import { ACCOUNT_CREATED_LOCAL, INITIAL_PASSWORD_LOCAL, TEMP_PASSWORD_LOCAL } from '@/models/staff-user-link';
 
 /** A staff roster is small; the page loads it whole and filters on the client. */
 const MAX_PER_TYPE = 500;
@@ -44,6 +48,11 @@ const createStaffSchema = z.object({
   address: z.preprocess((v) => (v === '' || v === null ? undefined : v), z.string().trim().max(500).optional()),
   hireDate: optionalDate,
   status: z.enum(STAFF_STATUSES).optional(),
+  /**
+   * invite (default): email a set-password link. temp-password: generate a temporary password so they
+   * can sign in now, without the email; admins read it off the staff list until the person changes it.
+   */
+  access: z.enum(['invite', 'temp-password']).optional(),
 });
 
 type LeanProfile = Record<string, unknown> & { _id: unknown; status?: string; createdAt?: Date };
@@ -53,7 +62,18 @@ type LeanAccount = {
   mustSetPassword?: boolean;
   inviteExpiresAt?: Date | null;
   lastLogin?: Date | null;
+  tempPassword?: string | null;
 } & Record<string, unknown>;
+
+/** The temporary password in readable form, or null if there is none or it can't be decrypted. */
+function openTempPassword(sealed: unknown): string | null {
+  if (typeof sealed !== 'string' || !sealed) return null;
+  try {
+    return decryptData(sealed);
+  } catch {
+    return null;
+  }
+}
 
 const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v : null);
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : typeof v === 'string' ? v : null);
@@ -83,6 +103,7 @@ function toRow(type: StaffType, p: LeanProfile, account: LeanAccount | undefined
           mustSetPassword: !!account.mustSetPassword,
           inviteExpiresAt: iso(account.inviteExpiresAt),
           lastLogin: iso(account.lastLogin),
+          tempPassword: openTempPassword(account.tempPassword),
         }
       : null,
   };
@@ -112,7 +133,7 @@ export async function GET() {
 
     const or = STAFF_TYPES.map((type, i) => ({ [STAFF_TYPE[type].profileField]: { $in: lists[i].map((p) => p._id) } }));
     const accounts = await User.find(tenantFilter(tenantId, { $or: or }))
-      .select('status mustSetPassword inviteExpiresAt lastLogin nurseProfile receptionistProfile accountantProfile medicalTechnologistProfile')
+      .select('status mustSetPassword inviteExpiresAt lastLogin +tempPassword nurseProfile receptionistProfile accountantProfile medicalTechnologistProfile')
       .lean<LeanAccount[]>();
 
     const byProfile = new Map<string, LeanAccount>();
@@ -134,6 +155,8 @@ export async function GET() {
 /**
  * POST /api/staff — admin only. Adds a profile; the model's save hook makes the login account
  * and emails a set-password invite (or links an account this clinic already has for that email).
+ * With access 'temp-password', a new account gets a generated temporary password instead and can sign
+ * in at once, no email needed; it's returned here and on GET until the person changes it.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -147,7 +170,8 @@ export async function POST(request: NextRequest) {
 
     const parsed = await parseBody(request, createStaffSchema);
     if (isValidationError(parsed)) return parsed;
-    const { staffType, ...staffData } = parsed.data;
+    const { staffType, access, ...staffData } = parsed.data;
+    const useTempPassword = access === 'temp-password';
 
     const limitCheck = await checkSubscriptionLimit(tenantId, 'createUser');
     if (!limitCheck.allowed) {
@@ -171,12 +195,19 @@ export async function POST(request: NextRequest) {
     }
 
     const Model = MODELS[staffType];
-    const staff = await Model.create({ ...staffData, tenantId: tenantObjectId });
+    const staff = new Model({ ...staffData, tenantId: tenantObjectId });
+    if (useTempPassword) {
+      // Read by the post-save hook (ensureStaffUser) when it creates the login account.
+      const temp = generateTempPassword();
+      staff.$locals[INITIAL_PASSWORD_LOCAL] = await bcrypt.hash(temp, 12);
+      staff.$locals[TEMP_PASSWORD_LOCAL] = encryptData(temp);
+    }
+    await staff.save();
 
     const profileField = STAFF_TYPE[staffType].profileField;
     const findAccount = () =>
       User.findOne(tenantFilter(tenantId, { [profileField]: staff._id }))
-        .select('status mustSetPassword inviteExpiresAt lastLogin')
+        .select('status mustSetPassword inviteExpiresAt lastLogin +tempPassword')
         .lean<LeanAccount | null>();
     let user = await findAccount();
     if (!user) {
@@ -195,17 +226,26 @@ export async function POST(request: NextRequest) {
       resource: 'staff',
       resourceId: String(staff._id),
       description: `Added ${name} as ${STAFF_TYPE[staffType].label.toLowerCase()}`,
-      metadata: { staffType, account: user ? String(user._id) : null },
+      metadata: { staffType, account: user ? String(user._id) : null, tempPassword: useTempPassword },
     });
 
     const row = toRow(staffType, staff.toObject() as LeanProfile, user ?? undefined);
+    // An account the clinic already had keeps its own password; the temporary one only applies to a new account.
+    const accountState = !user
+      ? 'none'
+      : user.mustSetPassword
+        ? 'invited'
+        : useTempPassword && staff.$locals[ACCOUNT_CREATED_LOCAL]
+          ? 'temp-password'
+          : 'linked';
     return NextResponse.json(
       {
         success: true,
         data: {
           staff: row,
-          // invited: a new account waiting for its owner to set a password; linked: an account this clinic already had.
-          account: !user ? 'none' : user.mustSetPassword ? 'invited' : 'linked',
+          // invited: a new account waiting for its owner to set a password; temp-password: a new account with a
+          // generated temporary password (in staff.account.tempPassword); linked: an account this clinic already had.
+          account: accountState,
         },
       },
       { status: 201 }

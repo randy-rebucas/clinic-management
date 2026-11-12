@@ -12,6 +12,7 @@ import {
   INVITE_TTL_MS,
   buildSetPasswordUrl,
   generateInviteToken,
+  generateTempPassword,
   hashInviteToken,
   isInviteTokenFormat,
   maskEmail,
@@ -20,6 +21,19 @@ import {
   validatePasswordPolicy,
   verifyInviteToken,
 } from '@/lib/user-invite';
+
+describe('generateTempPassword', () => {
+  it('makes 8 unambiguous characters', () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      const p = generateTempPassword();
+      expect(p).toMatch(/^[a-km-zA-HJ-NP-Z2-9]{8}$/);
+      expect(p).not.toMatch(/[01lIoO]/);
+      seen.add(p);
+    }
+    expect(seen.size).toBe(200);
+  });
+});
 
 describe('invite tokens', () => {
   it('generates a 32-byte url-safe token, stores only its sha256, expires in 72h', () => {

@@ -300,7 +300,7 @@ function useSuggestions<T>(url: (q: string) => string | null, query: string, ena
   return target && result?.q === query.trim() ? result.items : [];
 }
 
-function Suggestions<T>({
+export function Suggestions<T>({
   id,
   items,
   highlight,
@@ -342,7 +342,7 @@ function Suggestions<T>({
   );
 }
 
-function useCombobox<T>(items: T[], onPick: (item: T) => void) {
+export function useCombobox<T>(items: T[], onPick: (item: T) => void) {
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(-1);
   const show = open && items.length > 0;

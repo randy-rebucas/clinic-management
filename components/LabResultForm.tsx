@@ -19,11 +19,10 @@ interface TestRow {
   description: string;
 }
 
-/** One order the server accepted. */
+/** The order the server accepted: one order code, a lab request per test. */
 export interface PlacedOrder {
-  _id: string;
-  requestCode?: string;
-  testType: string;
+  orderCode?: string;
+  tests: { _id: string; requestCode?: string; testType: string }[];
 }
 
 const URGENCIES: { value: Urgency; label: string; hint: string }[] = [
@@ -39,9 +38,9 @@ const rowKey = () => `t${++seq}`;
 const emptyRow = (): TestRow => ({ _key: rowKey(), testType: '', testCode: '', description: '' });
 
 /**
- * Order one or more lab tests for a patient. Shared details (urgency, fasting, instructions,
- * the outside lab) apply to every test; each test becomes its own lab request with its own code,
- * so results come back and are reviewed test by test.
+ * Order one or more lab tests for a patient as one lab order. Shared details (urgency, fasting,
+ * instructions, the outside lab) apply to every test; the tests share one order code, and each
+ * still has its own lab request so results come back and are reviewed test by test.
  */
 export default function LabResultForm({
   initialPatient,
@@ -51,7 +50,7 @@ export default function LabResultForm({
 }: {
   initialPatient: PatientOption | null;
   initialVisitId?: string;
-  onPlaced: (patient: PatientOption, orders: PlacedOrder[]) => void;
+  onPlaced: (patient: PatientOption, order: PlacedOrder) => void;
   onCancel: () => void;
 }) {
   const ids = useId();
@@ -67,7 +66,6 @@ export default function LabResultForm({
   const [attempted, setAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  const [placed, setPlaced] = useState<PlacedOrder[]>([]);
   const focusRow = useRef<string | null>(null);
 
   const summary = usePatientSummary(patient?._id ?? null);
@@ -139,56 +137,45 @@ export default function LabResultForm({
     }
     setBusy(true);
     setFailure(null);
-    const done: PlacedOrder[] = [...placed];
-    const left: TestRow[] = [];
-    let firstError: string | null = null;
-    // One request per test, in order; whatever fails stays on the form to try again.
-    for (const t of tests) {
-      if (!t.testType.trim()) continue;
-      try {
-        const res = await fetch('/api/lab-results', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            patient: patient._id,
-            ...(visitId ? { visit: visitId } : {}),
-            status: 'ordered',
-            request: {
-              testType: t.testType.trim(),
-              ...(t.testCode.trim() ? { testCode: t.testCode.trim() } : {}),
-              ...(t.description.trim() ? { description: t.description.trim() } : {}),
-              urgency,
-              fastingRequired: fasting,
-              ...(instructions.trim() ? { specialInstructions: instructions.trim() } : {}),
-              ...(preparation.trim() ? { preparationNotes: preparation.trim() } : {}),
-            },
-            ...(labName.trim() ? { thirdPartyLab: { labName: labName.trim(), integrationType: 'manual' } } : {}),
-          }),
-        });
-        if (res.status === 401) {
-          router.push('/login');
-          return;
-        }
-        const json = await res.json().catch(() => null);
-        if (!res.ok || !json?.success) throw new Error(formatApiError(json, `${t.testType.trim()} could not be ordered`));
-        done.push({ _id: String(json.data._id), requestCode: json.data.requestCode, testType: t.testType.trim() });
-      } catch (err) {
-        firstError ??= err instanceof Error && err.message !== 'Failed to fetch' ? err.message : 'The server couldn’t be reached';
-        left.push(t);
+    // One order for every test: it is placed whole, or not at all.
+    try {
+      const res = await fetch('/api/lab-results', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patient: patient._id,
+          ...(visitId ? { visit: visitId } : {}),
+          status: 'ordered',
+          request: {
+            urgency,
+            fastingRequired: fasting,
+            ...(instructions.trim() ? { specialInstructions: instructions.trim() } : {}),
+            ...(preparation.trim() ? { preparationNotes: preparation.trim() } : {}),
+          },
+          tests: filled.map((t) => ({
+            testType: t.testType.trim(),
+            ...(t.testCode.trim() ? { testCode: t.testCode.trim() } : {}),
+            ...(t.description.trim() ? { description: t.description.trim() } : {}),
+          })),
+          ...(labName.trim() ? { thirdPartyLab: { labName: labName.trim(), integrationType: 'manual' } } : {}),
+        }),
+      });
+      if (res.status === 401) {
+        router.push('/login');
+        return;
       }
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success || !Array.isArray(json.data)) throw new Error(formatApiError(json, 'The order could not be placed'));
+      setBusy(false);
+      onPlaced(patient, {
+        orderCode: json.orderCode,
+        tests: json.data.map((d: any) => ({ _id: String(d._id), requestCode: d.requestCode, testType: d.request?.testType ?? '' })),
+      });
+    } catch (err) {
+      setBusy(false);
+      const msg = err instanceof Error && err.message !== 'Failed to fetch' ? err.message : 'The server couldn’t be reached';
+      setFailure(`${msg}. Nothing was ordered; try again.`);
     }
-    setBusy(false);
-    if (left.length === 0) {
-      onPlaced(patient, done);
-      return;
-    }
-    setPlaced(done);
-    setTests(left);
-    setFailure(
-      done.length
-        ? `${done.length} of ${done.length + left.length} tests were ordered. ${left.length === 1 ? 'The one' : `The ${left.length}`} still on the form ${left.length === 1 ? 'was' : 'were'} not: ${firstError}. Try again.`
-        : `${firstError}. Nothing was ordered; try again.`
-    );
   };
 
   const n = filled.length;
@@ -198,29 +185,14 @@ export default function LabResultForm({
       ? `${problemCount === 1 ? 'One thing needs' : `${problemCount} things need`} fixing before the order can be placed.`
       : n === 0
         ? 'Add the tests to order.'
-        : `Placing the order makes ${n === 1 ? 'one lab request' : `${n} lab requests`}, each with its own request form to print.`;
+        : `Placing the order makes one lab order${n === 1 ? '' : ` with ${n} tests`}, with one request form to print.`;
 
   return (
     <form data-lab-order onSubmit={submit} noValidate className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_19rem]">
       <div className="flex min-w-0 flex-col gap-6">
         {failure && (
           <div role="alert" className="motion-chip-in flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
-            <div>
-              <p>{failure}</p>
-              {placed.length > 0 && (
-                <p className="mt-1 font-normal">
-                  Already ordered:{' '}
-                  {placed.map((o, i) => (
-                    <span key={o._id}>
-                      <a href={`/lab-results/${o._id}`} target="_blank" rel="noopener" className={`rounded font-semibold underline underline-offset-2 ${FOCUS_RING}`}>
-                        {o.testType}
-                      </a>
-                      {i < placed.length - 1 ? ', ' : ''}
-                    </span>
-                  ))}
-                </p>
-              )}
-            </div>
+            <p>{failure}</p>
             <button type="button" onClick={() => setFailure(null)} aria-label="Dismiss" className={`shrink-0 rounded p-0.5 text-red-700 hover:text-red-900 ${FOCUS_RING}`}>
               <Svg d={ICON.x} />
             </button>
@@ -264,7 +236,7 @@ export default function LabResultForm({
         <Section
           id={`${ids}-tests`}
           title="Tests"
-          hint="Each test gets its own request code, so results come back and are reviewed one by one."
+          hint="All tests share one order code; results still come back and are reviewed one by one."
         >
           {common.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-5 py-3">

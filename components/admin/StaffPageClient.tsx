@@ -8,7 +8,7 @@ import { AlertDialog } from '../ui/Modal';
 import { FIELD, FOCUS_RING, ICON, Svg } from '../appointments/shared';
 import { SERIES } from '../dashboards/charts';
 import StaffDialog from './StaffDialog';
-import { StateBadge, initials, inviteLine, lastSeen, useSend } from './users-shared';
+import { StateBadge, TempPassword, initials, inviteLine, lastSeen, useSend } from './users-shared';
 import {
   STAFF_SHOWS,
   STAFF_SHOW_LABEL,
@@ -73,6 +73,7 @@ export default function StaffPageClient({
   const [sort, setSort] = useState<Sort>('name');
   const [editing, setEditing] = useState<StaffRow | 'new' | null>(null);
   const [removing, setRemoving] = useState<StaffRow | null>(null);
+  const [tempFor, setTempFor] = useState<StaffRow | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
 
@@ -123,6 +124,20 @@ export default function StaffPageClient({
     setBusy(null);
     if (result.ok) {
       setNotice({ tone: 'ok', text: `Sent ${staffName(r)} a new invite at ${r.email}. The link works for 72 hours; the old one no longer does.` });
+      list.reload();
+    } else setNotice({ tone: 'error', text: result.error });
+  };
+
+  const makeTempPassword = async () => {
+    if (!tempFor?.account) return;
+    const r = tempFor;
+    setBusy(r._id);
+    const result = await send(`/api/users/${r.account!.userId}/temp-password`, 'POST');
+    setBusy(null);
+    setTempFor(null);
+    if (result.ok) {
+      const temp = (result.data as { tempPassword?: string })?.tempPassword;
+      setNotice({ tone: 'ok', text: `${staffName(r)} can now sign in with ${r.email} and the temporary password ${temp ?? ''}. It stays on their row until they change it.` });
       list.reload();
     } else setNotice({ tone: 'error', text: result.error });
   };
@@ -343,6 +358,7 @@ export default function StaffPageClient({
                   busy={busy === r._id}
                   onEdit={() => setEditing(r)}
                   onResend={() => resendInvite(r)}
+                  onTempPassword={() => setTempFor(r)}
                   onRemove={() => setRemoving(r)}
                 />
               ))}
@@ -376,6 +392,44 @@ export default function StaffPageClient({
           onSaved={saved}
         />
       )}
+
+      {tempFor &&
+        createPortal(
+          <AlertDialog
+            open
+            onOpenChange={(o) => !o && busy === null && setTempFor(null)}
+            title={tempFor.account?.tempPassword ? `Make a new temporary password for ${staffName(tempFor)}?` : `Give ${staffName(tempFor)} a temporary password?`}
+            description={
+              tempFor.account?.tempPassword ? (
+                <>
+                  A new 8-character password replaces <span className="font-mono">{tempFor.account.tempPassword}</span>, which stops working at once. Anyone signed
+                  in with it is signed out.
+                </>
+              ) : tempFor.account?.mustSetPassword ? (
+                <>An 8-character password is made and shown on their row. They can sign in with it right away; their emailed invite link stops working.</>
+              ) : (
+                <>
+                  An 8-character password is made and shown on their row. Their current password stops working and they’re signed out everywhere, so only do
+                  this if they can’t get in.
+                </>
+              )
+            }
+          >
+            <button type="button" onClick={() => setTempFor(null)} disabled={busy !== null} className={`rounded-md px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 ${FOCUS_RING}`}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={makeTempPassword}
+              disabled={busy !== null}
+              aria-busy={busy !== null}
+              className={`rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`}
+            >
+              {busy !== null ? 'Making…' : tempFor.account?.tempPassword ? 'Make a new one' : 'Make temporary password'}
+            </button>
+          </AlertDialog>,
+          document.body
+        )}
 
       {removing &&
         createPortal(
@@ -422,6 +476,7 @@ function StaffRowItem({
   busy,
   onEdit,
   onResend,
+  onTempPassword,
   onRemove,
 }: {
   r: StaffRow;
@@ -432,6 +487,7 @@ function StaffRowItem({
   busy: boolean;
   onEdit: () => void;
   onResend: () => void;
+  onTempPassword: () => void;
   onRemove: () => void;
 }) {
   const name = staffName(r);
@@ -500,6 +556,7 @@ function StaffRowItem({
             ) : state === 'active' ? (
               <span className="mt-0.5 block truncate font-mono text-xs tabular-nums text-gray-500">Last in: {lastSeen(r.account!.lastLogin)}</span>
             ) : null}
+            {r.account?.tempPassword && <TempPassword value={r.account.tempPassword} name={name} />}
           </>
         )}
       </span>
@@ -514,6 +571,17 @@ function StaffRowItem({
             className={`rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`}
           >
             {busy ? 'Sending…' : 'Send invite again'}
+          </button>
+        )}
+        {r.account && !isYou && r.account.status === 'active' && (
+          <button
+            type="button"
+            onClick={onTempPassword}
+            disabled={busy}
+            aria-label={r.account.tempPassword ? `Make a new temporary password for ${name}` : `Give ${name} a temporary password`}
+            className={`rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 disabled:cursor-wait disabled:opacity-60 ${FOCUS_RING}`}
+          >
+            {r.account.tempPassword ? 'New temp password' : 'Temp password'}
           </button>
         )}
         <button

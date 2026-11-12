@@ -43,6 +43,7 @@
     "db:migrate:audit": "tsx scripts/migrate-2026-10-audit.ts",
     "db:migrate:attachment-tenants": "tsx scripts/migrate-patient-attachment-tenants.ts",
     "db:migrate:sms-enabled": "tsx scripts/migrate-sms-enabled.ts",
+    "db:migrate:lab-order-codes": "tsx scripts/migrate-lab-order-codes.ts",
     "db:migrate:emcr-temp-passwords": "tsx scripts/migrate-emcr-temp-passwords.ts",
     "db:migrate:contact-family-links": "tsx scripts/migrate-contact-family-links.ts",
     "storage:migrate-attachments": "tsx scripts/migrate-attachments-to-cloudinary.ts",

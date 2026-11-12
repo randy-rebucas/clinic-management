@@ -46,6 +46,8 @@ export interface VisitDetailPermissions {
   canIssueCertificate: boolean;
   /** Doctors and admins — send the patient a message in the patient app */
   canMessage: boolean;
+  /** queue:update — send the patient in consult to the lab, as from the queue */
+  canSendToLab: boolean;
 }
 
 export async function loadVisitDetailPermissions(): Promise<VisitDetailPermissions> {
@@ -62,5 +64,6 @@ export async function loadVisitDetailPermissions(): Promise<VisitDetailPermissio
     canSeeAppointments: can('appointments', 'read'),
     canIssueCertificate: await canIssueMedicalCertificates(session),
     canMessage: STAFF_SENDER_ROLES.includes(session.role) && !session.imp,
+    canSendToLab: can('queue', 'update'),
   };
 }

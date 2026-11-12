@@ -9,7 +9,14 @@ import { Types } from 'mongoose';
 import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, escapeRegex } from '@/lib/api/validate';
 import { HAS_ABNORMAL_EXPR, LAB_STATUSES, OUTSTANDING, waitRange } from '@/lib/lab-results';
-import { createLabResultSchema, nextLabRequestCode } from '@/lib/lab-result-schema';
+import { z } from 'zod';
+import {
+  createLabResultSchema,
+  createLabOrderSchema,
+  nextLabRequestCode,
+  orderRequestCodes,
+  type CreateLabOrder,
+} from '@/lib/lab-result-schema';
 
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 500;
@@ -68,7 +75,7 @@ export async function GET(request: NextRequest) {
         .select('_id')
         .limit(500)
         .lean();
-      query.$or = [{ requestCode: rx }, { 'request.testType': rx }, { patient: { $in: patientIds.map((p) => p._id) } }];
+      query.$or = [{ requestCode: rx }, { orderCode: rx }, { 'request.testType': rx }, { patient: { $in: patientIds.map((p) => p._id) } }];
     }
     if (patientId) {
       if (!isValidId(patientId)) return NextResponse.json({ success: true, data: [] });
@@ -91,10 +98,68 @@ export async function GET(request: NextRequest) {
         .populate('reviewedBy', 'name email')
         .sort({ orderDate: -1, _id: -1 });
 
+    // The lab results list, one row per order: the tests placed together, with the filters matched test by test.
+    if (pageParam && searchParams.get('group') === 'order') {
+      const [facet] = await LabResult.aggregate([
+        { $match: query },
+        // Only what a row shows, so grouping never carries whole documents (results, files…).
+        {
+          $project: {
+            orderCode: 1, patient: 1, visit: 1, orderedBy: 1, orderDate: 1, requestCode: 1, status: 1,
+            abnormalFlags: 1, resultDate: 1, reviewedAt: 1, notificationSent: 1,
+            'request.testType': 1, 'request.urgency': 1,
+          },
+        },
+        {
+          // Tests of one order share patient, doctor, visit and urgency, so any test's value will do.
+          $group: {
+            _id: { $ifNull: ['$orderCode', { $toString: '$_id' }] },
+            orderCode: { $first: '$orderCode' },
+            patient: { $first: '$patient' },
+            visit: { $first: '$visit' },
+            orderedBy: { $first: '$orderedBy' },
+            orderDate: { $max: '$orderDate' },
+            urgency: { $first: '$request.urgency' },
+            lastId: { $max: '$_id' },
+            tests: {
+              $push: {
+                _id: '$_id',
+                requestCode: '$requestCode',
+                testType: '$request.testType',
+                urgency: '$request.urgency',
+                status: '$status',
+                abnormalFlags: '$abnormalFlags',
+                resultDate: '$resultDate',
+                reviewedAt: '$reviewedAt',
+                notificationSent: '$notificationSent',
+              },
+            },
+          },
+        },
+        { $sort: { orderDate: -1, lastId: -1 } },
+        {
+          $facet: {
+            rows: [{ $skip: (page - 1) * limit }, { $limit: limit }],
+            total: [{ $count: 'n' }],
+          },
+        },
+      ]);
+      const rows: any[] = facet?.rows ?? [];
+      // Tests in the order they were placed (LAB-000123-1, -2…).
+      for (const r of rows) r.tests.sort((a: any, b: any) => String(a.requestCode ?? '').localeCompare(String(b.requestCode ?? ''), undefined, { numeric: true }));
+      await LabResult.populate(rows, [
+        { path: 'patient', select: 'firstName lastName patientCode email phone', match: { tenantIds: tenantObjectId } },
+        { path: 'visit', select: 'visitCode date', match: { tenantId: tenantObjectId } },
+        { path: 'orderedBy', select: 'name email' },
+      ]);
+      const total = facet?.total?.[0]?.n ?? 0;
+      return NextResponse.json({ success: true, data: rows, pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) } });
+    }
+
     // Paged (the lab results list) returns list fields only; otherwise the newest `limit` in full (other screens).
     if (pageParam) {
       const [labResults, total] = await Promise.all([
-        find('requestCode patient visit orderedBy reviewedBy orderDate request.testType request.urgency status resultDate reviewedAt abnormalFlags notificationSent')
+        find('requestCode orderCode patient visit orderedBy reviewedBy orderDate request.testType request.urgency status resultDate reviewedAt abnormalFlags notificationSent')
           .skip((page - 1) * limit)
           .limit(limit)
           .lean(),
@@ -126,7 +191,12 @@ export async function POST(request: NextRequest) {
 
   try {
     await connectDB();
-    const parsed = await parseBody(request, createLabResultSchema);
+    // `tests: [...]` places one order holding several tests; otherwise a single test (older clients).
+    const sniff = await request.clone().json().catch(() => null);
+    const isOrder = Boolean(sniff && typeof sniff === 'object' && Array.isArray((sniff as { tests?: unknown }).tests));
+    const parsed: { data: CreateLabOrder | z.infer<typeof createLabResultSchema> } | NextResponse = isOrder
+      ? await parseBody(request, createLabOrderSchema)
+      : await parseBody(request, createLabResultSchema);
     if (isValidationError(parsed)) return parsed;
     const body = parsed.data;
 
@@ -140,37 +210,77 @@ export async function POST(request: NextRequest) {
     if (body.visit && !(await Visit.exists({ _id: body.visit, tenantId: tenantObjectId }))) {
       return NextResponse.json({ success: false, error: 'Invalid visit' }, { status: 400 });
     }
-    for (const userId of [body.orderedBy, body.reviewedBy]) {
+    for (const userId of [body.orderedBy, 'reviewedBy' in body ? body.reviewedBy : undefined]) {
       if (userId && userId !== session.userId && !(await User.exists({ _id: userId, tenantId: tenantObjectId }))) {
         return NextResponse.json({ success: false, error: 'Invalid staff member' }, { status: 400 });
       }
     }
 
-    const labResult = await LabResult.create({
-      ...body,
-      requestCode: await nextLabRequestCode(tenantId),
+    const orderCode = await nextLabRequestCode(tenantId);
+    const shared = {
+      orderCode,
       orderedBy: body.orderedBy || session.userId,
       orderDate: body.orderDate || new Date(),
       tenantId: tenantObjectId,
-    });
+    };
+    let docs: Record<string, unknown>[];
+    if ('tests' in body) {
+      const { tests, request: common, ...rest } = body;
+      const codes = orderRequestCodes(orderCode, tests.length);
+      docs = tests.map((t, i) => ({ ...rest, ...shared, requestCode: codes[i], request: { ...common, ...t } }));
+    } else {
+      docs = [{ ...body, ...shared, requestCode: orderCode }];
+    }
+    // Ids chosen here, so a failed save can remove exactly what this request wrote.
+    for (const d of docs) d._id = new Types.ObjectId();
 
-    await labResult.populate({ path: 'patient', select: 'firstName lastName patientCode email phone', match: { tenantIds: tenantObjectId } });
-    await labResult.populate({ path: 'visit', select: 'visitCode date', match: { tenantId: tenantObjectId } });
-    await labResult.populate('orderedBy', 'name email');
+    // The whole order is saved, or none of it: Mongoose validates every test before inserting,
+    // and a write error part-way removes the tests this request already wrote (by their ids only).
+    let created: any[];
+    try {
+      created = await LabResult.insertMany(docs, { ordered: true });
+    } catch (error) {
+      if (docs.length > 1) {
+        await LabResult.deleteMany({ tenantId: tenantObjectId, _id: { $in: docs.map((d) => d._id) } }).catch(() => {});
+      }
+      throw error;
+    }
+    const ids = created.map((d) => d._id);
+    if (body.visit) {
+      await Visit.updateOne({ _id: body.visit, tenantId: tenantObjectId }, { $addToSet: { labsOrdered: { $each: ids } } });
+    }
 
-    if (labResult.status === 'ordered') {
-      const request = { _id: labResult._id, requestCode: labResult.requestCode, request: labResult.request };
+    const populate = (q: any) =>
+      q
+        .populate({ path: 'patient', select: 'firstName lastName patientCode email phone', match: { tenantIds: tenantObjectId } })
+        .populate({ path: 'visit', select: 'visitCode date', match: { tenantId: tenantObjectId } })
+        .populate('orderedBy', 'name email');
+    const saved = await populate(LabResult.find({ _id: { $in: ids }, tenantId: tenantObjectId }).select('-thirdPartyLab.apiKey')).lean();
+    // Keep the order the tests were entered in.
+    const byId = new Map(saved.map((d: any) => [String(d._id), d]));
+    const data = ids.map((id) => byId.get(String(id))).filter(Boolean);
+
+    const open = created.filter((d) => d.status === 'ordered');
+    if (open.length) {
+      const order = {
+        orderCode,
+        urgency: open[0].request?.urgency,
+        tests: open.map((d) => ({ _id: d._id as Types.ObjectId, testType: d.request?.testType })),
+      };
       after(async () => {
         try {
           const { notifyLabStaffOfRequest } = await import('@/lib/automations/lab-notifications');
-          await notifyLabStaffOfRequest(request, tenantObjectId);
+          await notifyLabStaffOfRequest(order, tenantObjectId);
         } catch (error) {
           console.error('Error notifying lab staff of a new request:', error);
         }
       });
     }
 
-    return NextResponse.json({ success: true, data: labResult }, { status: 201 });
+    if ('tests' in body) {
+      return NextResponse.json({ success: true, orderCode, data }, { status: 201 });
+    }
+    return NextResponse.json({ success: true, data: data[0] }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating lab result:', error);
     if (error.name === 'ValidationError' || error.name === 'CastError') {

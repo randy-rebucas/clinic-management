@@ -111,9 +111,11 @@ function generateLabRequestHTML(visit: any, settings: any, seal: IssuedSeal, tz:
     ? `${primaryDiagnosis.code ? `(${primaryDiagnosis.code}) ` : ''}${primaryDiagnosis.description || ''}`
     : '';
 
+  // Cancelled tests are not requested: they stay off the printed form (and its seal).
+  const labs: any[] = (visit.labsOrdered || []).filter((lab: any) => lab && lab.status !== 'cancelled');
   // Get lab tests from labsOrdered or from treatment plan
-  const labTests = visit.labsOrdered && visit.labsOrdered.length > 0
-    ? visit.labsOrdered.map((lab: any) => lab.testType || 'Lab Test').join(', ')
+  const labTests = labs.length > 0
+    ? labs.map((lab: any) => lab.request?.testType || lab.testType || 'Lab Test').join(', ')
     : 'As per clinical indication';
 
   const protection = sealedDocumentParts({
@@ -297,10 +299,10 @@ function generateLabRequestHTML(visit: any, settings: any, seal: IssuedSeal, tz:
 
   <div class="lab-tests">
     <h2>Requested Laboratory Tests</h2>
-    ${visit.labsOrdered && visit.labsOrdered.length > 0 ? `
-      ${visit.labsOrdered.map((lab: any, index: number) => `
+    ${labs.length > 0 ? `
+      ${labs.map((lab: any, index: number) => `
         <div class="test-item">
-          <strong>${index + 1}. ${e(lab.testType || 'Lab Test')}</strong>
+          <strong>${index + 1}. ${e(lab.request?.testType || lab.testType || 'Lab Test')}</strong>
           ${lab.status ? `<span class="urgency-badge ${lab.status === 'ordered' ? 'urgency-routine' : 'urgency-urgent'}">${e(String(lab.status).toUpperCase())}</span>` : ''}
           ${lab.interpretation ? `<p style="margin: 5px 0 0 0; font-size: 12px; color: #666;">${e(lab.interpretation)}</p>` : ''}
         </div>

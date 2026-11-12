@@ -35,6 +35,8 @@ export interface ILabResult extends Document {
   orderedBy?: Types.ObjectId;
   orderDate: Date;
   requestCode?: string; // Unique request identifier
+  /** Shared by every test placed together in one order (LAB-000123). Tests keep their own requestCode. */
+  orderCode?: string;
   // Request information
   request: ILabRequest;
   // Third-party lab integration
@@ -54,6 +56,8 @@ export interface ILabResult extends Document {
   reviewedAt?: Date;
   /** Completed by lab staff: the patient is told once a clinician has reviewed it. */
   awaitingReview?: boolean;
+  /** When the patient was told their results are in and with the doctor for review (once per test). */
+  resultsInNoticeAt?: Date;
   // Patient notification
   notificationSent?: boolean;
   /** Set while a notification is being sent (lib/automations/shared.ts claimForSend). */
@@ -124,6 +128,7 @@ const LabResultSchema: Schema = new Schema(
     orderedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     orderDate: { type: Date, default: Date.now },
     requestCode: { type: String, trim: true },
+    orderCode: { type: String, trim: true },
     // sparse unique index is created explicitly below via compound index
     request: { type: LabRequestSchema, required: true },
     thirdPartyLab: ThirdPartyLabSchema,
@@ -145,6 +150,7 @@ const LabResultSchema: Schema = new Schema(
     reviewedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     reviewedAt: Date,
     awaitingReview: { type: Boolean },
+    resultsInNoticeAt: { type: Date },
     notificationSent: { type: Boolean, default: false },
     notificationClaimedAt: { type: Date },
     notificationSentAt: Date,
@@ -173,6 +179,17 @@ LabResultSchema.index(
   { unique: true, name: 'uniq_tenant_requestCode', partialFilterExpression: { requestCode: { $type: 'string' } } }
 );
 LabResultSchema.index({ tenantId: 1, archived: 1, createdAt: 1 });
+// The tests of one order (not unique: an order holds several tests).
+LabResultSchema.index(
+  { tenantId: 1, orderCode: 1 },
+  { name: 'tenant_orderCode', partialFilterExpression: { orderCode: { $type: 'string' } } }
+);
+
+// `next dev` re-runs this file on change but mongoose keeps the model it registered first, so a
+// new field (orderCode) would be dropped silently on save until a restart. Re-register in dev.
+if (process.env.NODE_ENV !== 'production' && mongoose.models.LabResult && (!mongoose.models.LabResult.schema.path('orderCode') || !mongoose.models.LabResult.schema.path('resultsInNoticeAt'))) {
+  mongoose.deleteModel('LabResult');
+}
 
 export default mongoose.models.LabResult || mongoose.model<ILabResult>('LabResult', LabResultSchema);
 

@@ -64,8 +64,9 @@ export async function POST(request: NextRequest) {
     }
 
     const hash = await bcrypt.hash(newPassword, 12);
-    // An emailed set-password link still waiting in the inbox dies with the old password.
-    await User.updateOne({ _id: session.userId }, { $set: { password: hash }, $unset: { inviteTokenHash: 1, inviteExpiresAt: 1 } });
+    // An emailed set-password link still waiting in the inbox dies with the old password, and an
+    // admin-issued temporary password stops being shown on the staff list.
+    await User.updateOne({ _id: session.userId }, { $set: { password: hash }, $unset: { inviteTokenHash: 1, inviteExpiresAt: 1, tempPassword: 1 } });
     await signOutOtherSessions(session);
 
     await createAuditLog({

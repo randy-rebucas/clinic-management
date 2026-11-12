@@ -4,6 +4,7 @@ import Visit from '@/models/Visit';
 import Prescription from '@/models/Prescription';
 import LabResult from '@/models/LabResult';
 import Invoice from '@/models/Invoice';
+import Queue from '@/models/Queue';
 import { getPermissionChecker, refuseAccess } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, isValidId, notFound, tenantFilter } from '@/lib/api/tenant-session';
 
@@ -32,11 +33,11 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     if (!isValidId(id)) return notFound('Visit');
 
     const visit = (await Visit.findOne(tenantFilter(tenantId, { _id: id }))
-      .select('patient date prescriptions labsOrdered')
-      .lean()) as { _id: unknown; patient?: unknown; date?: Date; prescriptions?: unknown[]; labsOrdered?: unknown[] } | null;
+      .select('patient date status prescriptions labsOrdered')
+      .lean()) as { _id: unknown; patient?: unknown; date?: Date; status?: string; prescriptions?: unknown[]; labsOrdered?: unknown[] } | null;
     if (!visit) return notFound('Visit');
 
-    const [history, prescriptions, labs, invoice] = await Promise.all([
+    const [history, prescriptions, labs, invoice, queue] = await Promise.all([
       visit.patient
         ? Visit.find(
             tenantFilter(tenantId, {
@@ -71,6 +72,31 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
             .select('invoiceNumber status total outstandingBalance createdAt')
             .lean()
         : null,
+      // The patient's queue entry for this visit, while the visit is still being written: in
+      // consult (can be sent to the lab from here) or away. It is the entry linked to this visit
+      // (set when the patient was sent out), or one not yet linked that was queued in the hours
+      // before this visit began; an older visit left open never picks up today's entry.
+      can('queue', 'read') && visit.patient && (visit.status === 'open' || visit.status === 'draft')
+        ? Queue.findOne(
+            tenantFilter(tenantId, {
+              patient: visit.patient,
+              status: { $in: ['in-progress', 'away'] },
+              $or: [
+                { visit: visit._id },
+                {
+                  visit: { $exists: false },
+                  queuedAt: {
+                    $gte: new Date(new Date(visit.date ?? Date.now()).getTime() - 16 * 3_600_000),
+                    $lte: new Date(new Date(visit.date ?? Date.now()).getTime() + 3_600_000),
+                  },
+                },
+              ],
+            })
+          )
+            .sort({ queuedAt: -1 })
+            .select('queueNumber status awayReason')
+            .lean()
+        : null,
     ]);
 
     return NextResponse.json({
@@ -81,6 +107,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         prescriptions,
         labs,
         invoice: invoice ?? null,
+        queue: queue ?? null,
         access: { prescriptions: prescriptions !== null, labs: labs !== null, invoices: can('invoices', 'read') },
       },
     });

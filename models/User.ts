@@ -32,6 +32,11 @@ export interface IUser extends Document {
   mustSetPassword?: boolean; // Login is refused until the user sets a password via the invite link
   inviteTokenHash?: string; // sha256 of the single-use set-password token
   inviteExpiresAt?: Date;
+  /**
+   * Admin-generated temporary password, AES-GCM encrypted via lib/encryption, so admins can read it
+   * off the staff list. Removed as soon as the user chooses their own password.
+   */
+  tempPassword?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -98,6 +103,7 @@ const UserSchema = new Schema<IUser>(
     mustSetPassword: { type: Boolean, default: false },
     inviteTokenHash: { type: String, select: false },
     inviteExpiresAt: { type: Date, select: false },
+    tempPassword: { type: String, select: false },
   },
   {
     timestamps: true,

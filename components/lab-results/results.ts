@@ -1,5 +1,7 @@
 // Reading and writing a lab result's values: results / referenceRanges / abnormalFlags maps.
 
+import { panelFor } from './panels';
+
 export type Flag = 'high' | 'low' | 'normal';
 export type ValueMap = Record<string, string | number | boolean | null>;
 
@@ -68,8 +70,18 @@ export const rowKey = () => `a${++seq}`;
 
 const text = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 
-/** Rows for the editor: this result's values, or (when none yet) the names and ranges from the patient's last result. */
-export function rowsFrom(results?: ValueMap | null, ranges?: Record<string, unknown> | null, flags?: Record<string, string> | null, previous?: EarlierResult | null): ResultRow[] {
+/**
+ * Rows for the editor: this result's values, or (when none yet) the names and ranges from the
+ * patient's last result, or else one empty line for a known panel (CBC, Urinalysis…: its
+ * parameters are offered as suggestions), or one row named after the test (e.g. "FBS").
+ */
+export function rowsFrom(
+  results?: ValueMap | null,
+  ranges?: Record<string, unknown> | null,
+  flags?: Record<string, string> | null,
+  previous?: EarlierResult | null,
+  fallbackName = ''
+): ResultRow[] {
   const keys = Object.keys(results ?? {});
   if (keys.length) {
     return keys.map((k) => ({
@@ -80,9 +92,14 @@ export function rowsFrom(results?: ValueMap | null, ranges?: Record<string, unkn
       flag: flags?.[k] === 'high' || flags?.[k] === 'low' || flags?.[k] === 'normal' ? (flags[k] as Flag) : '',
     }));
   }
+  const panel = panelFor(fallbackName);
   const prevKeys = Object.keys(previous?.results ?? {});
-  if (prevKeys.length) return prevKeys.map((k) => ({ _key: rowKey(), name: k, value: '', range: text(ranges?.[k]), flag: '' }));
-  return [{ _key: rowKey(), name: '', value: '', range: '', flag: '' }];
+  // A panel last recorded as one line named after the test ("CBC": …) starts from its parameters instead.
+  const prevIsWholeTest = Boolean(panel) && prevKeys.length === 1 && prevKeys[0].trim().toLowerCase() === fallbackName.trim().toLowerCase();
+  if (prevKeys.length && !prevIsWholeTest) return prevKeys.map((k) => ({ _key: rowKey(), name: k, value: '', range: text(ranges?.[k]), flag: '' }));
+  // A panel starts from one empty line; its parameters are suggested as the name is typed.
+  if (panel) return [{ _key: rowKey(), name: '', value: '', range: '', flag: '' }];
+  return [{ _key: rowKey(), name: fallbackName.replace(/\./g, '').replace(/^\$+/, ''), value: '', range: '', flag: '' }];
 }
 
 /** Numbers stay numbers so later results can be compared; anything else is kept as written. */

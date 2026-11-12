@@ -477,7 +477,7 @@ export async function setPasswordWithToken(
       { _id: user._id, inviteTokenHash: tokenHash, inviteExpiresAt: { $gt: new Date() } },
       {
         $set: { password: passwordHash, mustSetPassword: false },
-        $unset: { inviteTokenHash: 1, inviteExpiresAt: 1 },
+        $unset: { inviteTokenHash: 1, inviteExpiresAt: 1, tempPassword: 1 },
       },
       { new: false, projection: { _id: 1 } }
     ).lean();

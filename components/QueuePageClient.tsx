@@ -545,7 +545,7 @@ export default function QueuePageClient({ permissions, doctors }: { permissions:
 
               <div className="flex min-w-0 flex-col gap-6 self-start">
                 {/* Out of the line for now, with their place kept */}
-                <HeldCard title="At lab" hint="Out of the line until they're back. Their place is kept." entries={atLab} backLabel="Back from lab" onBack={actions.backFromLab} {...rowProps} />
+                <HeldCard title="At lab" hint="Out of the line until they're back. Their place is kept." entries={atLab} backLabel="Back from lab" onBack={actions.backFromLab} orderLab {...rowProps} />
                 <HeldCard title="Not here" hint="Didn't answer when called. Their place is kept." entries={notHere} backLabel="Patient is back" onBack={actions.patientBack} canMarkNoShow {...rowProps} />
 
                 {/* Doctors: each line is also a filter */}
@@ -865,6 +865,7 @@ function HeldCard({
   backLabel,
   onBack,
   canMarkNoShow = false,
+  orderLab = false,
   now,
   busyId,
   permissions,
@@ -877,6 +878,8 @@ function HeldCard({
   backLabel: string;
   onBack: (e: QueueEntry) => void;
   canMarkNoShow?: boolean;
+  /** Offer "Order lab tests", opening the order form for this patient (and their open visit). */
+  orderLab?: boolean;
   now: number;
   busyId: string | null;
   permissions: QueuePermissions;
@@ -919,15 +922,31 @@ function HeldCard({
               <span className="mt-1 block truncate text-xs text-gray-500">
                 {doctorOf(e) ?? 'Next available doctor'} · <span className="font-mono">{duration(minutesBetween(e.queuedAt, now))}</span> since <span className="font-mono">{clock(e.queuedAt)}</span>
               </span>
-              {permissions.canUpdate && (
-                <span className="mt-2 flex items-center gap-1">
-                  <button type="button" disabled={busy} onClick={() => onBack(e)} aria-label={`${backLabel}: ${name}`} className={`${ROW_BTN} mr-auto`}>
-                    <Svg d={ICONS.undo} />
-                    {busy ? 'Saving…' : backLabel}
-                  </button>
-                  {icon(hasVitals(e.vitals) ? 'Update vital signs' : 'Record vital signs', ICONS.heart, () => onVitals(e))}
-                  {canMarkNoShow && icon('Mark as no-show', ICONS.userX, () => onConfirm(e, 'no-show'))}
-                  {icon('Remove from queue', ICONS.x, () => onConfirm(e, 'cancelled'), true)}
+              {(permissions.canUpdate || (orderLab && permissions.canOrderLab && e.patient)) && (
+                <span className="mt-2 flex flex-wrap items-center gap-1">
+                  {permissions.canUpdate && (
+                    <button type="button" disabled={busy} onClick={() => onBack(e)} aria-label={`${backLabel}: ${name}`} className={ROW_BTN}>
+                      <Svg d={ICONS.undo} />
+                      {busy ? 'Saving…' : backLabel}
+                    </button>
+                  )}
+                  {orderLab && permissions.canOrderLab && e.patient && (
+                    <Link
+                      href={`/lab-results/new?${new URLSearchParams({ patientId: e.patient._id, ...(e.visit ? { visitId: e.visit } : {}) })}`}
+                      aria-label={`Order lab tests: ${name}`}
+                      className={ROW_BTN}
+                    >
+                      <Svg d={ICONS.beaker} />
+                      Order tests
+                    </Link>
+                  )}
+                  {permissions.canUpdate && (
+                    <span className="ml-auto flex items-center gap-1">
+                      {icon(hasVitals(e.vitals) ? 'Update vital signs' : 'Record vital signs', ICONS.heart, () => onVitals(e))}
+                      {canMarkNoShow && icon('Mark as no-show', ICONS.userX, () => onConfirm(e, 'no-show'))}
+                      {icon('Remove from queue', ICONS.x, () => onConfirm(e, 'cancelled'), true)}
+                    </span>
+                  )}
                 </span>
               )}
             </li>

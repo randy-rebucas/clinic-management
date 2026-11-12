@@ -23,6 +23,7 @@ export const BACKUP_STALE_DAYS = 30;
 export const SECRET_FIELDS = [
   'password',
   'defaultPassword',
+  'tempPassword',
   'totpSecret',
   'totpLastUsedStep',
   'otp',

@@ -171,16 +171,23 @@ export async function sendLabResultNotification(options: LabNotificationOptions)
   }
 }
 
-/** Tell the clinic's lab staff, in-app, that a doctor has sent them a new request. */
-export async function notifyLabStaffOfRequest(
-  labResult: { _id: Types.ObjectId; requestCode?: string; request?: { testType?: string; urgency?: string } },
-  tenantId: string | Types.ObjectId
-): Promise<void> {
+/** A new lab order: one alert covers every test on it. */
+export interface NewLabOrder {
+  orderCode?: string;
+  urgency?: string;
+  tests: { _id: Types.ObjectId; testType?: string }[];
+}
+
+/** Tell the clinic's lab staff, in-app, that a doctor has sent them a new order (one alert per order). */
+export async function notifyLabStaffOfRequest(order: NewLabOrder, tenantId: string | Types.ObjectId): Promise<void> {
+  if (!order.tests.length) return;
   const staff = await getTenantStaff(tenantId, [LAB_ROLE], '_id');
   if (!staff.length) return;
-  const urgency = labResult.request?.urgency;
+  const urgency = order.urgency;
   const rush = urgency === 'stat' || urgency === 'urgent';
-  const testType = labResult.request?.testType || 'a lab test';
+  const names = order.tests.map((t) => t.testType).filter(Boolean) as string[];
+  const testType = names.length ? names.join(', ') : order.tests.length > 1 ? `${order.tests.length} lab tests` : 'a lab test';
+  const labResult = { _id: order.tests[0]._id, requestCode: order.orderCode };
   const tid = new Types.ObjectId(String(tenantId));
   await Promise.all(
     staff.map((u) =>
@@ -190,12 +197,127 @@ export async function notifyLabStaffOfRequest(
         type: 'lab_result',
         priority: urgency === 'stat' ? 'urgent' : rush ? 'high' : 'normal',
         title: rush ? `${urgency!.toUpperCase()} lab request` : 'New lab request',
-        message: `${labResult.requestCode ? `${labResult.requestCode}: ` : ''}${testType} is waiting to be received.`,
+        message: `${labResult.requestCode ? `${labResult.requestCode}: ` : ''}${testType} ${names.length > 1 ? 'are' : 'is'} waiting to be received.`,
         relatedEntity: { type: 'lab_result', id: labResult._id },
         actionUrl: `/lab-results/${labResult._id}`,
       })
     )
   );
+}
+
+/** How long a save waits before announcing, so the rest of its order (saved right after) goes in one message. */
+export const RESULTS_IN_SETTLE_MS = 8000;
+
+/**
+ * Tell the patient their results are in and with the doctor for review. Called after the lab
+ * completes a test; waits `settleMs`, then announces in one message every test of that test's
+ * order (same patient) the lab has completed and that awaits review. Each test is announced once
+ * (resultsInNoticeAt): the later saves of an order find nothing left and send nothing.
+ * The values stay hidden until review, when sendLabResultNotification says they are ready to view.
+ * Follows autoLabNotifications.
+ */
+export async function sendResultsInNotice(
+  labResultId: string | Types.ObjectId,
+  tenantId: string | Types.ObjectId,
+  options: { settleMs?: number } = {}
+): Promise<{ sent: boolean; tests: number }> {
+  if (options.settleMs) await new Promise((resolve) => setTimeout(resolve, options.settleMs));
+  await connectDB();
+  const tid = new Types.ObjectId(String(tenantId));
+  if (!automationEnabled(await getSettings(tid.toString()), 'autoLabNotifications')) return { sent: false, tests: 0 };
+
+  const saved = (await LabResult.findOne({ _id: new Types.ObjectId(String(labResultId)), tenantId: tid })
+    .select('patient orderCode')
+    .lean()) as { _id: Types.ObjectId; patient?: Types.ObjectId; orderCode?: string } | null;
+  if (!saved?.patient) return { sent: false, tests: 0 };
+
+  // This test, or its whole order: always one patient's tests.
+  const qualifies = {
+    tenantId: tid,
+    patient: saved.patient,
+    status: 'completed',
+    awaitingReview: true,
+    notificationSent: { $ne: true },
+    resultsInNoticeAt: { $exists: false },
+  };
+  const candidates = (await LabResult.find({ ...qualifies, ...(saved.orderCode ? { orderCode: saved.orderCode } : { _id: saved._id }) })
+    .select('_id')
+    .limit(50)
+    .lean()) as { _id: Types.ObjectId }[];
+
+  // Claim each test first, so a concurrent or repeated call never sends a second message.
+  type Claimed = { _id: Types.ObjectId; orderCode?: string; requestCode?: string; request?: { testType?: string } };
+  const tests: Claimed[] = [];
+  for (const c of candidates) {
+    const lab = await LabResult.findOneAndUpdate({ ...qualifies, _id: c._id }, { $set: { resultsInNoticeAt: new Date() } }, { new: true })
+      .select('orderCode requestCode request.testType')
+      .lean<Claimed | null>();
+    if (lab) tests.push(lab);
+  }
+  if (!tests.length) return { sent: false, tests: 0 };
+  tests.sort((a, b) => String(a.requestCode ?? '').localeCompare(String(b.requestCode ?? ''), undefined, { numeric: true }));
+
+  const Patient = (await import('@/models/Patient')).default;
+  const patient = (await Patient.findOne({ _id: saved.patient, tenantIds: tid }).select('firstName lastName email phone').lean()) as {
+    _id: Types.ObjectId;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+  } | null;
+  if (!patient) return { sent: false, tests: tests.length };
+
+  const names = tests.map((l) => l.request?.testType).filter(Boolean) as string[];
+  const what = names.length ? names.join(', ') : 'your lab tests';
+  const ref = tests[0].orderCode || tests[0].requestCode || '';
+  let sent = false;
+
+  if (patient.phone) {
+    try {
+      const message = `Your lab results for ${what} are in. Your doctor is reviewing them; we'll let you know when they're ready to view.${ref ? ` Ref: ${ref}.` : ''}`;
+      const result = await sendSMS({ tenantId: tid, category: 'transactional', template: 'lab-result-in', patientId: patient._id, to: patient.phone, message });
+      if (delivered(result)) sent = true;
+    } catch (error) {
+      console.error('Error sending results-in SMS:', error);
+    }
+  }
+
+  if (patient.email) {
+    try {
+      const { escapeHtml } = await import('@/lib/email');
+      const html = `<!DOCTYPE html><html><body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #2196F3;">Your lab results are in</h2>
+          <p>Dear ${escapeHtml(patient.firstName ?? '')} ${escapeHtml(patient.lastName ?? '')},</p>
+          <p>The laboratory has finished your ${escapeHtml(what)}${ref ? ` (reference ${escapeHtml(ref)})` : ''}.</p>
+          <p>Your doctor is reviewing the results now. We will let you know as soon as they are ready to view.</p>
+          <p style="color: #666; font-size: 12px;">This is an automated message. Please do not reply to this email.</p>
+        </div></body></html>`;
+      const result = await sendEmail({ to: patient.email, subject: 'Your lab results are in', html });
+      if (delivered(result)) sent = true;
+    } catch (error) {
+      console.error('Error sending results-in email:', error);
+    }
+  }
+
+  try {
+    const push = await sendPushToPatientDevices(
+      patient._id.toString(),
+      {
+        title: 'Lab results are in',
+        // Never the test name: it shows on the lock screen and goes through Apple/Google.
+        body: 'Your doctor is reviewing them. We’ll let you know when they’re ready to view.',
+        // Not "lab-result-<id>": the app opens that result, which stays hidden until review.
+        tag: `lab-results-in-${tests[0]._id}`,
+      },
+      { tenantId: tid }
+    );
+    if (push.sent) sent = true;
+  } catch (error) {
+    console.error('Error sending results-in push notification:', error);
+  }
+
+  return { sent, tests: tests.length };
 }
 
 /** Ask the ordering doctor, in-app, to review a result the lab has completed; the patient hears after. */
@@ -211,7 +333,7 @@ export async function notifyDoctorToReview(
     type: 'lab_result',
     priority: 'normal',
     title: 'Lab result to review',
-    message: `Results for ${labResult.request?.testType || 'a lab test'} are in. The patient is told once you mark it reviewed.`,
+    message: `Results for ${labResult.request?.testType || 'a lab test'} are in. The patient can see them once you mark it reviewed.`,
     relatedEntity: { type: 'lab_result', id: labResult._id },
     actionUrl: `/lab-results/${labResult._id}`,
   });

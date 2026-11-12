@@ -62,6 +62,29 @@ export async function randomUnusablePasswordHash(): Promise<string> {
   return bcrypt.hash(randomBytes(32).toString('base64url'), 12);
 }
 
+/** No 0/O, 1/l/I: easy to read off a screen and type in. */
+const TEMP_PASSWORD_ALPHABET = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+export const TEMP_PASSWORD_LENGTH = 8;
+
+/**
+ * Temporary password an admin hands to staff, e.g. "k7Qmz2hx": 8 characters (~46 bits), short enough
+ * to read out. Sign-in is rate limited per account and IP, and the person replaces it with their own
+ * (12+ characters under the normal policy). Unbiased: bytes past the last full multiple of the
+ * alphabet are skipped.
+ */
+export function generateTempPassword(): string {
+  const n = TEMP_PASSWORD_ALPHABET.length;
+  const limit = 256 - (256 % n);
+  let out = '';
+  while (out.length < TEMP_PASSWORD_LENGTH) {
+    for (const byte of randomBytes(16)) {
+      if (byte < limit && out.length < TEMP_PASSWORD_LENGTH) out += TEMP_PASSWORD_ALPHABET[byte % n];
+    }
+  }
+  return out;
+}
+
 /** Fields to $set on a User to (re)issue an invite. The previous token stops working. */
 export function inviteUpdate(invite: InviteToken): { inviteTokenHash: string; inviteExpiresAt: Date } {
   return { inviteTokenHash: invite.tokenHash, inviteExpiresAt: invite.expiresAt };

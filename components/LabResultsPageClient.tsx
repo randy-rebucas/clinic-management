@@ -9,18 +9,28 @@ import { FIELD, FOCUS_RING, ICON, Svg } from './appointments/shared';
 import type { LabResultsPageContext } from '@/lib/lab-results-page';
 import { LAB_STATE, STATUS_ORDER, type LabStatus } from './lab-results/shared';
 
-interface LabResult {
+type Flags = Record<string, 'high' | 'low' | 'normal'> | null;
+
+interface OrderTest {
   _id: string;
   requestCode?: string;
-  patient: { _id: string; firstName: string; lastName: string; patientCode?: string } | null;
-  orderedBy?: { _id: string; name: string } | null;
-  reviewedBy?: { _id: string; name: string } | null;
-  request: { testType: string; urgency?: 'routine' | 'urgent' | 'stat' };
+  testType?: string;
+  urgency?: 'routine' | 'urgent' | 'stat';
   status: LabStatus;
-  orderDate: string;
   resultDate?: string;
   reviewedAt?: string;
-  abnormalFlags?: Record<string, 'high' | 'low' | 'normal'> | null;
+  abnormalFlags?: Flags;
+}
+
+/** One row of the list: the tests placed together in one order (GET ?group=order). */
+interface LabOrder {
+  _id: string;
+  orderCode?: string;
+  patient: { _id: string; firstName: string; lastName: string; patientCode?: string } | null;
+  orderedBy?: { _id: string; name: string } | null;
+  urgency?: 'routine' | 'urgent' | 'stat';
+  orderDate: string;
+  tests: OrderTest[];
 }
 
 interface Insights {
@@ -66,7 +76,7 @@ function turnaroundLabel(hours: number) {
   return `${Math.round((hours / 24) * 10) / 10} days`;
 }
 
-function abnormalCount(flags?: LabResult['abnormalFlags']) {
+function abnormalCount(flags?: Flags) {
   if (!flags) return { high: 0, low: 0 };
   const values = Object.values(flags);
   return { high: values.filter((v) => v === 'high').length, low: values.filter((v) => v === 'low').length };
@@ -105,7 +115,7 @@ export default function LabResultsPageClient({ canWrite, isDoctor, isLab }: LabR
     return () => clearTimeout(t);
   }, [search, debounced]);
 
-  const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+  const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE), group: 'order' });
   if (mine) params.set('mine', 'true');
   if (debounced.trim()) params.set('search', debounced.trim());
   if (status) params.set('status', status);
@@ -114,7 +124,7 @@ export default function LabResultsPageClient({ canWrite, isDoctor, isLab }: LabR
   if (urgency) params.set('urgency', urgency);
   if (testType) params.set('testType', testType);
   const listUrl = `/api/lab-results?${params}`;
-  const list = useKeyedFetch<LabResult[]>(listUrl);
+  const list = useKeyedFetch<LabOrder[]>(listUrl);
   const insights = useKeyedFetch<Insights>(`/api/lab-results/insights${mine ? '?mine=true' : ''}`);
 
   const rows = list.value ?? [];
@@ -348,8 +358,8 @@ export default function LabResultsPageClient({ canWrite, isDoctor, isLab }: LabR
             <Empty narrowed={narrowed} mine={mine} canWrite={canWrite} onClear={clearAll} onWholeClinic={() => (setMine(false), setPage(1))} />
           ) : (
             <ul key={listUrl} className={`divide-y divide-gray-100 transition-opacity duration-200 ${refreshing ? 'opacity-60' : ''}`}>
-              {rows.map((lab, i) => (
-                <LabRow key={lab._id} lab={lab} index={i} onOpen={() => router.push(`/lab-results/${lab._id}`)} />
+              {rows.map((order, i) => (
+                <LabRow key={order._id} order={order} index={i} onOpen={() => router.push(`/lab-results/${order.tests[0]?._id}`)} />
               ))}
             </ul>
           )}
@@ -416,13 +426,36 @@ export default function LabResultsPageClient({ canWrite, isDoctor, isLab }: LabR
 // Pieces
 // ---------------------------------------------------------------------------
 
-function LabRow({ lab, index, onOpen }: { lab: LabResult; index: number; onOpen: () => void }) {
+/**
+ * The order's state as one badge: the tests' shared status, or the furthest-behind open one
+ * with how many are done ("Ordered · 1 of 3 done"). Cancelled tests don't count.
+ */
+function orderState(tests: OrderTest[]) {
+  const live = tests.filter((t) => t.status !== 'cancelled');
+  if (live.length === 0) return { status: 'cancelled' as LabStatus, done: null };
+  const behind = live.reduce((a, t) => (STATUS_ORDER.indexOf(t.status) < STATUS_ORDER.indexOf(a.status) ? t : a)).status;
+  const same = live.every((t) => t.status === behind);
+  const done = live.filter((t) => t.status === 'completed' || t.status === 'reviewed').length;
+  return { status: behind, done: same || live.length === 1 ? null : `${done} of ${live.length} done` };
+}
+
+function LabRow({ order, index, onOpen }: { order: LabOrder; index: number; onOpen: () => void }) {
+  const lab = {
+    ...order,
+    _id: order.tests[0]?._id,
+    requestCode: order.orderCode ?? order.tests[0]?.requestCode,
+    resultDate: order.tests.length === 1 ? order.tests[0]?.resultDate : undefined,
+  };
   const name = lab.patient ? `${lab.patient.firstName} ${lab.patient.lastName}` : 'Patient record unavailable';
-  const st = LAB_STATE[lab.status] ?? LAB_STATE.ordered;
-  const cancelled = lab.status === 'cancelled';
-  const flags = abnormalCount(lab.abnormalFlags);
+  const state = orderState(order.tests);
+  const st = LAB_STATE[state.status] ?? LAB_STATE.ordered;
+  const cancelled = state.status === 'cancelled';
+  const flags = order.tests
+    .filter((t) => t.status !== 'cancelled')
+    .map((t) => abnormalCount(t.abnormalFlags))
+    .reduce((a, f) => ({ high: a.high + f.high, low: a.low + f.low }), { high: 0, low: 0 });
   const abn = flags.high + flags.low;
-  const urgency = lab.request?.urgency;
+  const urgency = order.urgency;
 
   const onRowClick = (e: React.MouseEvent<HTMLLIElement>) => {
     if ((e.target as HTMLElement).closest('a,button')) return;
@@ -451,7 +484,18 @@ function LabRow({ lab, index, onOpen }: { lab: LabResult; index: number; onOpen:
       </span>
 
       <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-sm">
-        <span className="truncate text-gray-800">{lab.request?.testType || 'Test not named'}</span>
+        {order.tests.map((t, i) => (
+          <span key={t._id} className="min-w-0">
+            <Link
+              href={`/lab-results/${t._id}`}
+              title={t.requestCode}
+              className={`rounded hover:text-brand-teal-deep hover:underline ${t.status === 'cancelled' && !cancelled ? 'text-gray-400 line-through' : 'text-gray-800'} ${FOCUS_RING}`}
+            >
+              {t.testType || 'Test not named'}
+            </Link>
+            {i < order.tests.length - 1 && <span className="text-gray-400">,</span>}
+          </span>
+        ))}
         {urgency === 'stat' && <span className="rounded bg-red-50 px-1.5 py-0.5 text-xs font-semibold text-red-700 ring-1 ring-inset ring-red-200">STAT</span>}
         {urgency === 'urgent' && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs font-semibold text-amber-800 ring-1 ring-inset ring-amber-200">Urgent</span>}
       </span>
@@ -460,6 +504,7 @@ function LabRow({ lab, index, onOpen }: { lab: LabResult; index: number; onOpen:
 
       <span className="min-w-0">
         <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${st.badge}`}>{st.label}</span>
+        {state.done && <span className="mt-1 block text-xs text-gray-500">{state.done}</span>}
         {abn > 0 && !cancelled && (
           <span className="mt-1 flex items-center gap-1 text-xs font-semibold text-red-700">
             <Svg d={ICONS.alert} className="h-3.5 w-3.5" />

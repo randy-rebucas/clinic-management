@@ -14,7 +14,7 @@ export default function LabResultFormClient({ patientId, visitId }: { patientId?
   const router = useRouter();
   // A link from a patient's page or a visit names the patient; look them up rather than search.
   const pre = useKeyedFetch<PatientOption>(patientId ? `/api/patients/${patientId}` : null);
-  const [placed, setPlaced] = useState<{ patient: PatientOption; orders: PlacedOrder[] } | null>(null);
+  const [placed, setPlaced] = useState<{ patient: PatientOption; order: PlacedOrder } | null>(null);
   const [round, setRound] = useState(0);
   // "Order more tests" starts again for the same patient.
   const [carry, setCarry] = useState<PatientOption | null>(null);
@@ -22,19 +22,31 @@ export default function LabResultFormClient({ patientId, visitId }: { patientId?
   const back = patientId ? { href: `/patients/${patientId}`, label: 'Back to the patient' } : { href: '/lab-results', label: 'All lab results' };
 
   if (placed) {
-    const { patient, orders } = placed;
+    const { patient, order } = placed;
+    const { tests } = order;
     const who = `${patient.firstName} ${patient.lastName}`;
     return (
       <Shell back={back}>
-        <header>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">{orders.length === 1 ? 'Test ordered' : `${orders.length} tests ordered`}</h1>
-          <p className="mt-1 text-sm sm:text-base text-gray-600">
-            For <span className="font-semibold text-gray-900">{who}</span>. Print the request forms for the lab, or open a test to follow it.
-          </p>
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">{tests.length === 1 ? 'Test ordered' : `${tests.length} tests ordered`}</h1>
+            <p className="mt-1 text-sm sm:text-base text-gray-600">
+              For <span className="font-semibold text-gray-900">{who}</span>, under order <span className="font-mono font-semibold text-gray-900">{order.orderCode}</span>. Print the request form for the lab, or open a test to follow it.
+            </p>
+          </div>
+          <a
+            href={`/api/lab-results/${tests[0]._id}/request-form`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}
+          >
+            <Svg d={PRINT} />
+            Print request form
+          </a>
         </header>
         <section role="status" className="motion-panel-in overflow-hidden rounded-lg border border-gray-200 bg-white">
           <ul className="divide-y divide-gray-100">
-            {orders.map((o, i) => (
+            {tests.map((o, i) => (
               <li key={o._id} className="motion-row-in flex flex-wrap items-center gap-3 px-5 py-3" style={{ animationDelay: `${Math.min(i * 40, 240)}ms` }}>
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-brand-teal-light text-brand-teal-deep">
                   <Svg d={ICON.check} className="h-3.5 w-3.5" />
@@ -43,15 +55,6 @@ export default function LabResultFormClient({ patientId, visitId }: { patientId?
                   {o.testType}
                   {o.requestCode && <span className="ml-2 font-mono text-xs font-normal text-gray-500">{o.requestCode}</span>}
                 </Link>
-                <a
-                  href={`/api/lab-results/${o._id}/request-form`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-900 transition-colors hover:border-gray-900 ${FOCUS_RING}`}
-                >
-                  <Svg d={PRINT} />
-                  Request form
-                </a>
               </li>
             ))}
           </ul>
@@ -84,7 +87,7 @@ export default function LabResultFormClient({ patientId, visitId }: { patientId?
     <Shell back={back}>
       <header>
         <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">Order lab tests</h1>
-        <p className="mt-1 text-sm sm:text-base text-gray-600">Choose the patient and the tests. Each test gets a request form to print for the lab.</p>
+        <p className="mt-1 text-sm sm:text-base text-gray-600">Choose the patient and the tests. They go to the lab as one order, with one request form to print.</p>
       </header>
       {patientId && pre.error && (
         <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -101,8 +104,8 @@ export default function LabResultFormClient({ patientId, visitId }: { patientId?
           key={`${round}-${pre.value?._id ?? 'none'}`}
           initialPatient={carry ?? (pre.value ? { _id: pre.value._id, firstName: pre.value.firstName, lastName: pre.value.lastName, patientCode: pre.value.patientCode } : null)}
           initialVisitId={visitId}
-          onPlaced={(patient, orders) => {
-            setPlaced({ patient, orders });
+          onPlaced={(patient, order) => {
+            setPlaced({ patient, order });
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
           onCancel={() => router.push(back.href)}

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Modal } from '../ui/Modal';
 import { FIELD, FOCUS_RING, ICON, Svg } from '../appointments/shared';
 import { FieldError, Label } from '../visits/form/parts';
-import { StateBadge, inviteLine, lastSeen, useSend } from './users-shared';
+import { StateBadge, TempPassword, inviteLine, lastSeen, useSend } from './users-shared';
 import {
   STAFF_STATUS,
   STAFF_STATUSES,
@@ -41,6 +41,8 @@ interface Form {
   hireDate: string;
   address: string;
   status: StaffStatus;
+  /** New staff only: email a set-password invite, or generate a temporary password so they can sign in at once. */
+  access: 'invite' | 'temp-password';
 }
 
 type FieldKey = 'firstName' | 'lastName' | 'email' | 'phone';
@@ -62,6 +64,7 @@ function initialForm(row: StaffRow | null, type: StaffType): Form {
     hireDate: row?.hireDate ? row.hireDate.slice(0, 10) : '',
     address: row?.address ?? '',
     status: row?.status ?? 'active',
+    access: 'invite',
   };
 }
 
@@ -69,7 +72,7 @@ function problems(f: Form): Partial<Record<FieldKey, string>> {
   const out: Partial<Record<FieldKey, string>> = {};
   if (!f.firstName.trim()) out.firstName = 'Enter their first name.';
   if (!f.lastName.trim()) out.lastName = 'Enter their last name.';
-  if (!f.email.trim()) out.email = 'Enter their email address; their invite goes there.';
+  if (!f.email.trim()) out.email = f.access === 'temp-password' ? 'Enter their email address; they sign in with it.' : 'Enter their email address; their invite goes there.';
   else if (!EMAIL.test(f.email.trim())) out.email = 'This doesn’t look like an email address.';
   if (!f.phone.trim()) out.phone = 'Enter a phone number.';
   else if (!PHONE.test(f.phone.trim())) out.phone = 'Use digits, spaces, +, ( ) or - only (7 to 20 characters).';
@@ -160,6 +163,8 @@ export default function StaffDialog({
     if (editing) {
       body.status = form.status;
       if (offer && applyAccess) body.account = { status: offer.to };
+    } else {
+      body.access = form.access;
     }
 
     const result = await send(editing ? `/api/staff/${row._id}` : '/api/staff', editing ? 'PUT' : 'POST', body);
@@ -172,10 +177,16 @@ export default function StaffDialog({
     const name = `${form.firstName.trim()} ${form.lastName.trim()}`;
     const email = form.email.trim();
     if (!editing) {
-      const account = (result.data as { account?: string })?.account;
+      const data = result.data as { account?: string; staff?: StaffRow };
+      const account = data?.account;
+      const temp = data?.staff?.account?.tempPassword;
       const job = STAFF_TYPE[form.staffType].label.toLowerCase();
       onSaved(
-        account === 'invited'
+        account === 'temp-password'
+          ? `Added ${name} as a ${job}. They can sign in now with ${email} and the temporary password${temp ? ` ${temp}` : ''}; it stays on their row until they change it.`
+          : account === 'linked' && form.access === 'temp-password'
+            ? `Added ${name} as a ${job}, linked to the account this clinic already has for ${email}. That account keeps its own password, so no temporary one was made.`
+            : account === 'invited'
           ? emailReady
             ? `Added ${name} as a ${job}. An invite to set their password is on its way to ${email}; the link works for 72 hours.`
             : `Added ${name} as a ${job}. Email isn’t set up on this server, so no invite went out; send one from their row once it is.`
@@ -214,7 +225,7 @@ export default function StaffDialog({
     </div>
   );
 
-  const optional = (key: Exclude<keyof Form, FieldKey | 'staffType' | 'status' | 'address'>, label: string, placeholder?: string, type = 'text') => (
+  const optional = (key: Exclude<keyof Form, FieldKey | 'staffType' | 'status' | 'address' | 'access'>, label: string, placeholder?: string, type = 'text') => (
     <div>
       <Label htmlFor={`${ids}-${key}`} optional>
         {label}
@@ -243,7 +254,7 @@ export default function StaffDialog({
           <p className="mt-0.5 text-sm text-gray-600">
             {editing
               ? `${STAFF_TYPE[row.staffType].label}. To change someone’s job, add them again under the new one and mark this profile inactive.`
-              : 'They get an emailed invite to set their own password. Doctors are added from the Doctors page.'}
+              : 'Email them an invite to set their own password, or give them a temporary one. Doctors are added from the Doctors page.'}
           </p>
         </div>
 
@@ -310,6 +321,37 @@ export default function StaffDialog({
             </div>
           </Section>
 
+          {!editing && (
+            <Section title="Signing in">
+              <div className={`${SEGMENT} max-w-md`} role="radiogroup" aria-label="How they get their password">
+                {(
+                  [
+                    ['invite', 'Email an invite'],
+                    ['temp-password', 'Temporary password'],
+                  ] as const
+                ).map(([value, label]) => {
+                  const on = form.access === value;
+                  return (
+                    <label
+                      key={value}
+                      className={`flex-1 cursor-pointer rounded px-3 py-1.5 text-center text-sm font-medium transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-teal ${
+                        on ? 'bg-brand-teal-dark text-white' : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      <input type="radio" name={`${ids}-access`} value={value} checked={on} onChange={() => set('access', value)} className="sr-only" />
+                      {label}
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-sm text-gray-500">
+                {form.access === 'invite'
+                  ? 'They choose their own password from an emailed link that works for 72 hours.'
+                  : 'An 8-character temporary password is made when you save. They can sign in right away, no email needed. It shows on their row in the staff list until they change it under their account.'}
+              </p>
+            </Section>
+          )}
+
           {editing && (
             <Section title="Status">
               <div className={`${SEGMENT} max-w-md`} role="radiogroup" aria-label="Status">
@@ -368,6 +410,12 @@ export default function StaffDialog({
                       </span>
                     )}
                   </p>
+                  {row.account.tempPassword && (
+                    <div className="mt-3 rounded-md border border-gray-200 bg-gray-50/60 px-3 py-2.5">
+                      <TempPassword value={row.account.tempPassword} name={staffName(row)} size="lg" />
+                      <p className="mt-1 text-sm text-gray-500">They sign in with {row.email} and this password. It disappears once they choose their own.</p>
+                    </div>
+                  )}
                   <Link href="/admin/users" className={`mt-3 inline-flex items-center gap-1.5 rounded text-sm font-semibold text-brand-teal-dark hover:text-brand-teal-deep ${FOCUS_RING}`}>
                     Role, password reset and two-step on Users
                     <Svg d={ICON.arrow} />
@@ -400,7 +448,9 @@ export default function StaffDialog({
                   ? 'Saving…'
                   : editing
                     ? ''
-                    : emailReady
+                    : form.access === 'temp-password'
+                      ? 'They can sign in as soon as you save.'
+                      : emailReady
                       ? `Saving emails ${form.email.trim() || 'them'} an invite.`
                       : 'Email isn’t set up, so no invite will go out yet.')}
           </p>

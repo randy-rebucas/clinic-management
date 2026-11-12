@@ -9,6 +9,7 @@ import DocumentSeal, { SealCopyType, SealDocumentType } from '@/models/DocumentS
 import Prescription from '@/models/Prescription';
 import Visit from '@/models/Visit';
 import LabResult from '@/models/LabResult';
+import { liveOrderTests } from '@/lib/lab-orders';
 import Invoice from '@/models/Invoice';
 import Referral from '@/models/Referral';
 import DocumentRequest, { CLINICAL_ABSTRACT_FIELDS } from '@/models/DocumentRequest';
@@ -242,7 +243,11 @@ const SEAL_DEFINITIONS: Record<SealDocumentType, SealDefinition> = {
       chiefComplaint: str(v.chiefComplaint),
       assessment: str(v.soapNotes?.assessment),
       notes: str(v.notes),
-      labs: (v.labsOrdered || []).map((l: any) => ({ id: idOf(l), testType: str(l?.testType) })),
+      // The tests as printed (cancelled ones are left off the form). labsOrdered was never filled
+      // before lab orders linked their tests to the visit, so no earlier seal covers a test here.
+      labs: (v.labsOrdered || [])
+        .filter((l: any) => l?.status !== 'cancelled')
+        .map((l: any) => ({ id: idOf(l), testType: str(l?.request?.testType ?? l?.testType) })),
     }),
     revocation: (v) => (v.status === 'cancelled' ? 'The underlying visit was cancelled by the clinic.' : null),
     facts: (v, _currency, tz) => [
@@ -251,7 +256,7 @@ const SEAL_DEFINITIONS: Record<SealDocumentType, SealDefinition> = {
       {
         label: 'Requested tests',
         value:
-          (v.labsOrdered || []).map((l: any) => l?.testType || 'Lab Test').join(', ') ||
+          (v.labsOrdered || []).filter((l: any) => l?.status !== 'cancelled').map((l: any) => l?.request?.testType || 'Lab Test').join(', ') ||
           'As per clinical indication',
       },
     ],
@@ -261,14 +266,39 @@ const SEAL_DEFINITIONS: Record<SealDocumentType, SealDefinition> = {
 
   lab_request_form: {
     label: 'Laboratory Request Form',
-    load: (id, tenantId) => {
+    load: async (id, tenantId) => {
       const q = tenantScopedQuery(id, tenantId);
-      return q
-        ? LabResult.findOne(q).populate('patient', 'firstName lastName').populate('orderedBy', 'name')
-        : Promise.resolve(null);
+      if (!q) return null;
+      const lab: any = await LabResult.findOne(q).populate('patient', 'firstName lastName').populate('orderedBy', 'name');
+      if (lab) lab.orderTests = await liveOrderTests(lab, tenantId);
+      return lab;
     },
-    code: (l) => l.requestCode,
-    canonical: (l) => ({
+    code: (l) => (l.orderTests?.length ? l.orderCode : l.requestCode),
+    // A form for an order of several tests (orderTests, see lib/lab-orders.ts) seals the order;
+    // a single test seals exactly as before, so forms already printed still verify.
+    canonical: (l) =>
+      l.orderTests?.length
+        ? {
+            code: str(l.orderCode),
+            patient: idOf(l.patient),
+            visit: idOf(l.visit),
+            orderedBy: idOf(l.orderedBy),
+            orderDate: iso(l.orderDate),
+            request: {
+              urgency: str(l.request?.urgency),
+              fastingRequired: !!l.request?.fastingRequired,
+              preparationNotes: str(l.request?.preparationNotes),
+              specialInstructions: str(l.request?.specialInstructions),
+            },
+            tests: l.orderTests.map((t: any) => ({
+              code: str(t.requestCode),
+              testType: str(t.request?.testType),
+              testCode: str(t.request?.testCode),
+              description: str(t.request?.description),
+            })),
+            thirdPartyLab: str(l.thirdPartyLab?.labName),
+          }
+        : {
       code: str(l.requestCode),
       patient: idOf(l.patient),
       visit: idOf(l.visit),
@@ -284,12 +314,14 @@ const SEAL_DEFINITIONS: Record<SealDocumentType, SealDefinition> = {
         specialInstructions: str(l.request?.specialInstructions),
       },
       thirdPartyLab: str(l.thirdPartyLab?.labName),
-    }),
+    },
     revocation: (l) => (l.status === 'cancelled' ? 'This laboratory request was cancelled by the clinic.' : null),
     facts: (l, _currency, tz) => [
-      { label: 'Request code', value: l.requestCode || '—' },
+      { label: 'Request code', value: (l.orderTests?.length ? l.orderCode : l.requestCode) || '—' },
       { label: 'Order date', value: longDate(l.orderDate, tz) },
-      { label: 'Test', value: l.request?.testType || '—' },
+      l.orderTests?.length
+        ? { label: 'Tests', value: l.orderTests.map((t: any) => t.request?.testType || 'Lab Test').join(', ') }
+        : { label: 'Test', value: l.request?.testType || '—' },
       { label: 'Urgency', value: String(l.request?.urgency || 'routine').toUpperCase() },
     ],
     patient: (l) => l.patient,

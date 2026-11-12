@@ -11,14 +11,27 @@ import { FOCUS_RING, ICON, Svg } from './appointments/shared';
 import { ageFrom } from './visits/form/PatientSummary';
 import AttachForm from './records/AttachForm';
 import { fileSize } from './records/labels';
-import ResultsEditor from './lab-results/ResultsEditor';
+import ResultsEditor, { type ResultsSection } from './lab-results/ResultsEditor';
 import { LAB_STATE, URGENCY_BADGE, type LabStatus } from './lab-results/shared';
 import { analyteLabel, flagFor, localDay, previousValue, rowsFrom, type EarlierResult, type ValueMap } from './lab-results/results';
 import type { LabResultDetailPermissions } from '@/lib/lab-results-page';
 
+/** A test on the same order (this one included), with its values so the order's results go in together. */
+interface OrderTest {
+  _id: string;
+  requestCode?: string;
+  status: LabStatus;
+  request?: { testType?: string; urgency?: string };
+  results?: ValueMap | null;
+  referenceRanges?: Record<string, unknown> | null;
+  abnormalFlags?: Record<string, string> | null;
+  interpretation?: string;
+}
+
 interface LabResult {
   _id: string;
   requestCode?: string;
+  orderCode?: string;
   patient: { _id: string; firstName: string; lastName: string; patientCode?: string; email?: string; phone?: string; dateOfBirth?: string } | null;
   visit?: { _id: string; visitCode: string; date: string } | null;
   orderedBy?: { _id: string; name: string } | null;
@@ -90,6 +103,7 @@ export default function LabResultDetailClient({ labResultId, permissions }: { la
 
   const l = lab.value;
   const history = (Array.isArray(lab.raw?.history) ? lab.raw.history : []) as EarlierResult[];
+  const orderTests = (Array.isArray(lab.raw?.orderTests) ? lab.raw.orderTests : []) as OrderTest[];
 
   const setStatus = async (status: LabStatus, message: string, fallback: string) => {
     setConfirm(null);
@@ -238,6 +252,29 @@ export default function LabResultDetailClient({ labResultId, permissions }: { la
               </>
             )}
           </p>
+          {orderTests.length > 1 && (
+            <nav aria-label="Tests on this order" className="mt-3 flex flex-wrap items-center gap-1.5 text-sm">
+              <span className="mr-1 text-gray-500">
+                On order <span className="font-mono">{l.orderCode}</span>:
+              </span>
+              {orderTests.map((t) => {
+                const here = t._id === l._id;
+                const s = LAB_STATE[t.status] ?? LAB_STATE.ordered;
+                return (
+                  <Link
+                    key={t._id}
+                    href={`/lab-results/${t._id}`}
+                    aria-current={here ? 'page' : undefined}
+                    title={`${t.requestCode ?? ''} · ${s.label}`}
+                    className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-medium transition-colors ${here ? 'border-brand-teal-dark bg-brand-teal-light text-brand-teal-deep' : 'border-gray-300 bg-white text-gray-700 hover:border-gray-900'} ${t.status === 'cancelled' ? 'line-through' : ''} ${FOCUS_RING}`}
+                  >
+                    {t.request?.testType ?? t.requestCode}
+                    <span className="text-xs font-normal text-gray-500">{s.label}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+          )}
         </div>
 
         <div className={`flex flex-wrap items-center gap-2 transition-opacity ${busy ? 'opacity-60' : ''}`}>
@@ -325,18 +362,20 @@ export default function LabResultDetailClient({ labResultId, permissions }: { la
           <ResultsPanel
             lab={l}
             history={history}
+            orderTests={orderTests}
             editing={editing}
             today={today}
             canEnter={canAct && waiting}
-            onSaved={() => {
+            onSaved={(count) => {
               setEditing(false);
               lab.reload();
+              const what = count > 1 ? `Results saved for ${count} tests.` : 'Results saved.';
               setNotice(
                 waiting
                   ? permissions.isLab
-                    ? 'Results saved. The doctor reviews them before the patient is told.'
-                    : 'Results saved. The result is marked as in.'
-                  : 'Results saved.'
+                    ? `${what} The doctor who ordered ${count > 1 ? 'them' : 'it'} is asked to review; the patient is told their results are in and can see them after review.`
+                    : `${what} ${count > 1 ? 'They are' : 'The result is'} marked as in.`
+                  : what
               );
             }}
             onCancel={() => setEditing(false)}
@@ -488,6 +527,7 @@ const READ_COLS = 'sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_min
 function ResultsPanel({
   lab: l,
   history,
+  orderTests,
   editing,
   today,
   canEnter,
@@ -497,10 +537,11 @@ function ResultsPanel({
 }: {
   lab: LabResult;
   history: EarlierResult[];
+  orderTests: OrderTest[];
   editing: boolean;
   today: string;
   canEnter: boolean;
-  onSaved: () => void;
+  onSaved: (count: number) => void;
   onCancel: () => void;
   hasValues: boolean;
 }) {
@@ -517,12 +558,29 @@ function ResultsPanel({
   const waiting = l.status === 'ordered' || l.status === 'in-progress';
 
   if (editing) {
+    // Entering results for a test still at the lab takes in the rest of its order still out too
+    // (this test first); correcting a finished result stays with this one test.
+    const others = waiting ? orderTests.filter((t) => t._id !== l._id && (t.status === 'ordered' || t.status === 'in-progress')) : [];
+    const sections: ResultsSection[] = [
+      {
+        labId: l._id,
+        testType: l.request?.testType,
+        requestCode: l.requestCode,
+        initialRows: rowsFrom(values, l.referenceRanges, l.abnormalFlags, history[0], l.request?.testType),
+        initialInterpretation: l.interpretation ?? '',
+      },
+      ...others.map((t) => ({
+        labId: t._id,
+        testType: t.request?.testType,
+        requestCode: t.requestCode,
+        initialRows: rowsFrom(t.results, t.referenceRanges, t.abnormalFlags, null, t.request?.testType),
+        initialInterpretation: t.interpretation ?? '',
+      })),
+    ];
     return (
-      <Panel id="lab-results" title={waiting ? 'Enter results' : 'Edit results'}>
+      <Panel id="lab-results" overflowVisible title={waiting ? (sections.length > 1 ? `Enter results · ${sections.length} tests` : 'Enter results') : 'Edit results'}>
         <ResultsEditor
-          labId={l._id}
-          initialRows={rowsFrom(values, l.referenceRanges, l.abnormalFlags, history[0])}
-          initialInterpretation={l.interpretation ?? ''}
+          sections={sections}
           initialDate={l.resultDate ? localDay(new Date(l.resultDate)) : today}
           waiting={waiting}
           today={today}
@@ -827,9 +885,10 @@ function BackLink() {
   );
 }
 
-function Panel({ id, title, aside, children }: { id: string; title: string; aside?: ReactNode; children: ReactNode }) {
+function Panel({ id, title, aside, children, overflowVisible = false }: { id: string; title: string; aside?: ReactNode; children: ReactNode; overflowVisible?: boolean }) {
   return (
-    <section className="motion-panel-in overflow-hidden rounded-lg border border-gray-200 bg-white" aria-labelledby={id}>
+    // overflowVisible: lets a suggestion list near the bottom (the results editor) hang past the edge.
+    <section className={`motion-panel-in rounded-lg border border-gray-200 bg-white ${overflowVisible ? '' : 'overflow-hidden'}`} aria-labelledby={id}>
       <div className="flex items-baseline justify-between gap-3 border-b border-gray-200 px-5 py-4">
         <h2 id={id} className="text-base font-bold tracking-tight text-gray-900">
           {title}
