@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
-import { tenantScope, newAccountCredentials, sendInviteInBackground } from './staff-user-link';
+import { tenantScope, newAccountCredentials, sendInviteInBackground, INITIAL_PASSWORD_LOCAL } from './staff-user-link';
 
 export interface IMedicalRepresentative extends Document {
   // Tenant references for multi-tenant support
@@ -299,9 +299,15 @@ MedicalRepresentativeSchema.post('save', async function (doc) {
       });
     }
 
-    // No usable password until the rep follows the emailed set-password link
+    // No usable password until the rep follows the emailed set-password link, unless the rep chose
+    // one while signing up in the app (doc.$locals[INITIAL_PASSWORD_LOCAL], a bcrypt hash): then
+    // there is no invite at all.
     const name = `${doc.firstName} ${doc.lastName}`.trim();
-    const { fields, token } = await newAccountCredentials();
+    const presetHash = (this as any).$locals?.[INITIAL_PASSWORD_LOCAL];
+    const chosen = typeof presetHash === 'string' && presetHash.length > 0;
+    const { fields, token } = chosen
+      ? { fields: { password: presetHash, mustSetPassword: false }, token: null }
+      : await newAccountCredentials();
     const newUser = await User.create({
       name,
       email,
@@ -311,7 +317,7 @@ MedicalRepresentativeSchema.post('save', async function (doc) {
       medicalRepresentativeProfile: doc._id,
       tenantId: undefined, // Medical representatives are not tied to a specific tenant
     });
-    if (!doc.inviteDeferred) sendInviteInBackground({ email, name, token, tenantId: null, kind: 'invite' });
+    if (token && !doc.inviteDeferred) sendInviteInBackground({ email, name, token, tenantId: null, kind: 'invite' });
 
     // Link the User to this MedicalRepresentative using updateOne to avoid triggering save again
     await doc.updateOne({ userId: newUser._id });
