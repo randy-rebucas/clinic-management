@@ -2,8 +2,24 @@
 
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Icon, icons, SUPPORT_EMAIL } from '@/components/PublicPage';
+
+/**
+ * The rep app's deep link, when the checkout was opened from the app. Same rule as the server's
+ * isAllowedAppReturnUrl (lib/medrep-app-signup.ts): the app's own scheme, plus Expo Go in development.
+ */
+function appReturnUrl(value: string | null): string | null {
+  if (!value || value.length > 500) return null;
+  try {
+    const { protocol } = new URL(value);
+    if (protocol === 'myclinicsoft-rep:') return value;
+    if (process.env.NODE_ENV !== 'production' && (protocol === 'exp:' || protocol === 'exps:')) return value;
+  } catch {
+    // Not a URL: ignore it.
+  }
+  return null;
+}
 
 /**
  * Landing after registration. PayMongo returns here with `paid=1` on success and without it on
@@ -15,6 +31,13 @@ function SuccessContent() {
   const id = searchParams.get('id');
   const paid = searchParams.get('paid') === '1';
   const reference = id ? `MR-${id.slice(-8).toUpperCase()}` : null;
+  const app = appReturnUrl(searchParams.get('app'));
+
+  // Opened from the rep app: go straight back to it. The app checks the payment and signs in.
+  // Some browsers only follow an app link after a tap, so the button below stays as a fallback.
+  useEffect(() => {
+    if (app) window.location.href = app;
+  }, [app]);
 
   const steps = paid
     ? [
@@ -83,6 +106,15 @@ function SuccessContent() {
               <span className="text-gray-500">Reference</span>
               <span className="font-mono font-semibold text-gray-900 tabular-nums">{reference}</span>
             </div>
+          )}
+
+          {app && (
+            <a
+              href={app}
+              className="mt-6 flex w-full items-center justify-center rounded-md bg-brand-teal px-5 py-3 font-semibold text-white transition-colors duration-150 hover:bg-brand-teal-dark"
+            >
+              Return to the MyClinicSoft Rep app
+            </a>
           )}
 
           <div className="mt-6 flex flex-col sm:flex-row gap-3">

@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
-export type OtpScope = 'patient' | 'emcr' | 'public' | 'medrep-signup';
+export type OtpScope = 'patient' | 'emcr' | 'public' | 'medrep-signup' | 'medrep-login';
 export type OtpProvider = 'local' | 'verify';
 
 /**
@@ -29,7 +29,7 @@ export interface IOtpChallenge extends Document {
 
 const OtpChallengeSchema = new Schema<IOtpChallenge>(
   {
-    scope: { type: String, enum: ['patient', 'emcr', 'public', 'medrep-signup'], required: true },
+    scope: { type: String, enum: ['patient', 'emcr', 'public', 'medrep-signup', 'medrep-login'], required: true },
     phoneE164: { type: String, required: true },
     purpose: { type: String },
     // No `ref`: this row expires by itself, so patient erasure has nothing to follow.

@@ -16,6 +16,7 @@ import {
   appSignupUnavailable,
   createActivationCheckout,
   findAppSignup,
+  issueActivationToken,
   publicOrigin,
   signupExpiredResponse,
 } from '@/lib/medrep-app-signup';
@@ -23,6 +24,8 @@ import {
 const schema = z.object({
   signupId: z.string().max(64),
   password: z.string().min(1).max(PASSWORD_MAX_BYTES * 4),
+  /** The app's deep link for after payment (lib/medrep-app-signup isAllowedAppReturnUrl). */
+  returnUrl: z.string().max(500).optional(),
 });
 
 /**
@@ -44,7 +47,7 @@ export async function POST(request: NextRequest) {
   try {
     const parsed = await parseBody(request, schema);
     if (isValidationError(parsed)) return parsed;
-    const { signupId, password } = parsed.data;
+    const { signupId, password, returnUrl } = parsed.data;
 
     await connectDB();
     const pending = await findAppSignup(signupId);
@@ -86,6 +89,8 @@ export async function POST(request: NextRequest) {
       ...signup.fields,
       email,
       phone: signup.phoneE164,
+      // Proven by the texted code, so this number can be used to sign in by code.
+      phoneVerifiedAt: signup.phoneVerifiedAt,
       products: [],
       status: 'inactive',
       isActivated: false,
@@ -97,10 +102,12 @@ export async function POST(request: NextRequest) {
 
     const account = await User.exists({ medicalRepresentativeProfile: rep._id });
     if (!account) {
-      // The hook logs its own failure; without a login the rep can't go on, so say so.
+      // The hook logs its own failure. Without a login the rep is useless and would block this
+      // address from signing up again, so take it back out; the person starts over.
       logger.error('Rep app signup created a rep without a login', new Error('No user for rep'), { repId: String(rep._id) });
+      await MedicalRepresentative.deleteOne({ _id: rep._id, userId: { $exists: false } }).catch(() => undefined);
       return NextResponse.json(
-        { success: false, error: 'Your account couldn’t be finished. Please contact support.', reference: activationReference(rep._id) },
+        { success: false, error: 'Your account couldn’t be created. Please try signing up again, or contact support.', code: 'ACCOUNT_FAILED' },
         { status: 500 }
       );
     }
@@ -108,16 +115,21 @@ export async function POST(request: NextRequest) {
     let checkoutUrl: string | undefined;
     if (online) {
       try {
-        checkoutUrl = await createActivationCheckout({ rep, fee, origin: publicOrigin(request.nextUrl.origin) });
+        checkoutUrl = await createActivationCheckout({ rep, fee, origin: publicOrigin(request.nextUrl.origin), returnUrl });
         await MedicalRepresentative.updateOne({ _id: rep._id }, { $set: { paymentAmount: fee } });
       } catch (error) {
         logger.error('PayMongo activation checkout failed (app signup)', error as Error);
       }
     }
 
+    // The app's pass to pay later and be signed in once the payment lands (./checkout, ./activation).
+    const pass = online ? await issueActivationToken(rep._id) : null;
+
     return NextResponse.json(
       {
         success: true,
+        activationToken: pass?.token,
+        activationExpiresAt: pass?.expiresAt,
         id: String(rep._id),
         reference: activationReference(rep._id),
         activation: online ? 'payment' : 'review',
