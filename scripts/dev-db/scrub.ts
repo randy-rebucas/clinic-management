@@ -18,7 +18,8 @@ type Document = mongo.Document;
 type ObjectId = mongo.ObjectId;
 type AnyBulkWriteOperation<T extends Document> = mongo.AnyBulkWriteOperation<T>;
 
-export const DEV_PASSWORD = 'devpassword';
+/** The password every dev staff login gets. Set DEV_PASSWORD in .env.local; read on use, after dotenv has loaded. */
+export const devPassword = () => process.env.DEV_PASSWORD || 'devpassword';
 const REDACTED = '[redacted]';
 const DEV_ADDRESS = { street: '123 Dev Street', city: 'Devtown', state: 'Metro Dev', zipCode: '0000' };
 
@@ -149,7 +150,7 @@ export async function scrubDatabase(db: Db, log: (msg: string) => void = console
   const subdomains = new Map<string, string>();
   for await (const t of db.collection('tenants').find({}, { projection: { subdomain: 1 } })) subdomains.set(String(t._id), String(t.subdomain));
 
-  const passwordHash = await bcrypt.hash(DEV_PASSWORD, 10);
+  const passwordHash = await bcrypt.hash(devPassword(), 10);
   const userInfo = new Map<string, { email: string; first: string; last: string }>();
   const profileOwner = new Map<string, { email: string; first: string; last: string }>();
   const oldEmails = new Map<string, string>();

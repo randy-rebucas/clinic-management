@@ -25,7 +25,7 @@ Needs Docker and the MongoDB Database Tools (`mongodump` / `mongorestore`) on PA
 
 ## Signing in
 
-Every staff account becomes `<role><n>@<clinic-subdomain>.dev` with password **`devpassword`**. 2FA and "must set password" are switched off. `db:local:refresh` prints the full list, for example:
+Every staff account becomes `<role><n>@<clinic-subdomain>.dev` with password **`devpassword`** (set by `DEV_PASSWORD` in `.env.local`; reset one login with `pnpm db:local:reset-password <email>`, or `--all`). 2FA and "must set password" are switched off. `db:local:refresh` prints the full list, for example:
 
 ```
 my-clinic      admin          admin1@my-clinic.dev

@@ -18,7 +18,7 @@ dotenv.config();
 
 import mongoose from 'mongoose';
 import { assertLocalDatabase, describeMongoUri } from './guard';
-import { scrubDatabase, DEV_PASSWORD } from './scrub';
+import { scrubDatabase, devPassword } from './scrub';
 
 const SCRUB_ONLY = process.argv.includes('--scrub-only');
 
@@ -102,7 +102,7 @@ async function main() {
   // pnpm is a .cmd shim on Windows, which only starts through a shell.
   run('pnpm', ['-s', 'db:indexes', '--apply'], process.platform === 'win32');
   console.log('');
-  console.log(`Staff logins (password for all: ${DEV_PASSWORD}). Open http://<clinic>.localhost:3000/login`);
+  console.log(`Staff logins (password for all: ${devPassword()}). Open http://<clinic>.localhost:3000/login`);
   for (const l of logins) console.log(`  ${l.clinic.padEnd(20)} ${l.role.padEnd(22)} ${l.email}`);
 }
 

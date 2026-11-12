@@ -35,6 +35,7 @@
     "db:local:down": "docker compose stop mongo",
     "db:local:refresh": "tsx scripts/dev-db/refresh.ts",
     "db:local:scrub": "tsx scripts/dev-db/refresh.ts --scrub-only",
+    "db:local:reset-password": "tsx scripts/dev-db/reset-password.ts",
     "prod": "tsx scripts/prod.ts",
     "db:cleanup:notifications": "tsx scripts/cleanup-orphan-notifications.ts",
     "db:mark-invoices-paid": "tsx scripts/mark-invoices-paid.ts",

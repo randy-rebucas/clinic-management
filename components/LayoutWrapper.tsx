@@ -9,48 +9,30 @@ import MessagingProvider from './messaging/MessagingProvider';
 import ChatDock from './messaging/ChatDock';
 import { ACCOUNT_UPDATED_EVENT } from './account/shared';
 
+type HeaderUser = { id: string; name: string; role: string; email?: string };
+
 interface LayoutWrapperProps {
   children: ReactNode;
+  /** Read on the server by the (app) layout, so the header's controls are there from the first paint. */
+  initialUser: HeaderUser;
 }
 
-export default function LayoutWrapper({ children }: LayoutWrapperProps) {
+export default function LayoutWrapper({ children, initialUser }: LayoutWrapperProps) {
   const pathname = usePathname();
   const isAuthPage = pathname === '/login' || pathname === '/book' || pathname === '/onboard';
   const { isCollapsed } = useSidebar();
-  const [user, setUser] = useState<{ id: string; name: string; role: string; email?: string } | null>(null);
+  const [user, setUser] = useState<HeaderUser>(initialUser);
 
+  // Follow the server if the signed-in account changes (e.g. after a platform "view as" switch).
   useEffect(() => {
-    if (!isAuthPage) {
-      // Fetch user info for header
-      fetch('/api/user/me')
-        .then(res => res.json())
-        .then(data => {
-          if (data.success && data.user) {
-            // Handle role - can be object with name or string
-            let roleName = 'user';
-            if (typeof data.user.role === 'object' && data.user.role?.name) {
-              roleName = data.user.role.name;
-            } else if (typeof data.user.role === 'string') {
-              roleName = data.user.role;
-            }
-            
-            setUser({
-              id: data.user._id,
-              name: data.user.name,
-              role: roleName,
-              email: data.user.email,
-            });
-          }
-        })
-        .catch(err => console.error('Error fetching user:', err));
-    }
-  }, [isAuthPage]);
+    setUser(initialUser);
+  }, [initialUser.id, initialUser.name, initialUser.role, initialUser.email]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The profile page reports a rename so the header's name and initials follow at once.
   useEffect(() => {
     const onUpdated = (e: Event) => {
       const name = (e as CustomEvent<{ name?: string }>).detail?.name;
-      if (name) setUser((prev) => (prev ? { ...prev, name } : prev));
+      if (name) setUser((prev) => ({ ...prev, name }));
     };
     window.addEventListener(ACCOUNT_UPDATED_EVENT, onUpdated);
     return () => window.removeEventListener(ACCOUNT_UPDATED_EVENT, onUpdated);
@@ -62,7 +44,7 @@ export default function LayoutWrapper({ children }: LayoutWrapperProps) {
 
   // Main content area with margin that adjusts based on sidebar state
   return (
-    <MessagingProvider meId={user?.id ?? null}>
+    <MessagingProvider meId={user.id}>
       <div
         className={`min-h-screen bg-gray-50 transition-[margin] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
           isCollapsed ? 'lg:ml-20' : 'lg:ml-[280px]'

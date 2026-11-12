@@ -11,6 +11,30 @@ import { getTenantContext } from "@/lib/tenant";
 import { verifySession } from "@/app/lib/dal";
 import TenantNotFound from "@/components/TenantNotFound";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
+import connectDB from "@/lib/mongodb";
+import User from "@/models/User";
+
+/**
+ * The header's account info, read on the server so the header never renders without it.
+ * The session already carries id, email and role; only the display name needs a lookup,
+ * and if that fails the email stands in rather than hiding the header controls.
+ */
+async function loadHeaderUser(session: { userId: string; email: string; role: string }) {
+  let name = '';
+  try {
+    await connectDB();
+    const doc = (await User.findById(session.userId).select('name').lean()) as { name?: string } | null;
+    name = doc?.name?.trim() || '';
+  } catch (err) {
+    console.error('Error loading header user:', err);
+  }
+  return {
+    id: session.userId,
+    name: name || session.email.split('@')[0] || 'Account',
+    role: session.role || 'user',
+    email: session.email,
+  };
+}
 
 export const metadata: Metadata = {
   title: { default: "MyClinicSoft", template: "%s | MyClinicSoft" },
@@ -35,6 +59,8 @@ export default async function AppLayout({
   if (tenantContext.subdomain && !tenantContext.tenant) {
     return <TenantNotFound subdomain={tenantContext.subdomain} />;
   }
+
+  const headerUser = await loadHeaderUser(session);
 
   return (
     <ErrorBoundary>
@@ -65,7 +91,7 @@ export default async function AppLayout({
           }>
             <Navigation />
           </Suspense>
-          <LayoutWrapper>
+          <LayoutWrapper initialUser={headerUser}>
             {children}
           </LayoutWrapper>
           <ServiceWorkerRegistration />
