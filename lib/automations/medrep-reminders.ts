@@ -1,11 +1,12 @@
 // Medical Representative Reminders
-// Push to the rep mobile app: upcoming visits and products about to expire.
+// Rep inbox + push to the rep mobile app: upcoming visits and products about to expire.
 
 import connectDB from '@/lib/mongodb';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
 import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
 import Product from '@/models/Product';
-import { sendPushToUserDevices, type PushPayload } from '@/lib/push-notifications';
+import type { PushPayload } from '@/lib/push-notifications';
+import { notifyRep, type RepNotificationKind } from '@/lib/rep-notify';
 import { BATCH_LIMIT, errorMessage } from './shared';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -38,6 +39,15 @@ async function mutedUserIds(userIds: string[]): Promise<Set<string>> {
     .select('userId')
     .lean<Array<{ userId: unknown }>>();
   return new Set(muted.map((r) => String(r.userId)));
+}
+
+/** One inbox record + push (muted reps get the record only). Returns whether a push went out. */
+async function notifyBatch(userId: string, muted: boolean, kind: RepNotificationKind, message: PushPayload, tag: string): Promise<boolean> {
+  const { sent } = await notifyRep(
+    { userId, notificationsEnabled: !muted },
+    { kind, title: message.title, body: message.body, screen: message.data?.screen ?? 'home', id: message.data?.id, tag }
+  );
+  return sent;
 }
 
 /** "today" / "tomorrow" / "Mon, Oct 20" for a visit date (stored as UTC midnight of the day). */
@@ -84,7 +94,8 @@ export function expiryAlertMessage(products: ExpiringProduct[]): PushPayload {
 }
 
 /**
- * Push each rep (at most one message per kind per run):
+ * Notify each rep (inbox record + push, at most one message per kind per run; reps who switched
+ * push off still get the record):
  *  - scheduled visits from today until 24 h from now that have not been reminded yet;
  *  - active products expiring within PRODUCT_EXPIRY_WINDOW_DAYS that have not been flagged yet.
  * Rows are marked as handled whether or not a device was registered, so a rep without the app
@@ -121,9 +132,8 @@ export async function processMedrepReminders(now: Date = new Date()): Promise<Me
 
   for (const [userId, rows] of visitGroups) {
     try {
-      if (!muted.has(userId)) {
-        const { sent } = await sendPushToUserDevices(userId, { ...visitReminderMessage(rows, now), tag: 'medrep-visit' });
-        if (sent) result.visitReminders++;
+      if (await notifyBatch(userId, muted.has(userId), 'reminder', visitReminderMessage(rows, now), 'medrep-visit')) {
+        result.visitReminders++;
       }
       await MedicalRepresentativeVisit.updateMany(
         { _id: { $in: rows.map((r) => r._id) } },
@@ -136,9 +146,8 @@ export async function processMedrepReminders(now: Date = new Date()): Promise<Me
 
   for (const [userId, rows] of productGroups) {
     try {
-      if (!muted.has(userId)) {
-        const { sent } = await sendPushToUserDevices(userId, { ...expiryAlertMessage(rows), tag: 'medrep-product-expiry' });
-        if (sent) result.expiryAlerts++;
+      if (await notifyBatch(userId, muted.has(userId), 'expiry', expiryAlertMessage(rows), 'medrep-product-expiry')) {
+        result.expiryAlerts++;
       }
       await Product.updateMany(
         { _id: { $in: rows.map((r) => r._id) } },

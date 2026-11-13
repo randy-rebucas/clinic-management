@@ -11,7 +11,7 @@ import { getSponsorshipPricing } from '@/lib/platform-config';
 import { createCheckoutSession, isPayMongoConfigured } from '@/lib/paymongo';
 import { activateSubscriptionFromOrder } from '@/lib/subscription';
 import { notifyStaff } from '@/lib/notify';
-import { sendPushToUserDevices } from '@/lib/push-notifications';
+import { notifyRep as notifyRepInbox } from '@/lib/rep-notify';
 import { isAllowedAppReturnUrl } from '@/lib/rep-app-return-url';
 import {
   SPONSORED_PLAN,
@@ -467,15 +467,14 @@ async function notifyRep(view: SponsorshipView, event: Event, months?: number, m
   if (!c) return;
   try {
     const rep = await MedicalRepresentative.findById(view.rep.id).select('userId notificationsEnabled').lean<any>();
-    if (!rep?.userId || rep.notificationsEnabled === false) return;
-    await sendPushToUserDevices(String(rep.userId), {
-      title: c.title,
-      body: c.body.slice(0, 240),
-      tag: `sponsorship-${view.id}`,
-      data: { screen: 'sponsorships', id: view.id },
-    });
+    if (!rep?.userId) return;
+    // Inbox record always; push unless the rep switched it off.
+    await notifyRepInbox(
+      { userId: rep.userId, notificationsEnabled: rep.notificationsEnabled !== false },
+      { kind: 'sponsorship', title: c.title, body: c.body.slice(0, 240), screen: 'sponsorships', id: view.id, tag: `sponsorship-${view.id}` }
+    );
   } catch (error) {
-    console.error('[sponsorship] rep push failed:', error);
+    console.error('[sponsorship] rep notification failed:', error);
   }
 }
 

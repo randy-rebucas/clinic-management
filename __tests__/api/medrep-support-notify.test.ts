@@ -38,7 +38,7 @@ const repProfile = (p: Record<string, unknown> | null) =>
 describe('support notifications to medical reps', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(notifyStaff).mockResolvedValue({ recipients: 1, batchId: 'b1' });
+    vi.mocked(notifyStaff).mockResolvedValue({ recipients: 1, batchId: 'b1', notificationIds: ['n1'] });
     repProfile({ notificationsEnabled: true });
   });
 
@@ -47,10 +47,22 @@ describe('support notifications to medical reps', () => {
     await addSupportReply({ id: ID, authorType: 'platform', authorEmail: 'ops@myclinicsoft.test', message: 'Fixed.' });
     await vi.waitFor(() => expect(sendPushToUserDevices).toHaveBeenCalled());
 
-    expect(notifyStaff).toHaveBeenCalledWith(expect.objectContaining({ tenantId: null, audience: { userIds: [USER] }, type: 'support', push: false }));
+    expect(notifyStaff).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: null,
+        audience: { userIds: [USER] },
+        type: 'support',
+        push: false,
+        // The rep inbox record: routed by kind/screen/id, bounded by expiresAt
+        metadata: { supportRequestId: ID, kind: 'support', screen: 'support', id: ID },
+        expiresAt: expect.any(Date),
+      })
+    );
+    const expiresAt = vi.mocked(notifyStaff).mock.calls[0][0].expiresAt!;
+    expect(expiresAt.getTime() - Date.now()).toBeGreaterThan(89 * 24 * 3600 * 1000);
     expect(sendPushToUserDevices).toHaveBeenCalledWith(
       USER,
-      expect.objectContaining({ title: 'Support replied: Login', body: 'Fixed.', tag: 'notification-b1', data: { screen: 'support', id: ID } }),
+      expect.objectContaining({ title: 'Support replied: Login', body: 'Fixed.', tag: 'notification-b1', priority: 'high', data: { screen: 'support', id: ID, notificationId: 'n1' } }),
       { honorQuietHours: true }
     );
     expect(vi.mocked(MedicalRepresentative.findOne).mock.calls[0][0]).toEqual({ userId: USER });
@@ -59,7 +71,7 @@ describe('support notifications to medical reps', () => {
   it('“resolved” (and older requests with no source and no clinic) take the same route', async () => {
     await notifyRequesterInApp({ userId: USER }, ID, 'Resolved: Login', 'Marked resolved.');
     await vi.waitFor(() => expect(sendPushToUserDevices).toHaveBeenCalled());
-    expect(vi.mocked(sendPushToUserDevices).mock.calls[0][1].data).toEqual({ screen: 'support', id: ID });
+    expect(vi.mocked(sendPushToUserDevices).mock.calls[0][1].data).toEqual({ screen: 'support', id: ID, notificationId: 'n1' });
   });
 
   it('skips the push for a rep who switched notifications off, but keeps the in-app notification', async () => {
@@ -71,7 +83,7 @@ describe('support notifications to medical reps', () => {
   });
 
   it('pushes nothing when the in-app notification reached no one', async () => {
-    vi.mocked(notifyStaff).mockResolvedValue({ recipients: 0, batchId: 'b0' });
+    vi.mocked(notifyStaff).mockResolvedValue({ recipients: 0, batchId: 'b0', notificationIds: [] });
     await notifyRequesterInApp({ userId: USER, source: 'medical-rep' }, ID, 'Resolved: Login', 'Marked resolved.');
     expect(MedicalRepresentative.findOne).not.toHaveBeenCalled();
     expect(sendPushToUserDevices).not.toHaveBeenCalled();
@@ -80,8 +92,9 @@ describe('support notifications to medical reps', () => {
   it('clinic staff keep the staff push (no push:false, no rep push)', async () => {
     await notifyRequesterInApp({ userId: USER, tenantId: TENANT, source: 'clinic' }, ID, 'Resolved: Print', 'Marked resolved.');
     const opts = vi.mocked(notifyStaff).mock.calls[0][0];
-    expect(opts).toMatchObject({ tenantId: TENANT, actionUrl: `/admin/support/${ID}` });
+    expect(opts).toMatchObject({ tenantId: TENANT, actionUrl: `/admin/support/${ID}`, metadata: { supportRequestId: ID } });
     expect(opts).not.toHaveProperty('push');
+    expect(opts).not.toHaveProperty('expiresAt');
     expect(sendPushToUserDevices).not.toHaveBeenCalled();
   });
 });

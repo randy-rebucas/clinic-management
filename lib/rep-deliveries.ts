@@ -1,9 +1,8 @@
 import 'server-only';
 import { Types } from 'mongoose';
-import MedicalRepresentative from '@/models/MedicalRepresentative';
 import type { IRepDelivery } from '@/models/RepDelivery';
 import { notifyStaff } from '@/lib/notify';
-import { sendPushToUserDevices } from '@/lib/push-notifications';
+import { notifyRep } from '@/lib/rep-notify';
 
 /** Most lines one delivery may carry. */
 export const MAX_DELIVERY_LINES = 20;
@@ -52,28 +51,31 @@ export async function notifyClinicOfDelivery(d: Pick<IRepDelivery, '_id' | 'clin
   }
 }
 
-/** Push the clinic's answer to the rep's phone (opens the visit), unless they switched push off. */
+/** Tell the rep the clinic's answer (opens the visit): stored in their inbox, pushed unless they switched push off. */
 export async function notifyRepOfDelivery(
   d: Pick<IRepDelivery, '_id' | 'userId' | 'clinicName' | 'visitId' | 'kind' | 'lines'>,
   event: 'received' | 'rejected',
   note?: string
 ) {
   try {
-    const muted = await MedicalRepresentative.exists({ userId: d.userId, notificationsEnabled: false });
-    if (muted) return;
     const what = d.kind === 'sample' ? 'samples' : 'delivery';
     const body =
       event === 'received'
         ? `${d.clinicName} confirmed your ${what}: ${summary(d)}.`
         : `${d.clinicName} didn't confirm your ${what}: ${summary(d)}.`;
-    await sendPushToUserDevices(String(d.userId), {
-      title: event === 'received' ? 'Delivery confirmed' : 'Delivery not confirmed',
-      body: note ? `${body} ${note}`.slice(0, 240) : body,
-      tag: `medrep-delivery-${String(d._id)}`,
-      data: { screen: 'visits', id: String(d.visitId) },
-    });
+    await notifyRep(
+      { userId: d.userId },
+      {
+        kind: 'delivery',
+        title: event === 'received' ? 'Delivery confirmed' : 'Delivery not confirmed',
+        body: note ? `${body} ${note}`.slice(0, 240) : body,
+        screen: 'visits',
+        id: String(d.visitId),
+        tag: `medrep-delivery-${String(d._id)}`,
+      }
+    );
   } catch (error) {
-    console.error('[rep-deliveries] rep push failed:', error);
+    console.error('[rep-deliveries] rep notification failed:', error);
   }
 }
 
