@@ -13,11 +13,35 @@ const REP_TIME_ZONE = 'Asia/Manila';
 /** Most of today's stops returned for the route (Google Maps takes 9 in between plus the end). */
 const TODAY_LIMIT = 20;
 const VISIT_FIELDS = 'clinicId clinicName clinicLocation purpose date time duration status checkedInAt';
+/** Weeks in Home's visit chart, this one included. */
+const TREND_WEEKS = 8;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The last TREND_WEEKS Monday-start weeks, oldest first, each with its completed visits and its
+ * still-open ones (requested or scheduled). Cancelled, declined and no-show visits aren't counted.
+ * `days` is the per-day aggregation; visit days are UTC midnights, so day keys are ISO dates.
+ */
+function weeklySeries(weekStart: Date, days: { _id: Date; completed: number; open: number }[]) {
+  const weeks = Array.from({ length: TREND_WEEKS }, (_, i) => ({
+    week: new Date(weekStart.getTime() + i * 7 * DAY_MS).toISOString().slice(0, 10),
+    completed: 0,
+    open: 0,
+  }));
+  for (const d of days) {
+    const i = Math.floor((new Date(d._id).getTime() - weekStart.getTime()) / (7 * DAY_MS));
+    if (i < 0 || i >= TREND_WEEKS) continue;
+    weeks[i].completed += d.completed;
+    weeks[i].open += d.open;
+  }
+  return weeks;
+}
 
 /**
  * GET /api/medical-representatives/dashboard
  * Home-screen summary for the mobile app: profile header, visit/product/support counts and the
- * next few scheduled visits, plus every scheduled visit today (`todayVisits`, for the route).
+ * next few scheduled visits, plus every scheduled visit today (`todayVisits`, for the route) and
+ * the last 8 weeks of visits (`weeklyVisits`, for Home's chart).
  * "Today" and "this month" are Manila days, as the app shows them; visits are stored at UTC
  * midnight of their day, so the bounds are UTC midnights of those days.
  */
@@ -32,9 +56,12 @@ export async function GET(request: NextRequest) {
     const todayStart = parseVisitDay(localNow(REP_TIME_ZONE, now).day)!;
     const monthStart = new Date(Date.UTC(todayStart.getUTCFullYear(), todayStart.getUTCMonth(), 1));
     const nextMonthStart = new Date(Date.UTC(todayStart.getUTCFullYear(), todayStart.getUTCMonth() + 1, 1));
-    const expiryCutoff = new Date(now.getTime() + EXPIRY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
     const owner = rep.ownerFilter;
     const thisMonth = { $gte: monthStart, $lt: nextMonthStart };
+    // Monday of this week (getUTCDay: Sunday 0), then back TREND_WEEKS - 1 weeks.
+    const thisMonday = new Date(todayStart.getTime() - ((todayStart.getUTCDay() + 6) % 7) * DAY_MS);
+    const trendStart = new Date(thisMonday.getTime() - (TREND_WEEKS - 1) * 7 * DAY_MS);
+    const trendEnd = new Date(thisMonday.getTime() + 7 * DAY_MS);
 
     const [
       profile,
@@ -48,6 +75,7 @@ export async function GET(request: NextRequest) {
       activeProducts,
       expiringProducts,
       openSupportRequests,
+      trendDays,
     ] = await Promise.all([
       MedicalRepresentative.findOne(repProfileFilter(rep))
         // No profileImage: it can be a 2 MB data URI; the profile screen loads it from /session.
@@ -69,8 +97,26 @@ export async function GET(request: NextRequest) {
         .limit(TODAY_LIMIT)
         .lean(),
       Product.countDocuments({ ...owner, status: 'active' }),
-      Product.countDocuments({ ...owner, status: 'active', expiryDate: { $gte: now, $lte: expiryCutoff } }),
+      // Already expired counts too: a rep still carrying expired stock needs to know first.
+      Product.countDocuments({ ...owner, status: 'active', expiryDate: { $lt: new Date(todayStart.getTime() + (EXPIRY_WINDOW_DAYS + 1) * DAY_MS) } }),
       SupportRequestModel.countDocuments({ ...owner, status: { $in: ['open', 'in-progress'] } }),
+      // Per day, not per week: at most 56 groups, and no $dateTrunc week maths in the database.
+      MedicalRepresentativeVisit.aggregate<{ _id: Date; completed: number; open: number }>([
+        {
+          $match: {
+            ...owner,
+            date: { $gte: trendStart, $lt: trendEnd },
+            status: { $in: ['completed', 'scheduled', 'requested'] },
+          },
+        },
+        {
+          $group: {
+            _id: '$date',
+            completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+            open: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 0, 1] } },
+          },
+        },
+      ]),
     ]);
 
     if (!profile) {
@@ -93,6 +139,7 @@ export async function GET(request: NextRequest) {
         },
         nextVisits,
         todayVisits,
+        weeklyVisits: weeklySeries(trendStart, trendDays),
       },
     });
   } catch (error: any) {

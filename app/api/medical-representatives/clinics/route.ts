@@ -4,9 +4,55 @@ import Settings from '@/models/Settings';
 import Tenant from '@/models/Tenant';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
 import RepAccessRequest from '@/models/RepAccessRequest';
+import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
 import { sanitizeSearch } from '@/lib/utils';
-import { normalizeRepVisitSettings, describeWindows } from '@/lib/rep-visit-rules';
+import { normalizeRepVisitSettings, describeWindows, localNow, parseVisitDay } from '@/lib/rep-visit-rules';
 import { requireRepSession, isRepSessionError, repProfileFilter } from '../_lib/rep-session';
+
+/** The rep app's calendar: visit days are clinic days, and the clinics are in the Philippines. */
+const REP_TIME_ZONE = 'Asia/Manila';
+
+type History = { lastVisit: string | null; nextVisit: { date: string; time: string } | null };
+
+/**
+ * The rep's last completed and next open visit with each of these clinics, in one aggregation on
+ * the rep's own visits (the {tenantId, userId, date} index). Visit days are UTC midnights.
+ */
+async function visitHistory(ownerFilter: Record<string, unknown>, clinicIds: unknown[]): Promise<Map<string, History>> {
+  if (!clinicIds.length) return new Map();
+  const todayStart = parseVisitDay(localNow(REP_TIME_ZONE).day)!;
+  const day = { $dateToString: { format: '%Y-%m-%d', date: '$date', timezone: 'UTC' } };
+  const rows = await MedicalRepresentativeVisit.aggregate<{ _id: unknown; lastDone: string | null; nextOpen: string | null }>([
+    {
+      $match: {
+        ...ownerFilter,
+        $or: [{ clinicId: { $in: clinicIds } }, { linkedClinicId: { $in: clinicIds } }],
+        status: { $in: ['completed', 'requested', 'scheduled'] },
+      },
+    },
+    {
+      $group: {
+        _id: { $ifNull: ['$clinicId', '$linkedClinicId'] },
+        lastDone: { $max: { $cond: [{ $eq: ['$status', 'completed'] }, day, null] } },
+        // "YYYY-MM-DD HH:mm" sorts as text, so $min is the soonest.
+        nextOpen: {
+          $min: {
+            $cond: [{ $and: [{ $ne: ['$status', 'completed'] }, { $gte: ['$date', todayStart] }] }, { $concat: [day, ' ', '$time'] }, null],
+          },
+        },
+      },
+    },
+  ]);
+  return new Map(
+    rows.map((r) => [
+      String(r._id),
+      {
+        lastVisit: r.lastDone ?? null,
+        nextVisit: r.nextOpen ? { date: r.nextOpen.slice(0, 10), time: r.nextOpen.slice(11) } : null,
+      },
+    ])
+  );
+}
 
 /**
  * GET /api/medical-representatives/clinics
@@ -16,7 +62,10 @@ import { requireRepSession, isRepSessionError, repProfileFilter } from '../_lib/
  * `scope=all` also lists clinics taking rep visits that haven't added the rep and aren't open to
  * all (to request access); those carry no hours or instructions. Every clinic has `access`:
  * "linked" (added the rep), "open" (open to all reps), "requested" (the rep's request is
- * waiting) or "none", and `canBook`.
+ * waiting) or "none", and `canBook`. Each clinic also carries the rep's own history with it:
+ * `lastVisit` (the latest completed visit's day, "YYYY-MM-DD") and `nextVisit` (the soonest
+ * requested or scheduled visit from today on, `{ date, time }`), or null. Bookings (`clinicId`)
+ * and log entries the rep linked to the clinic (`linkedClinicId`) both count.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -58,6 +107,8 @@ export async function GET(request: NextRequest) {
       Tenant.countDocuments(tenantQuery),
     ]);
 
+    const history = await visitHistory(rep.ownerFilter, tenants.map((t) => t._id));
+
     const requested = all
       ? new Set(
           (await RepAccessRequest.find({ userId: rep.userObjectId, status: 'pending', tenantId: { $in: tenants.map((t) => t._id) } })
@@ -88,6 +139,8 @@ export async function GET(request: NextRequest) {
         slotMinutes: settings.slotMinutes,
         maxAdvanceDays: settings.maxAdvanceDays,
         instructions: canBook ? settings.instructions || null : null,
+        lastVisit: history.get(id)?.lastVisit ?? null,
+        nextVisit: history.get(id)?.nextVisit ?? null,
       };
     });
 
