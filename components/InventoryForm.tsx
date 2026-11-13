@@ -37,7 +37,7 @@ interface Medicine {
   form?: string;
 }
 
-const UNITS = ['pieces', 'tablets', 'capsules', 'bottles', 'boxes', 'vials', 'ampoules', 'sachets', 'tubes', 'packs', 'rolls', 'pairs'];
+export const UNITS = ['pieces', 'tablets', 'capsules', 'bottles', 'boxes', 'vials', 'ampoules', 'sachets', 'tubes', 'packs', 'rolls', 'pairs'];
 
 type Field = 'name' | 'sku' | 'unit' | 'quantity' | 'reorderLevel' | 'reorderQuantity' | 'unitCost' | 'expiryDate';
 
@@ -418,7 +418,7 @@ function NumberField({
  * Link a medicine item to the clinic's medicine list, so dispensing that medicine takes stock off
  * this item even when the names are written differently.
  */
-function MedicineLink({ value, onChange, itemName }: { value: InventoryFormItem['medicineId']; onChange: (m: InventoryFormItem['medicineId']) => void; itemName: string }) {
+export function MedicineLink({ value, onChange, itemName }: { value: InventoryFormItem['medicineId']; onChange: (m: InventoryFormItem['medicineId']) => void; itemName: string }) {
   const ids = useId();
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');

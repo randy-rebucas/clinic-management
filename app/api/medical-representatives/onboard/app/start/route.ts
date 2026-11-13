@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { randomBytes } from 'crypto';
+import bcrypt from 'bcryptjs';
 import connectDB from '@/lib/mongodb';
 import logger from '@/lib/logger';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
@@ -64,14 +66,16 @@ export async function POST(request: NextRequest) {
       { headers: { 'Cache-Control': 'no-store' } }
     );
 
-    const taken = (await MedicalRepresentative.exists({ email })) || (await User.exists({ email }));
-    if (taken) {
-      // The id is stored nowhere, so its codes never verify; the owner gets an email explaining.
-      await sendAlreadyRegisteredEmail(email);
-      return answer;
-    }
-
-    const code = await newEmailCode();
+    const taken = !!((await MedicalRepresentative.exists({ email })) || (await User.exists({ email })));
+    // Taken: a decoy signup whose code never matches (verify answers wrong, then locked, as for a
+    // new address); the owner gets an email explaining instead of a code.
+    const code = taken
+      ? {
+          code: '',
+          hash: await bcrypt.hash(randomBytes(32).toString('hex'), 10),
+          expiresAt: new Date(Date.now() + EMAIL_CODE_TTL_MINUTES * 60 * 1000),
+        }
+      : await newEmailCode();
     await RepAppSignup.updateOne(
       { email },
       {
@@ -89,12 +93,17 @@ export async function POST(request: NextRequest) {
           emailCodeExpiresAt: code.expiresAt,
           emailCodeAttempts: 0,
           expiresAt: new Date(Date.now() + APP_SIGNUP_TTL_MS),
+          ...(taken ? { decoy: true } : {}),
         },
-        $unset: { emailVerifiedAt: 1, phoneVerifiedAt: 1 },
+        $unset: { emailVerifiedAt: 1, phoneVerifiedAt: 1, ...(taken ? {} : { decoy: 1 as const }) },
       },
       { upsert: true }
     );
 
+    if (taken) {
+      await sendAlreadyRegisteredEmail(email);
+      return answer;
+    }
     if (!(await sendSignupEmailCode(email, body.firstName, code.code))) {
       return NextResponse.json(
         { success: false, error: 'We couldn’t email a code to that address. Please check it and try again.' },

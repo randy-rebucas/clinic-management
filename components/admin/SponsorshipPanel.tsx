@@ -194,13 +194,13 @@ function Current({ s, busy, act }: { s: SponsorshipRow; busy: boolean; act: (a: 
     detail = 'If you accept, they pay for Professional for the clinic. Nothing is charged to the clinic.';
   } else if (s.status === 'pending') {
     title = `Waiting for ${who} to answer`;
-    detail = `You asked on ${s.createdOn}. They’ll see it in the MyClinicSoft Rep app.`;
+    detail = `You asked on ${s.createdOn}. They’ll see it in the eMedRoute app.`;
   } else if (s.active) {
     title = `Sponsored by ${who}`;
     detail = `Professional is paid through ${s.paidThroughOn}. ${who.split(' (')[0]} can renew before then.`;
   } else if (s.payments.length) {
     title = `${who}’s sponsorship has run out`;
-    detail = `It was paid through ${s.paidThroughOn}. They can renew it from the Rep app, or you can pay for a plan below.`;
+    detail = `It was paid through ${s.paidThroughOn}. They can renew it from the eMedRoute app, or you can pay for a plan below.`;
   } else {
     title = `${who} agreed to sponsor your plan`;
     detail = 'Waiting for their payment. Your plan changes as soon as it is confirmed.';

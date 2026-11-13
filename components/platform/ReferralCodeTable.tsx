@@ -43,7 +43,7 @@ export default function ReferralCodeTable({ codes }: { codes: PlatformReferralRo
   }
 
   if (!codes.length) {
-    return <p className="px-5 py-8 text-center text-sm text-gray-500">No codes yet. Reps’ own codes appear here once they open Refer a clinic in the Rep app.</p>;
+    return <p className="px-5 py-8 text-center text-sm text-gray-500">No codes yet. Reps’ own codes appear here once they open Refer a clinic in the eMedRoute app.</p>;
   }
 
   return (

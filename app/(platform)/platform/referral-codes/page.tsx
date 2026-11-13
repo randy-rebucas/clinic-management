@@ -17,7 +17,7 @@ export default async function PlatformReferralCodesPage() {
         <h1 className="text-xl font-semibold text-gray-900">Rep referral codes</h1>
         <p className="text-sm text-gray-500">
           A clinic that registers with a rep’s code or link, or enters it later on its billing page, gets that rep added to its
-          representatives, so it can ask them to sponsor its plan. Reps make their own code in the Rep app; make custom ones here.
+          representatives, so it can ask them to sponsor its plan. Reps make their own code in the eMedRoute app; make custom ones here.
         </p>
       </div>
 

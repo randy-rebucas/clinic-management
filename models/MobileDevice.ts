@@ -74,5 +74,8 @@ MobileDeviceSchema.index(
   { unique: true, partialFilterExpression: { userId: { $exists: true } } }
 );
 
+// The rep devices route drops other registrations of the same push token (a reinstalled phone).
+MobileDeviceSchema.index({ pushToken: 1 }, { partialFilterExpression: { pushToken: { $type: 'string' } } });
+
 export default mongoose.models.MobileDevice ||
   mongoose.model<IMobileDevice>('MobileDevice', MobileDeviceSchema);

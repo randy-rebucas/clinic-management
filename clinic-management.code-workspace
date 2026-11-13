@@ -4,6 +4,9 @@
 			"path": "."
 		},
 		{
+			"path": "../clinic-management-rep"
+		},
+		{
 			"path": "../clinic-management-mobile"
 		},
 		{

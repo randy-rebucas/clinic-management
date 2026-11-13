@@ -21,6 +21,8 @@ const updateProductSchema = z.object({
   packaging: z.string().trim().min(1).max(200),
   expiryDate: z.coerce.date(),
   status: z.enum(['active', 'discontinued', 'inactive']).optional(),
+  /** What one pack holds ("30 tablets"); null clears it, left out keeps it. */
+  packSize: z.object({ count: z.number().int().min(1).max(10000), unit: z.string().trim().min(1).max(50) }).nullable().optional(),
 });
 
 /**
@@ -81,17 +83,27 @@ export async function PUT(
     if (!current) return notFound('Product');
     const expiryChanged = current.expiryDate?.getTime() !== body.expiryDate.getTime();
 
+    // PUT takes the full object: an empty dosage or strength clears it (Mongoose drops undefined
+    // from $set, which would keep the old value).
+    const unset: Record<string, 1> = {
+      ...(expiryChanged ? { expiryAlertSentAt: 1 } : {}),
+      ...(body.packSize === null ? { packSize: 1 } : {}),
+      ...(body.dosage === undefined ? { dosage: 1 } : {}),
+      ...(body.strength === undefined ? { strength: 1 } : {}),
+    };
+
     const updatedProduct = await Product.findOneAndUpdate(
       { ...rep.ownerFilter, _id: productId },
       {
-        ...(expiryChanged ? { $unset: { expiryAlertSentAt: 1 } } : {}),
+        ...(Object.keys(unset).length ? { $unset: unset } : {}),
         $set: {
+          ...(body.packSize ? { packSize: body.packSize } : {}),
+          ...(body.dosage !== undefined ? { dosage: body.dosage } : {}),
+          ...(body.strength !== undefined ? { strength: body.strength } : {}),
           name: body.name,
           category: body.category,
           manufacturer: body.manufacturer,
           description: body.description,
-          dosage: body.dosage,
-          strength: body.strength,
           packaging: body.packaging,
           expiryDate: body.expiryDate,
           status: body.status || 'active',

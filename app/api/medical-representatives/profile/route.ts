@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRepSession, isRepSessionError } from '../_lib/rep-session';
+import { requireRepSession, isRepSessionError, repOwnProfile } from '../_lib/rep-session';
 import connectDB from '@/lib/mongodb';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
+import { normalizePhone } from '@/lib/phone';
 
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2 MB
@@ -76,7 +77,14 @@ export async function PUT(request: NextRequest) {
 
     if (stringField(body.firstName)) medicalRep.firstName = stringField(body.firstName)!;
     if (stringField(body.lastName)) medicalRep.lastName = stringField(body.lastName)!;
-    if (stringField(body.phone)) medicalRep.phone = stringField(body.phone)!;
+    const phone = stringField(body.phone);
+    if (phone && phone !== medicalRep.phone) {
+      if (phone.length > 30 || !normalizePhone(phone)) {
+        return NextResponse.json({ success: false, error: 'Enter a valid mobile number.', code: 'INVALID_PHONE' }, { status: 400 });
+      }
+      // Saving a new number clears phoneVerifiedAt (model pre-save): no sign-in by text until proven.
+      medicalRep.phone = phone;
+    }
     if (stringField(body.company)) medicalRep.company = stringField(body.company)!;
     if (body.bio !== undefined) medicalRep.bio = stringField(body.bio) ?? '';
     if (body.territory !== undefined) medicalRep.territory = stringField(body.territory) ?? '';
@@ -85,14 +93,7 @@ export async function PUT(request: NextRequest) {
 
     await medicalRep.save();
 
-    const result = medicalRep.toObject();
-    delete result.internalNotes;
-    delete result.paymentStatus;
-    delete result.paymentDate;
-    delete result.paymentAmount;
-    delete result.paymentMethod;
-    delete result.paymentReference;
-    delete result.password;
+    const result = repOwnProfile(medicalRep);
 
     return NextResponse.json({
       success: true,

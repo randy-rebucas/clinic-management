@@ -65,4 +65,16 @@ export function repProfileFilter(rep: RepSession): Record<string, unknown> {
 
 /** Fields never returned to the rep from their own MedicalRepresentative profile. */
 export const REP_PRIVATE_FIELDS =
-  '-internalNotes -paymentStatus -paymentDate -paymentAmount -paymentMethod -paymentReference -password -subscription.paymentHistory';
+  '-internalNotes -paymentStatus -paymentDate -paymentAmount -paymentMethod -paymentReference -password -subscription.paymentHistory -activationCheckoutId -activationTokenHash -activationTokenExpiresAt';
+
+/** A saved profile as the rep may see it: REP_PRIVATE_FIELDS removed from `doc.toObject()`. */
+export function repOwnProfile(doc: { toObject(): any }): Record<string, unknown> {
+  const result = doc.toObject();
+  for (const field of REP_PRIVATE_FIELDS.split(' ')) {
+    const path = field.slice(1).split('.');
+    let target: any = result;
+    for (const key of path.slice(0, -1)) target = target?.[key];
+    if (target && typeof target === 'object') delete target[path[path.length - 1]];
+  }
+  return result;
+}

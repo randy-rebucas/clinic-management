@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Product from '@/models/Product';
 import { requireRepSession, isRepSessionError } from '../_lib/rep-session';
-
-const VALID_PRODUCT_STATUSES = ['active', 'discontinued', 'inactive'] as const;
+import { readProductInput, VALID_PRODUCT_STATUSES } from '../_lib/rep-product-input';
 
 /**
  * GET /api/medical-representatives/products
@@ -73,51 +72,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const name = typeof body.name === 'string' ? body.name.trim() : '';
-    const category = typeof body.category === 'string' ? body.category.trim() : '';
-    const manufacturer = typeof body.manufacturer === 'string' ? body.manufacturer.trim() : '';
-    const description = typeof body.description === 'string' ? body.description.trim() : '';
-    const packaging = typeof body.packaging === 'string' ? body.packaging.trim() : '';
-    const expiryDate = typeof body.expiryDate === 'string' ? body.expiryDate.trim() : '';
-    const dosage = typeof body.dosage === 'string' ? body.dosage.trim() : undefined;
-    const strength = typeof body.strength === 'string' ? body.strength.trim() : undefined;
-    const status = typeof body.status === 'string' ? body.status.trim() : 'active';
-
-    if (!name || !category || !manufacturer || !description || !packaging || !expiryDate) {
-      return NextResponse.json(
-        { success: false, error: 'Missing required fields' },
-        { status: 400 }
-      );
-    }
-
-    if (name.length > 200 || category.length > 100 || manufacturer.length > 200 ||
-        description.length > 2000 || packaging.length > 200 ||
-        (dosage?.length ?? 0) > 200 || (strength?.length ?? 0) > 200) {
-      return NextResponse.json({ success: false, error: 'One or more fields exceed maximum length.' }, { status: 400 });
-    }
-
-    if (!VALID_PRODUCT_STATUSES.includes(status as typeof VALID_PRODUCT_STATUSES[number])) {
-      return NextResponse.json({ success: false, error: 'Invalid status value.' }, { status: 400 });
-    }
-
-    const parsedExpiry = new Date(expiryDate);
-    if (isNaN(parsedExpiry.getTime())) {
-      return NextResponse.json({ success: false, error: 'Invalid expiry date.' }, { status: 400 });
+    const input = readProductInput(body);
+    if (!input.ok) {
+      return NextResponse.json({ success: false, error: input.error }, { status: 400 });
     }
 
     await connectDB();
 
     const product = await Product.create({
       ...rep.ownerFilter,
-      name,
-      category,
-      manufacturer,
-      description,
-      dosage: dosage || undefined,
-      strength: strength || undefined,
-      packaging,
-      expiryDate: parsedExpiry,
-      status,
+      ...input.value,
       specifications: [],
     });
 

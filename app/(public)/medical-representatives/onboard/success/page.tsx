@@ -4,21 +4,11 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Suspense, useEffect } from 'react';
 import { Icon, icons, SUPPORT_EMAIL } from '@/components/PublicPage';
+import { isAllowedAppReturnUrl } from '@/lib/rep-app-return-url';
 
-/**
- * The rep app's deep link, when the checkout was opened from the app. Same rule as the server's
- * isAllowedAppReturnUrl (lib/medrep-app-signup.ts): the app's own scheme, plus Expo Go in development.
- */
+/** The rep app's deep link, when the checkout was opened from the app (lib/rep-app-return-url). */
 function appReturnUrl(value: string | null): string | null {
-  if (!value || value.length > 500) return null;
-  try {
-    const { protocol } = new URL(value);
-    if (protocol === 'myclinicsoft-rep:') return value;
-    if (process.env.NODE_ENV !== 'production' && (protocol === 'exp:' || protocol === 'exps:')) return value;
-  } catch {
-    // Not a URL: ignore it.
-  }
-  return null;
+  return isAllowedAppReturnUrl(value) ? value : null;
 }
 
 /**
@@ -113,7 +103,7 @@ function SuccessContent() {
               href={app}
               className="mt-6 flex w-full items-center justify-center rounded-md bg-brand-teal px-5 py-3 font-semibold text-white transition-colors duration-150 hover:bg-brand-teal-dark"
             >
-              Return to the MyClinicSoft Rep app
+              Return to the eMedRoute app
             </a>
           )}
 

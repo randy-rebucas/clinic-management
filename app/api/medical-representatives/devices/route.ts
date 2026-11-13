@@ -44,6 +44,15 @@ export async function POST(request: NextRequest) {
       patientId: { $exists: false },
       userId: { $ne: rep.userObjectId },
     });
+    // The same push token under another rep or deviceId is this phone too (a reinstall makes a new
+    // deviceId but can keep the token): drop it, or the other account's pushes reach this phone.
+    if (pushToken) {
+      await MobileDevice.deleteMany({
+        pushToken,
+        patientId: { $exists: false },
+        $or: [{ userId: { $ne: rep.userObjectId } }, { deviceId: { $ne: deviceId } }],
+      });
+    }
 
     const device = await MobileDevice.findOneAndUpdate(
       { userId: rep.userObjectId, deviceId },

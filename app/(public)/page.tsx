@@ -132,7 +132,7 @@ const audiences = [
     title: 'For medical reps',
     icon: icons.briefcase,
     points: ['A dedicated rep app is on the way', 'Clinics you work with can add you today', 'Ask us to be notified at launch'],
-    primary: { href: '/medical-representatives/onboard', label: 'Rep app: coming soon' },
+    primary: { href: '/medical-representatives/onboard', label: 'eMedRoute: coming soon' },
     secondary: { href: '/contact', label: 'Ask a question' },
     featured: false,
   },
@@ -267,7 +267,7 @@ export default async function HomePage() {
                 <span className="mx-2 text-gray-300">·</span>
                 Medical rep?{' '}
                 <Link href="/medical-representatives/onboard" className="font-semibold text-brand-blue hover:underline underline-offset-2">
-                  Rep app coming soon
+                  eMedRoute coming soon
                 </Link>
               </p>
 

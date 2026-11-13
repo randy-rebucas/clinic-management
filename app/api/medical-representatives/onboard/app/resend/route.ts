@@ -12,6 +12,7 @@ import {
   appSignupUnavailable,
   findAppSignup,
   newEmailCode,
+  sendAlreadyRegisteredEmail,
   sendSignupEmailCode,
   sendSignupPhoneCode,
   signupExpiredResponse,
@@ -48,6 +49,11 @@ export async function POST(request: NextRequest) {
       const limited = await applyRateLimit(request, rateLimiters.repSignupEmail, signup.email);
       if (limited) return limited;
 
+      if (signup.decoy) {
+        // The address already has an account: remind the owner, answer as for a real signup.
+        await sendAlreadyRegisteredEmail(signup.email);
+        return NextResponse.json({ success: true, expiresInMinutes: EMAIL_CODE_TTL_MINUTES });
+      }
       const code = await newEmailCode();
       await RepAppSignup.updateOne(
         { _id: signup._id },

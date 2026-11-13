@@ -12,6 +12,7 @@ import { createCheckoutSession, isPayMongoConfigured } from '@/lib/paymongo';
 import { activateSubscriptionFromOrder } from '@/lib/subscription';
 import { notifyStaff } from '@/lib/notify';
 import { sendPushToUserDevices } from '@/lib/push-notifications';
+import { isAllowedAppReturnUrl } from '@/lib/rep-app-return-url';
 import {
   SPONSORED_PLAN,
   isSponsorTerm,
@@ -279,9 +280,11 @@ async function notFoundOrConflict(id: string, actor: Actor, conflict: string): P
 
 // ── Paying ───────────────────────────────────────────────────────────────────
 
-function returnUrl(status: 'paid' | 'cancelled') {
+function returnUrl(status: 'paid' | 'cancelled', appReturnUrl?: string | null) {
   const base = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
-  return `${base}/medical-representatives/paid?status=${status}&for=sponsorship`;
+  // Opened from the rep app: the page sends the browser back to it, which closes the in-app browser.
+  const app = appReturnUrl && isAllowedAppReturnUrl(appReturnUrl) ? `&app=${encodeURIComponent(appReturnUrl)}` : '';
+  return `${base}/medical-representatives/paid?status=${status}&for=sponsorship${app}`;
 }
 
 /**
@@ -291,7 +294,8 @@ function returnUrl(status: 'paid' | 'cancelled') {
 export async function createSponsorshipCheckout(
   id: string,
   repUserId: string,
-  months: unknown
+  months: unknown,
+  appReturnUrl?: string | null
 ): Promise<Result<{ checkoutUrl: string; orderId: string; amount: number; months: SponsorTerm }>> {
   if (!isSponsorTerm(months)) return fail(400, 'Choose 1, 3, 6 or 12 months.', 'BAD_TERM');
   if (!isOid(id)) return fail(404, 'Sponsorship not found');
@@ -318,8 +322,8 @@ export async function createSponsorshipCheckout(
     amount,
     description: `Sponsored by ${rep.firstName} ${rep.lastName}: ${termLabel(months)} of Professional${percentOff ? `, ${percentOff}% off` : ''}`.slice(0, 255),
     referenceNumber: `MSP-${String(sponsorship._id).slice(-8).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`,
-    successUrl: returnUrl('paid'),
-    cancelUrl: returnUrl('cancelled'),
+    successUrl: returnUrl('paid', appReturnUrl),
+    cancelUrl: returnUrl('cancelled', appReturnUrl),
     email: rep.email,
     metadata: {
       purpose: 'clinic-sponsorship',
