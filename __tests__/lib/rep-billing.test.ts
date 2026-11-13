@@ -10,13 +10,22 @@ vi.mock('@/models/RepTeam', () => ({ default: { findById: vi.fn(), updateOne: vi
 import MedicalRepresentative from '@/models/MedicalRepresentative';
 import RepTeam from '@/models/RepTeam';
 import { getPlatformFees } from '@/lib/platform-config';
-import { applyRepSubscriptionPayment, applyTeamPayment, repBookingAccess, repPeriodEnd } from '@/lib/rep-billing';
+import { applyRepSubscriptionPayment, applyTeamPayment, convertRemaining, hasActivePro, repBookingAccess, repPeriodEnd } from '@/lib/rep-billing';
 
 const NOW = new Date('2026-11-01T00:00:00Z');
 const REP = '507f1f77bcf86cd7994390aa';
 const TEAM = '507f1f77bcf86cd7994390bb';
-const fees = (monthly: number) =>
-  vi.mocked(getPlatformFees).mockResolvedValue({ medrepActivationFee: 0, medrepMonthlyFee: monthly, medrepSeatMonthlyFee: 400, voucherFaceValue: 80, voucherWholesalePrice: 60 });
+const fees = (monthly: number, pro = 0) =>
+  vi.mocked(getPlatformFees).mockResolvedValue({
+    medrepActivationFee: 0,
+    medrepMonthlyFee: monthly,
+    medrepSeatMonthlyFee: 400,
+    medrepProMonthlyFee: pro,
+    repAiFreeActions: 20,
+    repAiProActions: 300,
+    voucherFaceValue: 80,
+    voucherWholesalePrice: 60,
+  });
 const lean = (value: unknown) => ({ select: vi.fn().mockReturnValue({ lean: vi.fn().mockResolvedValue(value) }) });
 
 describe('repPeriodEnd', () => {
@@ -79,5 +88,54 @@ describe('applying payments', () => {
     const [, update] = vi.mocked(RepTeam.updateOne).mock.calls[0] as any;
     expect(update.$set['subscription.seats']).toBe(5);
     expect(update.$set['subscription.expiresAt'].toISOString()).toBe('2027-11-01T00:00:00.000Z');
+  });
+});
+
+const DAY = 24 * 60 * 60 * 1000;
+
+describe('Pro plan', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('converts time left at the two monthly prices', () => {
+    expect(convertRemaining(16 * DAY, 500, 800)).toBe(10 * DAY);
+    expect(convertRemaining(10 * DAY, 800, 500)).toBe(16 * DAY);
+    expect(convertRemaining(10 * DAY, 0, 800)).toBe(0); // free time has no value to carry
+    expect(convertRemaining(-DAY, 500, 800)).toBe(0);
+  });
+
+  it('is active only on a running Pro plan', () => {
+    expect(hasActivePro({ subscription: { plan: 'pro', expiresAt: new Date('2026-11-20') } }, NOW)).toBe(true);
+    expect(hasActivePro({ subscription: { plan: 'pro', expiresAt: new Date('2026-10-20') } }, NOW)).toBe(false);
+    expect(hasActivePro({ subscription: { plan: 'standard', expiresAt: new Date('2026-11-20') } }, NOW)).toBe(false);
+    expect(hasActivePro({}, NOW)).toBe(false);
+  });
+
+  it('upgrading converts the standard time left, then adds the Pro month', async () => {
+    fees(500, 800);
+    // 16 days of standard left → 10 days of Pro, then one month.
+    vi.mocked(MedicalRepresentative.findById).mockReturnValue(lean({ _id: REP, subscription: { plan: 'standard', expiresAt: new Date('2026-11-17T00:00:00Z') } }) as any);
+    vi.mocked(MedicalRepresentative.updateOne).mockResolvedValue({ modifiedCount: 1 } as any);
+    await applyRepSubscriptionPayment({ repId: REP, billingCycle: 'monthly', plan: 'pro', amount: '800' }, 800, 'pay_pro', NOW);
+    const [, update] = vi.mocked(MedicalRepresentative.updateOne).mock.calls[0] as any;
+    expect(update.$set['subscription.plan']).toBe('pro');
+    expect(update.$set['subscription.expiresAt'].toISOString()).toBe('2026-12-11T00:00:00.000Z');
+    expect(update.$push['subscription.paymentHistory'].plan).toBe('pro');
+  });
+
+  it('renewing the same plan just extends it, without reading prices', async () => {
+    vi.mocked(MedicalRepresentative.findById).mockReturnValue(lean({ _id: REP, subscription: { plan: 'pro', expiresAt: new Date('2026-11-10T00:00:00Z') } }) as any);
+    vi.mocked(MedicalRepresentative.updateOne).mockResolvedValue({ modifiedCount: 1 } as any);
+    await applyRepSubscriptionPayment({ repId: REP, billingCycle: 'monthly', plan: 'pro', amount: '800' }, 800, 'pay_pro2', NOW);
+    const [, update] = vi.mocked(MedicalRepresentative.updateOne).mock.calls[0] as any;
+    expect(update.$set['subscription.expiresAt'].toISOString()).toBe('2026-12-10T00:00:00.000Z');
+    expect(getPlatformFees).not.toHaveBeenCalled();
+  });
+
+  it('a payment without a plan is standard (checkouts made before Pro)', async () => {
+    vi.mocked(MedicalRepresentative.findById).mockReturnValue(lean({ _id: REP, subscription: {} }) as any);
+    vi.mocked(MedicalRepresentative.updateOne).mockResolvedValue({ modifiedCount: 1 } as any);
+    await applyRepSubscriptionPayment({ repId: REP, billingCycle: 'monthly', amount: '500' }, 500, 'pay_old', NOW);
+    const [, update] = vi.mocked(MedicalRepresentative.updateOne).mock.calls[0] as any;
+    expect(update.$set['subscription.plan']).toBe('standard');
   });
 });

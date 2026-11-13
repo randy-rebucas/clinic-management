@@ -86,6 +86,9 @@ export const DEFAULT_FEES: PlatformFees = {
   medrepActivationFee: 0,
   medrepMonthlyFee: 0,
   medrepSeatMonthlyFee: 0,
+  medrepProMonthlyFee: 0,
+  repAiFreeActions: 20,
+  repAiProActions: 300,
   voucherFaceValue: 80,
   voucherWholesalePrice: 60,
 };

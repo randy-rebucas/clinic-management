@@ -355,6 +355,9 @@ function FeesCard({ view, onSaved }: { view: PlatformConfigView; onSaved: (v: Pl
         {num('medrepActivationFee', 'Med-rep activation fee (₱)', '0 = reps are activated by hand; otherwise at least ₱20')}
         {num('medrepMonthlyFee', 'Med-rep subscription, per month (₱)', '0 = booking clinic visits is free. Yearly uses the plan list’s months per year')}
         {num('medrepSeatMonthlyFee', 'Med-rep team plan, per seat per month (₱)', '0 = company team plans aren’t sold online')}
+        {num('medrepProMonthlyFee', 'Med-rep Pro, per month (₱)', '0 = Pro isn’t sold. Booking plus the AI assistant; must cost more than the subscription')}
+        {num('repAiFreeActions', 'Rep AI actions a month without Pro', 'A taste of the AI assistant; 0 = none')}
+        {num('repAiProActions', 'Rep AI actions a month on Pro', 'Fair-use cap per rep')}
         {num('voucherFaceValue', 'eMCR voucher: patient price (₱)', 'Default for new voucher batches')}
         {num('voucherWholesalePrice', 'eMCR voucher: clinic pays (₱)', `Clinic keeps ${php(Math.max(0, f.voucherFaceValue - f.voucherWholesalePrice))} per code`)}
         <div className="flex flex-wrap items-center gap-3">

@@ -15,7 +15,7 @@ import { normalizeRepVisitSettings, localNow, slotsForDay, type RepVisitSettings
  */
 
 /** Visit fields a clinic never sees: the rep's private notes and our bookkeeping. */
-export const CLINIC_HIDDEN_VISIT_FIELDS = '-notes -reminderSentAt -tenantId';
+export const CLINIC_HIDDEN_VISIT_FIELDS = '-notes -reminderSentAt -tenantId -aiBrief';
 
 /** Rep fields a clinic sees on a visit (no 2 MB profile image, nothing private). */
 export const VISIT_REP_FIELDS = 'firstName lastName title company territory phone email';

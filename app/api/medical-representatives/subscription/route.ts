@@ -6,8 +6,8 @@ import { requireRepSession, isRepSessionError, repProfileFilter } from '../_lib/
 
 /**
  * GET /api/medical-representatives/subscription
- * Prices, whether the rep can book visits with clinics now (and through what), their own
- * subscription and their team's cover.
+ * Prices (standard, Pro, team seat), whether the rep can book visits with clinics now (and
+ * through what), their own subscription with its plan, and their team's cover.
  */
 export async function GET() {
   try {
@@ -16,7 +16,7 @@ export async function GET() {
 
     await connectDB();
     const profile = await MedicalRepresentative.findOne(repProfileFilter(rep))
-      .select('subscription.billingCycle subscription.expiresAt teamId')
+      .select('subscription.billingCycle subscription.plan subscription.expiresAt teamId')
       .lean<any>();
     if (!profile) return NextResponse.json({ success: false, error: 'Medical representative not found' }, { status: 404 });
 
@@ -37,11 +37,20 @@ export async function GET() {
           yearly: prices.yearly,
           seatMonthly: prices.seatMonthly,
           seatYearly: prices.seatYearly,
+          proMonthly: prices.proMonthly,
+          proYearly: prices.proYearly,
           currency: 'PHP',
         },
         free: prices.free,
         payable: prices.payable,
-        individual: ends ? { billingCycle: profile.subscription?.billingCycle ?? 'monthly', expiresAt: ends, active: ends > new Date() } : null,
+        individual: ends
+          ? {
+              billingCycle: profile.subscription?.billingCycle ?? 'monthly',
+              plan: profile.subscription?.plan === 'pro' ? 'pro' : 'standard',
+              expiresAt: ends,
+              active: ends > new Date(),
+            }
+          : null,
         team,
       },
     });

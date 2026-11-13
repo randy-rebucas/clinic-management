@@ -40,6 +40,8 @@ export interface IMedicalRepresentativeVisit extends Document {
   cancelledBy?: 'rep' | 'clinic';
   /** When the day-before push reminder went out (cleared when the date changes). */
   reminderSentAt?: Date;
+  /** The AI pre-visit brief, kept so reopening it doesn't spend another AI action (lib/rep-ai.ts). */
+  aiBrief?: { brief: unknown; generatedAt: Date };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -87,6 +89,8 @@ const MedicalRepresentativeVisitSchema: Schema = new Schema(
     checkedInBy: { type: Schema.Types.ObjectId, ref: 'User' },
     cancelledBy: { type: String, enum: ['rep', 'clinic'] },
     reminderSentAt: Date,
+    // Not in visit lists or the clinic's view; the brief route selects it.
+    aiBrief: { type: new Schema({ brief: Schema.Types.Mixed, generatedAt: Date }, { _id: false }), select: false },
   },
   { timestamps: true }
 );
