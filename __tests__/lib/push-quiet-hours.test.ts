@@ -12,6 +12,8 @@ vi.mock('expo-server-sdk', () => ({
 vi.mock('@/models/PushSubscription', () => ({ default: { find: vi.fn(), deleteMany: vi.fn() } }));
 vi.mock('@/models/MobileDevice', () => ({ default: { find: vi.fn(), updateMany: vi.fn() } }));
 vi.mock('@/models/NotificationPreference', () => ({ default: { find: vi.fn() } }));
+// The rep's account is active (lib/push-notifications sends nothing to a deactivated one).
+vi.mock('@/models/User', () => ({ default: { exists: vi.fn().mockResolvedValue({ _id: 'u' }) } }));
 
 import webpush from 'web-push';
 import PushSubscription from '@/models/PushSubscription';

@@ -42,7 +42,9 @@ export async function POST(request: NextRequest) {
     const result = await consumeOtp({ scope: 'medrep-login', phone }, code);
     if (!result.ok) {
       if (result.reason === 'locked') return fail('Too many wrong codes. Send a new one.', 429, 'CODE_LOCKED');
-      if (result.reason === 'expired' || result.noChallenge) return fail('That code has expired. Send a new one.', 400, 'CODE_EXPIRED');
+      // No challenge looks like a wrong code: /otp/request makes one only for a number with an
+      // account, so "expired" here would tell anyone which numbers belong to a rep.
+      if (result.reason === 'expired' && !result.noChallenge) return fail('That code has expired. Send a new one.', 400, 'CODE_EXPIRED');
       return fail('That code isn’t right. Check it and try again.', 400, 'CODE_INVALID');
     }
 

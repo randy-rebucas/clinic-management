@@ -497,7 +497,7 @@ now refuses rep accounts and points them to the app.
 | `POST /api/medical-representatives/auth/token` **new** | `{ email, password }` | `{ token, tokenType: "Bearer", expiresIn, refreshToken, refreshExpiresIn, medicalRepresentative: { id, name, company, email } }` |
 | ↳ when two-step sign-in is on | | `401 { requires2fa: true, pendingToken }` |
 | `POST /api/medical-representatives/auth/2fa` **new** | `{ pendingToken, code }` | Same as a successful token sign-in. `pendingToken` expires after 5 min (`code: "PENDING_2FA_EXPIRED"`) |
-| `DELETE /api/medical-representatives/session?deviceId=…` | `{ refreshToken }` | **Changed.** Sign out on this device: revokes the refresh token and unregisters the device from push |
+| `DELETE /api/medical-representatives/session?deviceId=…` | `{ refreshToken }` | **Changed.** Sign out on this device: revokes the refresh token and the Bearer token, and unregisters the device from push. The refresh token alone is enough to unregister the device once the Bearer token has expired |
 | `DELETE /api/medical-representatives/session?all=true` | — | **New.** Revoke every token (sign out everywhere) |
 
 Refusal codes on sign-in: `PASSWORD_SETUP_REQUIRED` (invite not accepted), `USER_INACTIVE`,
@@ -508,7 +508,7 @@ Refusal codes on sign-in: `PASSWORD_SETUP_REQUIRED` (invite not accepted), `USER
 | Method & path | Notes |
 |---|---|
 | `GET /api/medical-representatives/session` | Own profile (payment and internal fields removed) |
-| `PUT /api/medical-representatives/profile` | `firstName, lastName, phone, company, territory, title, bio, profileImage` (base64 data URI, ≤ 2 MB, jpeg/png/gif/webp) |
+| `PUT /api/medical-representatives/profile` | `firstName, lastName, phone, company, territory, title, bio, profileImage` (base64 data URI, ≤ 2 MB, jpeg/png/gif/webp). A new `phone` must be a valid number (`400 INVALID_PHONE`) and is no longer verified: it can't be used for sign-in by text code until proven again |
 | `PUT /api/medical-representatives/notifications` | `{ notificationsEnabled?, emailNotifications? }`. `notificationsEnabled: false` stops push. **Fixed:** these settings and `profileImage` were missing from the database schema and were silently discarded. They now save |
 | `POST /api/medical-representatives/change-password` | `{ currentPassword, newPassword }`. **Changed:** returns a new `token` + `refreshToken` when called with Bearer auth |
 | `POST /api/medical-representatives/devices` **new** | `{ deviceId, platform, pushToken?, appVersion? }`. Only one account at a time per device |
@@ -525,11 +525,13 @@ Refusal codes on sign-in: `PASSWORD_SETUP_REQUIRED` (invite not accepted), `USER
     "totalVisits", "visitsThisMonth", "completedThisMonth", "upcomingVisits",
     "pendingRequests", "activeProducts", "expiringProducts", "openSupportRequests"
   },
-  "nextVisits": [ /* up to 5 scheduled visits from today on, soonest first */ ]
+  "nextVisits": [ /* up to 5 scheduled visits from today on, soonest first */ ],
+  "todayVisits": [ /* new: every scheduled visit today (up to 20), by time, for the day's route */ ]
 }
 ```
 
-"This month" is the UTC calendar month. `visitsThisMonth` leaves out cancelled and declined
+"Today" and "this month" are Manila calendar days (**changed:** they were UTC, so before 08:00
+Manila yesterday's visits still counted as upcoming). `visitsThisMonth` leaves out cancelled and declined
 visits. `pendingRequests` (**new**) counts clinic bookings from today on that the clinic hasn't
 answered. `nextVisits` items now include `clinicId` and `checkedInAt`. `expiringProducts` counts
 active products that expire within 30 days.
@@ -538,27 +540,52 @@ active products that expire within 30 days.
 
 | Method & path | Notes |
 |---|---|
-| `GET /api/medical-representatives/visits` | **Changed:** now paginated (default 50, max 100). Filters: `status`, `clinicId` (**new**), `from`, `to` |
-| `POST /api/medical-representatives/visits` | Own log entry: `{ clinicName, clinicLocation, purpose, date, time: "HH:mm", duration?, status?, notes?, productIds? }`. For a clinic booking see below |
+| `GET /api/medical-representatives/visits` | **Changed:** now paginated (default 50, max 100). Filters: `status` (**new:** several comma-separated, e.g. `requested,scheduled`), `clinicId` (**new**), `own=1` (**new:** only the rep's own log entries, which have no `clinicId`), `from`, `to`. **New** `sort=asc` lists soonest first (default newest first) |
+| `POST /api/medical-representatives/visits` | Own log entry: `{ clinicName, clinicLocation, purpose, date, time: "HH:mm", duration?, status?, notes?, productIds?, linkedClinicId? }`. For a clinic booking see below. **New:** `linkedClinicId` links the entry to a clinic in the rep's directory (`GET /clinics`); the clinic's name and location replace the typed ones (which may then be left out). It stays the rep's own entry (no `clinicId`, the clinic isn't asked) but lets deliveries reach that clinic. `PUT` takes it too: a clinic id links, `null` unlinks, leaving it out keeps the link. `404` for a clinic the rep can't reach. **Changed:** a `PUT` may send back the entry's current `linkedClinicId` and `productIds` even if the rep has since left that clinic or a product went inactive; only new ones are checked |
 | `GET /api/medical-representatives/visits/[id]` **new** · `PUT` · `DELETE` | `PUT` takes the full object. Clinic bookings follow the rules below |
 | `GET /api/medical-representatives/products` | **Changed:** now paginated (default 50, max 100). Filter: `status` |
-| `POST /api/medical-representatives/products` | `{ name, category, manufacturer, description, packaging, expiryDate, dosage?, strength?, status? }` |
+| `POST /api/medical-representatives/products` | `{ name, category, manufacturer, description, packaging, expiryDate, dosage?, strength?, status?, packSize? }`. **New:** `packSize: { count, unit }` is what one pack holds in the unit clinics dispense (`{ count: 30, unit: "tablets" }`, count 1–10000); clinics use it as the default conversion when receiving a delivery into stock. `PUT` takes it too (`null` clears it, left out keeps it); so does each import row (`400 Invalid pack size.`) |
 | `GET /api/medical-representatives/products/[id]` **new** · `PUT` · `DELETE` | `PUT` takes the full object |
+| `POST /api/medical-representatives/products/import` **new** | `{ products: [ …same fields as POST… ] }`, 1–200 rows (the app parses the spreadsheet). All or nothing: any bad row → `400 INVALID_ROWS` with `rows: [{ row, error }]` (`row` = index in `products`) and nothing saved. A row with the same name and strength (case and spacing ignored) as one of the rep's products or an earlier row is skipped. Answer: `data: { created, skipped: [{ row, name }] }`. An empty `status` means `active`, here and on `POST` |
 | `GET /api/medical-representatives/support` **new** | Own requests with `reference: "SR-…"` and `status` |
 | `POST /api/medical-representatives/support` | `{ subject, message, category?, email? }`. **Changed:** `email` defaults to the account email |
 
+### Deliveries and samples (**new**)
+
+A rep records what they left at a clinic, against one of their visits: an approved or completed
+booking, or an own log entry linked to a clinic (`linkedClinicId`). The clinic confirms what
+arrived on the web (Medical reps → Deliveries), optionally into its stock as a restock from the
+rep's company, or rejects it.
+
+| Method & path | Notes |
+|---|---|
+| `GET /api/medical-representatives/deliveries` | Own deliveries, newest first, paginated (default 50, max 100). Filters: `visitId`, `productId` (deliveries carrying that product: "where it is"), `clinicId`, `status` |
+| `POST /api/medical-representatives/deliveries` | `{ visitId, kind: "sample" \| "delivery", lines: [{ productId, quantity, unit, lotNumber?, expiryDate?: "YYYY-MM-DD" }], note? }`, 1–20 lines of the rep's own active products, quantity 1–100000. A line without `expiryDate` takes the product's. Errors: `409 VISIT_CANT_DELIVER` (a request, declined, cancelled or no-show booking, an unlinked own log, or (**new**) a clinic that no longer takes this rep), **new** `402 SUBSCRIPTION_REQUIRED` (same plan rule as booking: free while the rep plan costs nothing), `400 INVALID_PRODUCTS` |
+| `DELETE /api/medical-representatives/deliveries/[id]` | Cancels a `pending` delivery (a mistake). `409 DELIVERY_CLOSED` once the clinic answered |
+
+A delivery: `{ _id, visitId, clinicId, clinicName, kind, status: "pending" | "received" | "rejected" | "cancelled", lines: [{ productId, productName, strength?, quantity, unit, lotNumber?, expiryDate?, packSize?, receivedQuantity?, unitsPerPack?, stockQuantity?, inventoryItemId? }], note?, clinicNote?, respondedAt?, repName, repCompany?, createdAt }`.
+Product name and strength are as they were when delivered. `receivedQuantity` is what the clinic
+counted (it can differ from `quantity`); `inventoryItemId` is set when the line went into stock,
+with `unitsPerPack` (the clinic's conversion, e.g. 30 tablets per box) and `stockQuantity` (units
+added: `receivedQuantity × unitsPerPack`). `packSize` is the product's when delivered.
+The clinic's answer sends a push with `data: { screen: "visits", id: <visitId> }`. Titles:
+Delivery confirmed, Delivery not confirmed.
+
 ### Booking visits with clinics (**new**)
 
-Clinics on MyClinicSoft set visiting hours for reps (days, times, slot length, reps per slot). A
+Clinics on MyClinicSoft set visiting hours for reps (days, times, slot length, reps per slot). A clinic that adds a rep who already has an account (Medical reps → Representatives → Add) links them; the rep gets a push "New clinic" with `data: { screen: "clinics" }`. A
 rep finds a clinic, picks an open slot and sends a request. The clinic approves or declines it,
 checks the rep in on arrival and marks the visit completed or a no-show.
 
 | Method & path | Notes |
 |---|---|
-| `GET /api/medical-representatives/clinics` | Clinics the rep can book: they take rep visits and either added this rep or are open to all reps. Query: `search?` (name or city), `page`, `limit`. Items: `{ id, name, location, city, linked, hours: ["Tue 15:00–17:00"], slotMinutes, maxAdvanceDays, instructions }` |
+| `GET /api/medical-representatives/clinics` | Clinics the rep can book: they take rep visits and either added this rep or are open to all reps. Query: `search?` (name or city), **new** `id?` (just that clinic), `page`, `limit`, **new** `scope=all` (also clinics taking rep visits that haven't added the rep, to request access; those come with empty `hours` and no `instructions`). Items: `{ id, name, location, city, linked, canBook, openToAllReps, access: "linked" \| "open" \| "requested" \| "none", hours: ["Tue 15:00–17:00"], slotMinutes, maxAdvanceDays, instructions }` (**new:** `canBook`, `openToAllReps`, `access`) |
+| `POST /api/medical-representatives/clinics/[id]/access` **new** | `{ message? }` (up to 500). Asks a clinic that isn't open to all reps to add the rep; its admins are told and answer on the web (Medical reps → Representatives). Errors: `404` (not taking rep visits), `409 ALREADY_LINKED`, `OPEN_CLINIC` (book directly), `ALREADY_REQUESTED`, `RECENTLY_DECLINED` (declined in the last 30 days). The answer comes as a push with `data: { screen: "clinics" }` (Access granted / Access not granted) |
+| `DELETE /api/medical-representatives/clinics/[id]/access` **new** | Withdraws the rep's waiting request. `404` if there is none |
+| `DELETE /api/medical-representatives/clinics/[id]` **new** | The rep leaves a clinic's list (only that clinic; the account stays). The clinic is told. `data.canBook` is true when the clinic is open to all reps (still bookable). A clinic that takes only its own reps can't be left with waiting or approved visits there: `409 ACTIVE_VISITS` with `count`. `404` when not on its list |
 | `GET /api/medical-representatives/clinics/[id]/slots?date=YYYY-MM-DD` | `{ clinicId, date, timezone, slotMinutes, slots: [{ time: "HH:mm", remaining }] }`. Times are the clinic's local time. Slots already started (today) and days past `maxAdvanceDays` have none. `remaining: 0` = full |
 | `POST /api/medical-representatives/visits` with `clinicId` | `{ clinicId, purpose, date: "YYYY-MM-DD", time: "HH:mm", notes?, productIds? }`. Creates a visit with `status: "requested"`; the clinic's name, location and slot length are filled in. Errors: `402 SUBSCRIPTION_REQUIRED`, `400 SLOT_UNAVAILABLE` (not a slot the clinic offers), `409 SLOT_FULL`, `409 DUPLICATE_REQUEST` (already booked with that clinic that day), `400 INVALID_PRODUCTS`, `404` for a clinic the rep can't book |
-| `PUT /api/medical-representatives/visits/[id]` on a clinic booking | Takes `purpose?, date?, time?, status?, notes?, productIds?`; `clinicName`, `clinicLocation` and `duration` are ignored. A new `date`/`time` moves it (slot rules as above) and sends it back to `requested`. `status: "cancelled"` cancels it; any other status change is `400 STATUS_SET_BY_CLINIC`. On a closed visit only `notes` can change (`409 VISIT_CLOSED`). `409 VISIT_CHANGED` if the clinic answered at the same moment |
+| `PUT /api/medical-representatives/visits/[id]` on a clinic booking | Takes `purpose?, date?, time?, status?, notes?, productIds?`; `clinicName`, `clinicLocation` and `duration` are ignored. A new `date`/`time` moves it (slot rules as above, including `409 DUPLICATE_REQUEST`; `409 SLOT_UNAVAILABLE` once the clinic no longer takes the rep) and sends it back to `requested`, clearing any check-in. `status: "cancelled"` cancels it; any other status change is `400 STATUS_SET_BY_CLINIC`. On a closed visit only `notes` can change (`409 VISIT_CLOSED`). `409 VISIT_CHANGED` if the clinic answered at the same moment |
 | `DELETE /api/medical-representatives/visits/[id]` | A `requested` or `scheduled` clinic booking gets `409 VISIT_ACTIVE` (cancel it first so the clinic knows). Closed ones can be deleted |
 
 Visit fields for clinic bookings:

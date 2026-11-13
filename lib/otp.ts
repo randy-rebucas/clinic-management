@@ -98,6 +98,25 @@ export async function startOtp(options: StartOtpOptions): Promise<boolean> {
   return smsSent(sms);
 }
 
+/**
+ * A challenge no code can pass, sent to no one: for a number with no account, so checking a code
+ * for it answers exactly as for a real one (wrong, then locked after MAX_OTP_ATTEMPTS, then
+ * expired). Without it, "no challenge" would tell anyone which numbers are on file.
+ */
+export async function startDecoyOtp(options: Pick<StartOtpOptions, 'scope' | 'phone'>): Promise<void> {
+  await connectDB();
+  // A bcrypt hash of a random non-numeric secret: no 6-digit code ever matches it.
+  const codeHash = await bcrypt.hash(`decoy:${randomInt(0, 2 ** 47)}:${Date.now()}`, 10);
+  await OtpChallenge.updateOne(
+    { scope: options.scope, phoneE164: options.phone },
+    {
+      $set: { provider: 'local', attempts: 0, codeHash, expiresAt: new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000) },
+      $unset: { purpose: 1, patientId: 1, tenantId: 1 },
+    },
+    { upsert: true }
+  );
+}
+
 async function sendWithVerify(phone: string): Promise<boolean> {
   try {
     await verifyService().verifications.create({ to: phone, channel: 'sms' });

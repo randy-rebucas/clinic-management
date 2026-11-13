@@ -112,7 +112,7 @@ function StateBanner({ plan, sponsor }: { plan: SubscriptionPageData['plan']; sp
         return (
           <Banner tone="amber" title={`The ${plan.label} plan ends in ${plural(plan.daysLeft, 'day')}${plan.endsOn ? ` (${plan.endsOn})` : ''}`}>
             {sponsor
-              ? `${sponsor.name} sponsors this plan and can renew it from the Rep app (they get a reminder a week before it ends). You can also pay for a plan below.`
+              ? `${sponsor.name} sponsors this plan and can renew it from the eMedRoute app (they get a reminder a week before it ends). You can also pay for a plan below.`
               : `Payments don’t renew on their own. Pay for another ${plan.cycle ? CYCLE_WORD[plan.cycle] : 'period'} below to keep going without a gap.`}
           </Banner>
         );

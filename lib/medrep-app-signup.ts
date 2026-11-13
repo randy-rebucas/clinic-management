@@ -12,6 +12,7 @@ import { createCheckoutSession, isPayMongoConfigured } from '@/lib/paymongo';
 import { getPlatformFees } from '@/lib/platform-config';
 import RepAppSignup, { type IRepAppSignup } from '@/models/RepAppSignup';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
+import { isAllowedAppReturnUrl } from '@/lib/rep-app-return-url';
 
 /**
  * Medical rep signup from the rep app: details → emailed code → texted code → password → payment.
@@ -82,9 +83,9 @@ export async function findAppSignup(signupId: unknown, withCodeHash = false): Pr
 export async function sendSignupEmailCode(email: string, firstName: string, code: string): Promise<boolean> {
   const result = await sendEmail({
     to: email,
-    subject: `${code} is your MyClinicSoft Rep sign-up code`,
+    subject: `${code} is your eMedRoute sign-up code`,
     html: `<p>Hi ${escapeHtml(firstName)},</p>
-<p>Your code to finish signing up for MyClinicSoft Rep is:</p>
+<p>Your code to finish signing up for eMedRoute is:</p>
 <p style="font-size:28px;font-weight:700;letter-spacing:6px;font-family:monospace">${code}</p>
 <p>It expires in ${EMAIL_CODE_TTL_MINUTES} minutes. Never share this code.</p>
 <p>If you didn't ask for this, you can ignore this email and nothing will happen.</p>`,
@@ -104,7 +105,7 @@ export function sendSignupPhoneCode(phone: string): Promise<boolean> {
   return startOtp({
     scope: 'medrep-signup',
     phone,
-    message: (code, minutes) => `Your MyClinicSoft Rep sign-up code is ${code}. It expires in ${minutes} minutes. Never share this code.`,
+    message: (code, minutes) => `Your eMedRoute sign-up code is ${code}. It expires in ${minutes} minutes. Never share this code.`,
   });
 }
 
@@ -113,7 +114,7 @@ export async function sendAlreadyRegisteredEmail(email: string): Promise<void> {
   await sendEmail({
     to: email,
     subject: 'Someone tried to sign up with this email',
-    html: `<p>Someone tried to sign up for MyClinicSoft Rep with this email, but it already has an account, so nothing new was made.</p>
+    html: `<p>Someone tried to sign up for eMedRoute with this email, but it already has an account, so nothing new was made.</p>
 <p>If this was you, sign in instead (or reset your password). If it wasn't, you can ignore this email.</p>`,
   }).catch((error) => logger.warn('Rep signup already-registered email failed', { error: String(error) }));
 }
@@ -197,21 +198,4 @@ export async function findRepByActivationToken(token: unknown) {
   });
 }
 
-/** The rep app's URL scheme (clinic-management-rep app.json `scheme`). */
-export const REP_APP_SCHEME = 'myclinicsoft-rep';
-
-/**
- * Where the payment pages may send the browser back to: the rep app's own scheme, and in
- * development Expo Go's `exp://` links. Anything else would make the success page an open redirect.
- */
-export function isAllowedAppReturnUrl(url: unknown): url is string {
-  if (typeof url !== 'string' || url.length > 500) return false;
-  let protocol: string;
-  try {
-    protocol = new URL(url).protocol;
-  } catch {
-    return false;
-  }
-  if (protocol === `${REP_APP_SCHEME}:`) return true;
-  return process.env.NODE_ENV !== 'production' && (protocol === 'exp:' || protocol === 'exps:');
-}
+export { REP_APP_SCHEME, isAllowedAppReturnUrl } from '@/lib/rep-app-return-url';

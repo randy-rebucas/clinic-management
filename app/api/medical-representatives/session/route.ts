@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
 import MobileDevice from '@/models/MobileDevice';
-import { deleteSession, revokeUserSessions } from '@/app/lib/dal';
-import { readRefreshTokenFromBody, revokeRefreshToken } from '@/app/lib/refresh-tokens';
+import { deleteSession, revokeSessionToken, revokeUserSessions } from '@/app/lib/dal';
+import { findRefreshTokenSubject, readRefreshTokenFromBody, revokeRefreshToken } from '@/app/lib/refresh-tokens';
 import {
   requireRepSession,
   isRepSessionError,
@@ -48,19 +49,30 @@ export async function GET(request: NextRequest) {
 
 /**
  * DELETE /api/medical-representatives/session[?all=true][&deviceId=...]
- * Sign out. Clears the session cookie; a Bearer token stays valid until it expires unless
- * `all=true`, which revokes every token and cookie issued to this rep ("sign out everywhere").
+ * Sign out. Clears the session cookie and revokes the Bearer token the request came with;
+ * `all=true` revokes every token and cookie issued to this rep ("sign out everywhere").
  * `deviceId` also unregisters that device from push. Optional JSON body `{ refreshToken }`
- * revokes the app's refresh token (works even after the access token expired).
+ * revokes the app's refresh token; it also proves who the device belongs to, so the device is
+ * unregistered even after the access token expired.
  */
 export async function DELETE(request: NextRequest) {
   try {
     const all = request.nextUrl.searchParams.get('all') === 'true';
     const deviceId = request.nextUrl.searchParams.get('deviceId')?.trim();
     const refreshToken = await readRefreshTokenFromBody(request);
+    // Identify the holder before the token is revoked: it is the proof of identity once the
+    // access token has expired. Unregistering one's own device from push needs nothing more.
+    const tokenOwner =
+      refreshToken && deviceId && !all ? await findRefreshTokenSubject(refreshToken, 'user').catch(() => null) : null;
     if (refreshToken) await revokeRefreshToken(refreshToken, 'user');
 
-    if (all || deviceId) {
+    if (tokenOwner && deviceId) {
+      await connectDB();
+      await MobileDevice.updateOne(
+        { userId: new Types.ObjectId(tokenOwner.subjectId), deviceId, patientId: { $exists: false } },
+        { $set: { revokedAt: new Date(), pushToken: null } }
+      );
+    } else if (all || deviceId) {
       const rep = await requireRepSession();
       if (isRepSessionError(rep)) return rep;
       await connectDB();
@@ -71,6 +83,12 @@ export async function DELETE(request: NextRequest) {
         );
       }
       if (all) await revokeUserSessions(rep.session.userId);
+    }
+
+    // The app's Bearer token ends here too, so a copy of it stops working.
+    const authHeader = request.headers.get('authorization') ?? '';
+    if (authHeader.startsWith('Bearer ')) {
+      await revokeSessionToken(authHeader.slice(7).trim()).catch((error) => console.error('Error revoking rep token:', error));
     }
 
     // deleteSession expires the cookie with its original domain, so a cross-subdomain cookie is removed too.

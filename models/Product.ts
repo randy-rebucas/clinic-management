@@ -11,6 +11,11 @@ export interface IProduct extends Document {
   dosage?: string;
   strength?: string;
   packaging: string;
+  /**
+   * What one pack holds, in the unit a clinic dispenses ("30 tablets"). Fills in the conversion
+   * when a clinic receives a delivery counted in packs; the clinic can correct it.
+   */
+  packSize?: { count: number; unit: string };
   expiryDate: Date;
   status: 'active' | 'discontinued' | 'inactive';
   specifications: string[];
@@ -44,6 +49,10 @@ const ProductSchema: Schema = new Schema(
     dosage: String,
     strength: String,
     packaging: { type: String, required: true },
+    packSize: {
+      type: new Schema({ count: { type: Number, min: 1 }, unit: { type: String, trim: true } }, { _id: false }),
+      default: undefined,
+    },
     expiryDate: { type: Date, required: true },
     status: {
       type: String,

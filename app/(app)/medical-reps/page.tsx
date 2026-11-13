@@ -3,20 +3,22 @@ import MedicalRepsWorkspace, { type RepsTab } from '@/components/medical-reps/Me
 
 export const metadata = {
   title: 'Medical Representatives',
-  description: 'Rep visit requests, representatives and visiting hours',
+  description: 'Rep visit requests, deliveries, representatives and visiting hours',
 };
 
-const TABS: RepsTab[] = ['visits', 'reps', 'hours'];
+const TABS: RepsTab[] = ['visits', 'deliveries', 'reps', 'hours'];
 
-export default async function MedicalRepsPage({ searchParams }: { searchParams: Promise<{ tab?: string; visit?: string }> }) {
+export default async function MedicalRepsPage({ searchParams }: { searchParams: Promise<{ tab?: string; visit?: string; delivery?: string; request?: string }> }) {
   // Require admin access
   await requireAdmin();
-  const { tab, visit } = await searchParams;
+  const { tab, visit, delivery, request } = await searchParams;
 
   return (
     <MedicalRepsWorkspace
       initialTab={TABS.includes(tab as RepsTab) ? (tab as RepsTab) : 'visits'}
       focusVisitId={typeof visit === 'string' ? visit : undefined}
+      focusDeliveryId={typeof delivery === 'string' ? delivery : undefined}
+      focusRequestId={typeof request === 'string' ? request : undefined}
     />
   );
 }

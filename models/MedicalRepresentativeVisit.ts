@@ -14,6 +14,11 @@ export interface IMedicalRepresentativeVisit extends Document {
   medicalRepresentativeId?: Types.ObjectId;
   /** The clinic the visit is booked with; unset for the rep's own log entries. */
   clinicId?: Types.ObjectId;
+  /**
+   * An own log entry the rep linked to a clinic on MyClinicSoft (the clinic didn't book it).
+   * Unlike clinicId it doesn't make the visit a booking; it lets deliveries reach that clinic.
+   */
+  linkedClinicId?: Types.ObjectId;
   clinicName: string;
   clinicLocation: string;
   /** Shared with the clinic. */
@@ -60,6 +65,7 @@ const MedicalRepresentativeVisitSchema: Schema = new Schema(
       type: Schema.Types.ObjectId,
       ref: 'Tenant',
     },
+    linkedClinicId: { type: Schema.Types.ObjectId, ref: 'Tenant' },
     clinicName: { type: String, required: true, index: true },
     clinicLocation: { type: String, required: true },
     purpose: { type: String, required: true },

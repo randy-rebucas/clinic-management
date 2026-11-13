@@ -28,6 +28,12 @@ export interface IRepAppSignup extends Document {
   emailCodeAttempts: number;
   emailVerifiedAt?: Date;
   phoneVerifiedAt?: Date;
+  /**
+   * Started for an address that already has an account: its code never matches and it can't be
+   * completed (the owner was emailed instead). It exists so the routes answer exactly as for a new
+   * address, and can't be used to find out which emails are registered.
+   */
+  decoy?: boolean;
   /** The whole signup lapses at this time; TTL-deleted. */
   expiresAt: Date;
 }
@@ -49,6 +55,7 @@ const RepAppSignupSchema = new Schema<IRepAppSignup>(
     emailCodeAttempts: { type: Number, default: 0 },
     emailVerifiedAt: { type: Date },
     phoneVerifiedAt: { type: Date },
+    decoy: { type: Boolean },
     expiresAt: { type: Date, required: true },
   },
   { timestamps: true }

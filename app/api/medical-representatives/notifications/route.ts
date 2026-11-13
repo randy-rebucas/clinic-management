@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
-import { requireRepSession, isRepSessionError } from '../_lib/rep-session';
+import { requireRepSession, isRepSessionError, repOwnProfile } from '../_lib/rep-session';
 
 /**
  * PUT /api/medical-representatives/notifications
@@ -44,14 +44,7 @@ export async function PUT(request: NextRequest) {
 
     await medicalRep.save();
 
-    const result = medicalRep.toObject();
-    delete result.internalNotes;
-    delete result.paymentStatus;
-    delete result.paymentDate;
-    delete result.paymentAmount;
-    delete result.paymentMethod;
-    delete result.paymentReference;
-    delete result.password;
+    const result = repOwnProfile(medicalRep);
 
     return NextResponse.json({
       success: true,

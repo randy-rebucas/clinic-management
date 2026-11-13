@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Settings from '@/models/Settings';
 import Tenant from '@/models/Tenant';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
+import RepAccessRequest from '@/models/RepAccessRequest';
 import { sanitizeSearch } from '@/lib/utils';
 import { normalizeRepVisitSettings, describeWindows } from '@/lib/rep-visit-rules';
 import { requireRepSession, isRepSessionError, repProfileFilter } from '../_lib/rep-session';
@@ -10,7 +11,12 @@ import { requireRepSession, isRepSessionError, repProfileFilter } from '../_lib/
 /**
  * GET /api/medical-representatives/clinics
  * Clinics the rep can book visits with: those taking rep visits that either added the rep or
- * are open to all reps. Query: search? (clinic name or city), page, limit (default 50, max 100).
+ * are open to all reps. Query: search? (clinic name or city), id? (just that clinic, for one
+ * clinic's screen), page, limit (default 50, max 100).
+ * `scope=all` also lists clinics taking rep visits that haven't added the rep and aren't open to
+ * all (to request access); those carry no hours or instructions. Every clinic has `access`:
+ * "linked" (added the rep), "open" (open to all reps), "requested" (the rep's request is
+ * waiting) or "none", and `canBook`.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -21,6 +27,8 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, parseInt(sp.get('page') ?? '1', 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(sp.get('limit') ?? '50', 10) || 50));
     const search = sp.get('search')?.trim();
+    const all = sp.get('scope') === 'all';
+    const onlyId = sp.get('id')?.trim();
 
     await connectDB();
     const profile = await MedicalRepresentative.findOne(repProfileFilter(rep)).select('tenantIds').lean<{ tenantIds?: unknown[] } | null>();
@@ -28,13 +36,14 @@ export async function GET(request: NextRequest) {
 
     const open = await Settings.find({
       'repVisitSettings.enabled': true,
-      $or: [{ 'repVisitSettings.openToAllReps': true }, { tenantId: { $in: profile?.tenantIds ?? [] } }],
+      ...(all ? {} : { $or: [{ 'repVisitSettings.openToAllReps': true }, { tenantId: { $in: profile?.tenantIds ?? [] } }] }),
     })
       .select('tenantId clinicAddress repVisitSettings')
       .lean<any[]>();
     const settingsByTenant = new Map(open.filter((s) => s.tenantId).map((s) => [String(s.tenantId), s]));
 
-    const tenantQuery: Record<string, unknown> = { _id: { $in: [...settingsByTenant.keys()] }, status: 'active' };
+    const ids = [...settingsByTenant.keys()].filter((id) => !onlyId || id === onlyId);
+    const tenantQuery: Record<string, unknown> = { _id: { $in: ids }, status: 'active' };
     if (search) {
       const rx = { $regex: sanitizeSearch(search), $options: 'i' };
       tenantQuery.$or = [{ name: rx }, { displayName: rx }, { 'address.city': rx }];
@@ -49,20 +58,36 @@ export async function GET(request: NextRequest) {
       Tenant.countDocuments(tenantQuery),
     ]);
 
+    const requested = all
+      ? new Set(
+          (await RepAccessRequest.find({ userId: rep.userObjectId, status: 'pending', tenantId: { $in: tenants.map((t) => t._id) } })
+            .select('tenantId')
+            .lean<{ tenantId: unknown }[]>()).map((r) => String(r.tenantId))
+        )
+      : new Set<string>();
+
     const data = tenants.map((t) => {
-      const s = settingsByTenant.get(String(t._id));
+      const id = String(t._id);
+      const s = settingsByTenant.get(id);
       const settings = normalizeRepVisitSettings(s?.repVisitSettings);
       const a = t.address ?? {};
+      const linked = linkedIds.includes(id);
+      const canBook = linked || settings.openToAllReps;
       return {
-        id: String(t._id),
+        id,
         name: t.displayName || t.name,
         location: s?.clinicAddress || [a.street, a.city, a.state].filter(Boolean).join(', '),
         city: a.city ?? null,
-        linked: linkedIds.includes(String(t._id)),
-        hours: describeWindows(settings.windows),
+        linked,
+        canBook,
+        // Whether it stays bookable if the rep leaves its list.
+        openToAllReps: settings.openToAllReps,
+        access: linked ? 'linked' : settings.openToAllReps ? 'open' : requested.has(id) ? 'requested' : 'none',
+        // A clinic that hasn't accepted the rep keeps its hours and instructions to itself.
+        hours: canBook ? describeWindows(settings.windows) : [],
         slotMinutes: settings.slotMinutes,
         maxAdvanceDays: settings.maxAdvanceDays,
-        instructions: settings.instructions || null,
+        instructions: canBook ? settings.instructions || null : null,
       };
     });
 

@@ -13,14 +13,16 @@ import {
   repDisplayName,
   visitError,
   type RepProfileForVisits,
+  resolveLinkedClinic,
 } from '../_lib/rep-visit-input';
 
 /**
  * GET /api/medical-representatives/visits
- * The rep's visits, newest first.
+ * The rep's visits, newest first (`sort=asc`: soonest first).
  * Query params: page (default 1), limit (default 50, max 100),
- *   status? (requested | scheduled | declined | completed | cancelled | no-show),
- *   clinicId? (visits booked with that clinic), from? / to? (ISO dates, inclusive)
+ *   status? (requested | scheduled | declined | completed | cancelled | no-show; several
+ *   comma-separated), clinicId? (visits booked with that clinic), own? (1: only the rep's own log
+ *   entries, which have no clinic), from? / to? (ISO dates, inclusive), sort? (desc | asc)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -34,15 +36,25 @@ export async function GET(request: NextRequest) {
     const query: Record<string, unknown> = { ...rep.ownerFilter };
     const status = searchParams.get('status');
     if (status) {
-      if (!(REP_VISIT_STATUSES as readonly string[]).includes(status)) {
+      const statuses = [...new Set(status.split(',').map((s) => s.trim()))];
+      if (statuses.some((s) => !(REP_VISIT_STATUSES as readonly string[]).includes(s))) {
         return NextResponse.json({ success: false, error: 'Invalid status value.' }, { status: 400 });
       }
-      query.status = status;
+      query.status = statuses.length === 1 ? statuses[0] : { $in: statuses };
     }
+    const sortParam = searchParams.get('sort') ?? 'desc';
+    if (sortParam !== 'asc' && sortParam !== 'desc') {
+      return NextResponse.json({ success: false, error: 'Invalid sort value.' }, { status: 400 });
+    }
+    const sort: Record<string, 1 | -1> =
+      sortParam === 'asc' ? { date: 1, time: 1, createdAt: 1 } : { date: -1, createdAt: -1 };
     const clinicId = searchParams.get('clinicId');
     if (clinicId) {
       if (!isValidId(clinicId)) return NextResponse.json({ success: false, error: 'Invalid clinicId.' }, { status: 400 });
       query.clinicId = new Types.ObjectId(clinicId);
+    } else if (searchParams.get('own') === '1') {
+      // Own log entries have no clinic; null matches a missing field too.
+      query.clinicId = null;
     }
     const dateRange: Record<string, Date> = {};
     for (const [param, op] of [['from', '$gte'], ['to', '$lte']] as const) {
@@ -60,7 +72,7 @@ export async function GET(request: NextRequest) {
 
     const [visits, total] = await Promise.all([
       MedicalRepresentativeVisit.find(query)
-        .sort({ date: -1, createdAt: -1 })
+        .sort(sort)
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
@@ -115,7 +127,8 @@ export async function POST(request: NextRequest) {
 
     if (clinicId && !isValidId(clinicId)) return notFound('Clinic');
 
-    if ((!clinicId && (!clinicName || !clinicLocation)) || !purpose || !date || !time) {
+    const linkedRaw = clinicId ? undefined : body.linkedClinicId;
+    if ((!clinicId && !linkedRaw && (!clinicName || !clinicLocation)) || !purpose || !date || !time) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields' },
         { status: 400 }
@@ -176,6 +189,14 @@ export async function POST(request: NextRequest) {
       parsedDate = new Date(date);
       if (isNaN(parsedDate.getTime())) {
         return NextResponse.json({ success: false, error: 'Invalid date.' }, { status: 400 });
+      }
+      // Linked to a clinic on MyClinicSoft: still the rep's own entry, named as the clinic is.
+      const linkedClinic = await resolveLinkedClinic(rep, linkedRaw);
+      if (linkedClinic instanceof NextResponse) return linkedClinic;
+      if (linkedClinic) {
+        linked.linkedClinicId = linkedClinic.id;
+        clinicName = linkedClinic.name;
+        clinicLocation = linkedClinic.location;
       }
     }
 

@@ -282,6 +282,12 @@ MedicalRepresentativeSchema.pre('save', function (next) {
   // Store whether this is a new document before save
   (this as any).$locals = (this as any).$locals || {};
   (this as any).$locals.wasNew = this.isNew;
+  // A changed number hasn't been proven with a code: it can't sign in by text until it is
+  // (rep-otp findRepsByVerifiedPhone). Whoever set it (rep, clinic, admin), a typo must not hand
+  // a stranger the account. A save that proves the new number sets phoneVerifiedAt itself.
+  if (!this.isNew && this.isModified('phone') && !this.isModified('phoneVerifiedAt')) {
+    this.set('phoneVerifiedAt', undefined);
+  }
   next();
 });
 

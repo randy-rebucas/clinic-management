@@ -2,7 +2,7 @@ import { NextRequest, NextResponse, after } from 'next/server';
 import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { maskPhone, normalizePhone } from '@/lib/phone';
-import { otpAvailable, startOtp } from '@/lib/otp';
+import { otpAvailable, startDecoyOtp, startOtp } from '@/lib/otp';
 import { phoneRateKey } from '@/app/api/patients/auth/shared';
 import { findRepsByVerifiedPhone, REP_LOGIN_CODE_MINUTES, repLoginCodeMessage } from '../../../_lib/rep-otp';
 
@@ -45,7 +45,8 @@ export async function POST(request: NextRequest) {
   after(async () => {
     try {
       const reps = await findRepsByVerifiedPhone(phone);
-      if (reps.length === 0) return;
+      // No account: a challenge nothing passes, so /otp/verify can't tell the two apart.
+      if (reps.length === 0) return startDecoyOtp({ scope: 'medrep-login', phone });
       await startOtp({ scope: 'medrep-login', phone, message: repLoginCodeMessage });
       logger.info('Rep sign-in code sent', { phone: maskPhone(phone) });
     } catch (error) {

@@ -19,5 +19,5 @@ export async function findRepsByVerifiedPhone(phone: string) {
 }
 
 export function repLoginCodeMessage(code: string, minutes: number): string {
-  return `Your MyClinicSoft Rep sign-in code is ${code}. It expires in ${minutes} minutes. Never share this code.`;
+  return `Your eMedRoute sign-in code is ${code}. It expires in ${minutes} minutes. Never share this code.`;
 }
