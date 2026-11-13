@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+vi.mock('server-only', () => ({}));
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn() }));
+vi.mock('@/models/Notification', () => ({ default: { create: vi.fn() } }));
 vi.mock('@/lib/push-notifications', () => ({ sendPushToUserDevices: vi.fn() }));
 vi.mock('@/models/MedicalRepresentative', () => ({ default: { find: vi.fn() } }));
 vi.mock('@/models/MedicalRepresentativeVisit', () => ({ default: { find: vi.fn(), updateMany: vi.fn() } }));
@@ -9,6 +11,7 @@ vi.mock('@/models/Product', () => ({ default: { find: vi.fn(), updateMany: vi.fn
 import MedicalRepresentative from '@/models/MedicalRepresentative';
 import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
 import Product from '@/models/Product';
+import Notification from '@/models/Notification';
 import { sendPushToUserDevices } from '@/lib/push-notifications';
 import {
   expiryAlertMessage,
@@ -65,6 +68,8 @@ describe('processMedrepReminders', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(sendPushToUserDevices).mockResolvedValue({ sent: true });
+    let n = 0;
+    vi.mocked(Notification.create).mockImplementation((async () => ({ _id: `n${++n}` })) as any);
   });
 
   it('sends one push per rep per kind, skips muted reps, and marks every row handled', async () => {
@@ -85,6 +90,19 @@ describe('processMedrepReminders', () => {
     expect(result).toMatchObject({ success: true, visitReminders: 1, expiryAlerts: 1, errors: [] });
     const recipients = vi.mocked(sendPushToUserDevices).mock.calls.map((c) => c[0]);
     expect(recipients).toEqual([REP_A, REP_A]); // visits + products for A; B is muted
+    // One inbox record per rep per batch, the muted rep included
+    const records = vi.mocked(Notification.create).mock.calls.map((c: any[]) => c[0]);
+    expect(records.map((r) => [String(r.user), r.metadata.kind])).toEqual([
+      [REP_A, 'reminder'],
+      [REP_B, 'reminder'],
+      [REP_A, 'expiry'],
+    ]);
+    expect(records[0]).toMatchObject({ type: 'reminder', title: '2 upcoming visits', metadata: { screen: 'visits' } });
+    expect(records[2]).toMatchObject({ type: 'reminder', metadata: { kind: 'expiry', screen: 'products', id: 'p1' } });
+    expect(vi.mocked(sendPushToUserDevices).mock.calls[1][1]).toMatchObject({
+      tag: 'medrep-product-expiry',
+      data: { screen: 'products', id: 'p1', notificationId: 'n3' },
+    });
     // B's visit is still marked, so it isn't retried tomorrow
     const marked = vi.mocked(MedicalRepresentativeVisit.updateMany).mock.calls.flatMap((c: any[]) => c[0]._id.$in);
     expect(marked.sort()).toEqual(['v1', 'v2', 'v3']);
@@ -104,5 +122,6 @@ describe('processMedrepReminders', () => {
     expect(filter.date.$gte.toISOString()).toBe('2026-10-18T00:00:00.000Z');
     expect(filter.date.$lte.toISOString()).toBe('2026-10-19T10:00:00.000Z');
     expect(sendPushToUserDevices).not.toHaveBeenCalled();
+    expect(Notification.create).not.toHaveBeenCalled();
   });
 });

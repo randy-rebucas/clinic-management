@@ -127,14 +127,17 @@ export interface NotifyStaffOptions {
   expiresAt?: Date;
 }
 
-/** In-app notification (and push) to staff. Returns how many people it reached. */
-export async function notifyStaff(opts: NotifyStaffOptions): Promise<{ recipients: number; batchId: string }> {
+/**
+ * In-app notification (and push) to staff. Returns how many people it reached and the ids of the
+ * notifications written (in recipient order).
+ */
+export async function notifyStaff(opts: NotifyStaffOptions): Promise<{ recipients: number; batchId: string; notificationIds: string[] }> {
   const batchId = randomUUID();
   const userIds = (await resolveStaffAudience(opts.tenantId, opts.audience)).filter((id) => id !== opts.excludeUserId);
-  if (!userIds.length) return { recipients: 0, batchId };
+  if (!userIds.length) return { recipients: 0, batchId, notificationIds: [] };
 
   const priority = opts.priority ?? 'normal';
-  await Notification.insertMany(
+  const written = await Notification.insertMany(
     userIds.map((id) => ({
       tenantId: opts.tenantId ? new Types.ObjectId(opts.tenantId) : undefined,
       user: new Types.ObjectId(id),
@@ -165,7 +168,8 @@ export async function notifyStaff(opts: NotifyStaffOptions): Promise<{ recipient
       priority,
     });
   }
-  return { recipients: userIds.length, batchId };
+  const notificationIds = Array.isArray(written) ? written.map((doc: { _id: unknown }) => String(doc._id)) : [];
+  return { recipients: userIds.length, batchId, notificationIds };
 }
 
 export interface NotifyPatientOptions {

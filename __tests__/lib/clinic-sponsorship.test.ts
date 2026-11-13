@@ -14,6 +14,7 @@ vi.mock('@/models/ClinicSponsorship', () => ({
 }));
 vi.mock('@/models/MedicalRepresentative', () => ({ default: { findById: vi.fn(), find: vi.fn() } }));
 vi.mock('@/models/Tenant', () => ({ default: { findOne: vi.fn(), findById: vi.fn(), find: vi.fn(), updateOne: vi.fn() } }));
+vi.mock('@/models/Notification', () => ({ default: { create: vi.fn(async () => ({ _id: 'n1' })) } }));
 vi.mock('@/models/SubscriptionOrder', () => ({ default: { create: vi.fn(), updateOne: vi.fn() } }));
 
 import ClinicSponsorship from '@/models/ClinicSponsorship';

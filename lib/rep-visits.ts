@@ -6,7 +6,7 @@ import Tenant from '@/models/Tenant';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
 import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
 import { notifyStaff } from '@/lib/notify';
-import { sendPushToUserDevices } from '@/lib/push-notifications';
+import { notifyRep } from '@/lib/rep-notify';
 import { normalizeRepVisitSettings, localNow, slotsForDay, type RepVisitSettings } from '@/lib/rep-visit-rules';
 
 /**
@@ -121,11 +121,9 @@ export async function notifyClinicOfVisit(visit: VisitLike, event: ClinicEvent, 
 
 export type RepEvent = 'approved' | 'declined' | 'cancelled' | 'checked-in' | 'completed' | 'no-show';
 
-/** Push the clinic's answer to the rep's phone, unless they switched push off. */
+/** Tell the rep the clinic's answer: stored in their inbox, pushed unless they switched push off. Never throws. */
 export async function notifyRepOfVisit(visit: VisitLike, event: RepEvent, note?: string) {
   try {
-    const muted = await MedicalRepresentative.exists({ userId: visit.userId, notificationsEnabled: false });
-    if (muted) return;
     const copy: Record<RepEvent, { title: string; body: string }> = {
       approved: { title: 'Visit approved', body: `${visit.clinicName} approved your visit on ${visitWhen(visit)}.` },
       declined: { title: 'Visit declined', body: `${visit.clinicName} declined your visit on ${visitWhen(visit)}.` },
@@ -135,14 +133,19 @@ export async function notifyRepOfVisit(visit: VisitLike, event: RepEvent, note?:
       'no-show': { title: 'Visit missed', body: `${visit.clinicName} marked you as not arriving on ${visitWhen(visit)}.` },
     };
     const { title, body } = copy[event];
-    await sendPushToUserDevices(String(visit.userId), {
-      title,
-      body: note ? `${body} ${note}`.slice(0, 240) : body,
-      tag: `medrep-visit-${String(visit._id)}`,
-      data: { screen: 'visits', id: String(visit._id) },
-    });
+    await notifyRep(
+      { userId: visit.userId },
+      {
+        kind: 'visit',
+        title,
+        body: note ? `${body} ${note}`.slice(0, 240) : body,
+        screen: 'visits',
+        id: String(visit._id),
+        tag: `medrep-visit-${String(visit._id)}`,
+      }
+    );
   } catch (error) {
-    console.error('[rep-visits] rep push failed:', error);
+    console.error('[rep-visits] rep notification failed:', error);
   }
 }
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
 import { parseBody, isValidationError, zEmail } from '@/lib/api/validate';
-import { sendPushToUserDevices } from '@/lib/push-notifications';
+import { notifyRep } from '@/lib/rep-notify';
 import { requireRepSession, isRepSessionError } from '../../_lib/rep-session';
 import { requireTeamManager, isTeamError } from '../../_lib/rep-team';
 
@@ -37,13 +37,19 @@ export async function POST(request: NextRequest) {
       .select('userId notificationsEnabled')
       .lean<any>();
 
-    if (invitee?.userId && invitee.notificationsEnabled !== false) {
-      await sendPushToUserDevices(String(invitee.userId), {
-        title: 'Team invite',
-        body: `${ctx.me.firstName} ${ctx.me.lastName} invited you to join ${ctx.team.name}.`,
-        tag: `medrep-team-invite-${String(ctx.team._id)}`,
-        data: { screen: 'team' },
-      }).catch((error) => console.error('Team invite push failed:', error));
+    if (invitee?.userId) {
+      // Inbox record always; push unless the invitee switched it off. Never throws.
+      await notifyRep(
+        { userId: invitee.userId, notificationsEnabled: invitee.notificationsEnabled !== false },
+        {
+          kind: 'team',
+          title: 'Team invite',
+          body: `${ctx.me.firstName} ${ctx.me.lastName} invited you to join ${ctx.team.name}.`,
+          screen: 'team',
+          id: String(ctx.team._id),
+          tag: `medrep-team-invite-${String(ctx.team._id)}`,
+        }
+      );
     }
 
     return NextResponse.json({
