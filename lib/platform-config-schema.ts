@@ -77,9 +77,16 @@ export const feesSchema = z
     medrepMonthlyFee: peso.refine((v) => v === 0 || v >= 20, 'Use 0 (free) or at least ₱20').default(0),
     /** Per rep seat per month on a company team plan. 0 = team plans aren't sold online. */
     medrepSeatMonthlyFee: peso.refine((v) => v === 0 || v >= 20, 'Use 0 (not sold) or at least ₱20').default(0),
+    /** A rep's Pro plan per month: booking plus the AI assistant. 0 = Pro isn't sold. */
+    medrepProMonthlyFee: peso.refine((v) => v === 0 || v >= 20, 'Use 0 (not sold) or at least ₱20').default(0),
+    /** AI actions a month for reps without Pro (a taste of it). 0 = none. */
+    repAiFreeActions: z.number().int().min(0).max(1000).default(20),
+    /** AI actions a month on Pro (fair use). */
+    repAiProActions: z.number().int().min(1).max(10_000).default(300),
     voucherFaceValue: peso,
     voucherWholesalePrice: peso,
   })
   .strict()
-  .refine((v) => v.voucherWholesalePrice <= v.voucherFaceValue, { message: 'The clinic’s price can’t be above the patient price', path: ['voucherWholesalePrice'] });
+  .refine((v) => v.voucherWholesalePrice <= v.voucherFaceValue, { message: 'The clinic’s price can’t be above the patient price', path: ['voucherWholesalePrice'] })
+  .refine((v) => v.medrepProMonthlyFee === 0 || v.medrepProMonthlyFee > v.medrepMonthlyFee, { message: 'Pro must cost more than the standard subscription', path: ['medrepProMonthlyFee'] });
 export type PlatformFees = z.infer<typeof feesSchema>;

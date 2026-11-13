@@ -90,9 +90,11 @@ export interface IMedicalRepresentative extends Document {
   // Rep subscription for booking with clinics (lib/rep-billing.ts)
   subscription?: {
     billingCycle: 'monthly' | 'yearly';
+    /** Pro adds the AI assistant to booking (lib/rep-billing.ts). Unset = standard. */
+    plan?: 'standard' | 'pro';
     expiresAt?: Date;
     lastPaymentId?: string;
-    paymentHistory?: Array<{ paymentId: string; amount: number; billingCycle: 'monthly' | 'yearly'; paidAt: Date }>;
+    paymentHistory?: Array<{ paymentId: string; amount: number; billingCycle: 'monthly' | 'yearly'; plan?: 'standard' | 'pro'; paidAt: Date }>;
   };
 
   // Company team (models/RepTeam.ts)
@@ -235,6 +237,7 @@ const MedicalRepresentativeSchema: Schema = new Schema(
     },
     subscription: {
       billingCycle: { type: String, enum: ['monthly', 'yearly'], default: 'monthly' },
+      plan: { type: String, enum: ['standard', 'pro'] },
       expiresAt: Date,
       lastPaymentId: String,
       paymentHistory: [
@@ -242,6 +245,7 @@ const MedicalRepresentativeSchema: Schema = new Schema(
           paymentId: { type: String, required: true },
           amount: { type: Number, required: true },
           billingCycle: { type: String, enum: ['monthly', 'yearly'], required: true },
+          plan: { type: String, enum: ['standard', 'pro'] },
           paidAt: { type: Date, default: Date.now },
           _id: false,
         },

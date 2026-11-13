@@ -609,8 +609,25 @@ active rep subscription, a seat on a team plan, or booking being free (the platf
 
 | Method & path | Notes |
 |---|---|
-| `GET /api/medical-representatives/subscription` | `{ canBookClinics, coveredBy: "free" \| "individual" \| "team" \| null, prices: { monthly, yearly, seatMonthly, seatYearly, currency }, free, payable, individual: { billingCycle, expiresAt, active } \| null, team: { active, seats, members, expiresAt } \| null }` |
-| `POST /api/medical-representatives/subscription/checkout` | `{ billingCycle?: "monthly" \| "yearly" }` returns `{ checkoutUrl }`. Open it in the browser. PayMongo returns to `/medical-representatives/paid`; the subscription applies when PayMongo confirms the payment. A new payment adds a period after any time already paid for. Errors: `409 SUBSCRIPTION_FREE`, `503 PAYMENT_UNAVAILABLE` |
+| `GET /api/medical-representatives/subscription` | `{ canBookClinics, coveredBy: "free" \| "individual" \| "team" \| null, prices: { monthly, yearly, proMonthly, proYearly, seatMonthly, seatYearly, currency }, free, payable, individual: { billingCycle, plan: "standard" \| "pro", expiresAt, active } \| null, team: { active, seats, members, expiresAt } \| null }`. `proMonthly` is 0 when Pro isn't sold |
+| `POST /api/medical-representatives/subscription/checkout` | `{ billingCycle?: "monthly" \| "yearly", plan?: "standard" \| "pro" }` returns `{ checkoutUrl }`. Open it in the browser. PayMongo returns to `/medical-representatives/paid`; the subscription applies when PayMongo confirms the payment. A new payment adds a period after any time already paid for; switching plan first converts the time left at the two monthly prices. Errors: `409 SUBSCRIPTION_FREE`, `409 PRO_NOT_SOLD`, `503 PAYMENT_UNAVAILABLE` |
+
+### AI assistant (**new**)
+
+Pro is an individual plan that covers booking like the standard one and adds the AI assistant's
+full allowance. Every rep gets a few AI actions a month (`repAiFreeActions`, default 20); Pro gets
+`repAiProActions` (default 300). Months run on Manila time. An action is one drafted note or one
+new brief; failures don't count. Only the rep's own data goes to the model (Anthropic), never
+patient data, and drafts are not stored.
+
+| Method & path | Notes |
+|---|---|
+| `GET /api/medical-representatives/ai` | `{ available, plan: "standard" \| "pro", limit, used, remaining, resetsOn: "YYYY-MM-DD", proMonthly, proYearly, proActions }` |
+| `POST /api/medical-representatives/ai/visit-note` | `{ text (15–6000 chars), visitId? }`: the rep's account of a visit (typed or keyboard-dictated, any Philippine language). Returns `{ notes, productIds, interest: "high" \| "medium" \| "low" \| "unclear", followUp: { inDays, action }, warnings, remaining }`. Nothing is saved: the app puts `notes` in the editor and saves with the visit PUT |
+| `POST /api/medical-representatives/ai/visit-brief` | `{ visitId, refresh? }`: a brief from the rep's history with the visit's clinic: `{ brief: { headline, lastTime, openItems, focus, cautions } \| null, reason?: "noHistory", generatedAt, cached, remaining? }`. A brief under 12 hours old comes back free (`cached: true`) unless `refresh`. No history: `brief: null`, free |
+
+Errors: `402 AI_UPGRADE` (free actions used up and Pro is sold; `data.allowance`), `402 AI_LIMIT`
+(used up), `503` (not set up), `429` (busy, or over 60 an hour), `422` (couldn't draft).
 
 ### Company teams (**new**)
 

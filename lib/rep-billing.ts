@@ -14,14 +14,23 @@ import type { BillingCycle } from '@/lib/subscription-period';
  *  - Individual: `medrepMonthlyFee` a month (yearly = that × the plan list's months per year).
  *  - Team: `medrepSeatMonthlyFee` per seat a month, bought by the team's manager; it covers up
  *    to that many team members.
+ *  - Pro: `medrepProMonthlyFee` a month, an individual plan that covers booking like the
+ *    standard one and adds the AI assistant's full monthly allowance (lib/rep-ai-usage.ts).
+ *    Switching between standard and Pro converts the time left at the two monthly prices, so a
+ *    rep never loses what they paid for.
  *
  * A fee of 0 means free: with `medrepMonthlyFee` 0 every activated rep can book. Logging their
  * own visits and products never needs a subscription.
  */
 
+export type RepPlan = 'standard' | 'pro';
+
 export interface RepPrices {
   monthly: number;
   yearly: number;
+  /** Pro per month / year; 0 when Pro isn't sold. */
+  proMonthly: number;
+  proYearly: number;
   seatMonthly: number;
   seatYearly: number;
   yearlyMonths: number;
@@ -36,6 +45,8 @@ export async function getRepPrices(): Promise<RepPrices> {
   return {
     monthly: fees.medrepMonthlyFee,
     yearly: fees.medrepMonthlyFee * pricing.yearlyMonths,
+    proMonthly: fees.medrepProMonthlyFee,
+    proYearly: fees.medrepProMonthlyFee * pricing.yearlyMonths,
     seatMonthly: fees.medrepSeatMonthlyFee,
     seatYearly: fees.medrepSeatMonthlyFee * pricing.yearlyMonths,
     yearlyMonths: pricing.yearlyMonths,
@@ -98,22 +109,45 @@ export class RepCheckoutError extends Error {
   }
 }
 
-/** A PayMongo checkout for a rep's own subscription. */
-export async function createRepSubscriptionCheckout(rep: { _id: unknown; firstName: string; lastName: string; email: string }, cycle: BillingCycle) {
+/** A PayMongo checkout for a rep's own subscription, standard or Pro. */
+export async function createRepSubscriptionCheckout(
+  rep: { _id: unknown; firstName: string; lastName: string; email: string },
+  cycle: BillingCycle,
+  plan: RepPlan = 'standard'
+) {
   const prices = await getRepPrices();
-  if (prices.free) throw new RepCheckoutError('Booking with clinics is free right now; there is nothing to pay.', 409, 'SUBSCRIPTION_FREE');
+  if (plan === 'pro' && prices.proMonthly === 0) throw new RepCheckoutError('Pro isn’t available right now.', 409, 'PRO_NOT_SOLD');
+  if (plan === 'standard' && prices.free) throw new RepCheckoutError('Booking with clinics is free right now; there is nothing to pay.', 409, 'SUBSCRIPTION_FREE');
   if (!prices.payable) throw new RepCheckoutError('Online payment is not available right now.', 503, 'PAYMENT_UNAVAILABLE');
-  const amount = cycle === 'yearly' ? prices.yearly : prices.monthly;
+  const pro = plan === 'pro';
+  const amount = pro ? (cycle === 'yearly' ? prices.proYearly : prices.proMonthly) : cycle === 'yearly' ? prices.yearly : prices.monthly;
+  const period = cycle === 'yearly' ? 'One year' : 'One month';
   return createCheckoutSession({
-    name: `MyClinicSoft rep subscription (${cycle})`,
+    name: `MyClinicSoft rep ${pro ? 'Pro' : 'subscription'} (${cycle})`,
     amount,
-    description: `${cycle === 'yearly' ? 'One year' : 'One month'} of clinic visit booking for ${rep.firstName} ${rep.lastName}`,
-    referenceNumber: `MRS-${String(rep._id).slice(-8).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`,
+    description: `${period} of ${pro ? 'clinic visit booking and the AI assistant' : 'clinic visit booking'} for ${rep.firstName} ${rep.lastName}`,
+    referenceNumber: `${pro ? 'MRP' : 'MRS'}-${String(rep._id).slice(-8).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`,
     successUrl: returnUrl('paid'),
     cancelUrl: returnUrl('cancelled'),
     email: rep.email,
-    metadata: { purpose: 'medrep-subscription', repId: String(rep._id), billingCycle: cycle, amount: String(amount) },
+    metadata: { purpose: 'medrep-subscription', repId: String(rep._id), billingCycle: cycle, plan, amount: String(amount) },
   });
+}
+
+/**
+ * Time left on one plan, converted to the other at their monthly prices (Pro -> standard grows,
+ * standard -> Pro shrinks). Time on a plan that cost nothing converts to nothing.
+ */
+export function convertRemaining(remainingMs: number, fromMonthly: number, toMonthly: number): number {
+  if (remainingMs <= 0 || fromMonthly <= 0) return 0;
+  if (toMonthly <= 0) return remainingMs;
+  return Math.round(remainingMs * (fromMonthly / toMonthly));
+}
+
+/** Whether the rep's own Pro plan is running now. */
+export function hasActivePro(profile: { subscription?: { plan?: string; expiresAt?: Date | string | null } }, now = new Date()): boolean {
+  const ends = profile.subscription?.expiresAt;
+  return profile.subscription?.plan === 'pro' && !!ends && new Date(ends) > now;
 }
 
 /** A PayMongo checkout for a team's seats, bought by its manager. */
@@ -145,18 +179,30 @@ export async function applyRepSubscriptionPayment(meta: Record<string, string>, 
   const fee = Number(meta.amount) || 0;
   if (paid + 0.005 < fee) return { ok: false, error: `Rep subscription paid ${paid}, price is ${fee}` };
   const cycle = cycleOf(meta.billingCycle);
+  const plan: RepPlan = meta.plan === 'pro' ? 'pro' : 'standard';
   const rep = await MedicalRepresentative.findById(meta.repId).select('subscription').lean<any>();
   if (!rep) return { ok: false, error: 'Rep not found' };
   if ((rep.subscription?.paymentHistory ?? []).some((p: any) => p.paymentId === paymentId)) return { ok: true, applied: false };
+
+  // Changing plan: the time left on the old one carries over at its value on the new one.
+  let currentEnd: Date | null = rep.subscription?.expiresAt ? new Date(rep.subscription.expiresAt) : null;
+  const currentPlan: RepPlan = rep.subscription?.plan === 'pro' ? 'pro' : 'standard';
+  if (currentEnd && currentEnd > now && currentPlan !== plan) {
+    const fees = await getPlatformFees();
+    const monthly = (p: RepPlan) => (p === 'pro' ? fees.medrepProMonthlyFee : fees.medrepMonthlyFee);
+    currentEnd = new Date(now.getTime() + convertRemaining(currentEnd.getTime() - now.getTime(), monthly(currentPlan), monthly(plan)));
+  }
+
   const res = await MedicalRepresentative.updateOne(
     { _id: rep._id, 'subscription.paymentHistory.paymentId': { $ne: paymentId } },
     {
       $set: {
         'subscription.billingCycle': cycle,
-        'subscription.expiresAt': repPeriodEnd(rep.subscription?.expiresAt, cycle, now),
+        'subscription.plan': plan,
+        'subscription.expiresAt': repPeriodEnd(currentEnd, cycle, now),
         'subscription.lastPaymentId': paymentId,
       },
-      $push: { 'subscription.paymentHistory': { paymentId, amount: paid, billingCycle: cycle, paidAt: now } },
+      $push: { 'subscription.paymentHistory': { paymentId, amount: paid, billingCycle: cycle, plan, paidAt: now } },
     }
   );
   return { ok: true, applied: res.modifiedCount > 0 };
