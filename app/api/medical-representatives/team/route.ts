@@ -1,40 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
-import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
 import RepTeam from '@/models/RepTeam';
 import User from '@/models/User';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { teamCoverage } from '@/lib/rep-billing';
+import { memberStats } from '@/lib/rep-team-stats';
 import { requireRepSession, isRepSessionError } from '../_lib/rep-session';
 import { loadTeamMe, isTeamManager, requireTeamManager, isTeamError, teamError } from '../_lib/rep-team';
 
 const nameSchema = z.object({ name: z.string().trim().min(2).max(200) });
-
-type MemberStats = { visitsThisMonth: number; completedThisMonth: number; upcoming: number; pendingRequests: number; lastVisitAt: Date | null };
-
-async function memberStats(userIds: Types.ObjectId[], now = new Date()): Promise<Map<string, MemberStats>> {
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const inMonth = { $and: [{ $gte: ['$date', monthStart] }, { $lt: ['$date', nextMonth] }] };
-  const rows = await MedicalRepresentativeVisit.aggregate([
-    { $match: { userId: { $in: userIds } } },
-    {
-      $group: {
-        _id: '$userId',
-        visitsThisMonth: { $sum: { $cond: [{ $and: [inMonth, { $not: [{ $in: ['$status', ['cancelled', 'declined']] }] }] }, 1, 0] } },
-        completedThisMonth: { $sum: { $cond: [{ $and: [inMonth, { $eq: ['$status', 'completed'] }] }, 1, 0] } },
-        upcoming: { $sum: { $cond: [{ $and: [{ $gte: ['$date', today] }, { $eq: ['$status', 'scheduled'] }] }, 1, 0] } },
-        pendingRequests: { $sum: { $cond: [{ $eq: ['$status', 'requested'] }, 1, 0] } },
-        lastVisitAt: { $max: { $cond: [{ $eq: ['$status', 'completed'] }, '$date', null] } },
-      },
-    },
-  ]);
-  return new Map(rows.map((r: any) => [String(r._id), { ...r, _id: undefined }]));
-}
 
 /**
  * GET /api/medical-representatives/team

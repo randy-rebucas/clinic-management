@@ -25,8 +25,18 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import { describeMongoUri } from './dev-db/guard';
+import { STANDARD_ROLE } from '../lib/roles';
 
 const DEFAULT_EMAIL = 'appreview@myclinicsoft.solutions';
+
+/** DEFAULT_ROLE_PERMISSIONS['medical-representative'] in lib/permissions.ts (not importable here: it pulls in React and the models). */
+const REP_DEFAULT_PERMISSIONS = [
+  { resource: 'doctors', actions: ['read'] },
+  { resource: 'patients', actions: ['read'] },
+  { resource: 'appointments', actions: ['read'] },
+  { resource: 'medicines', actions: ['read'] },
+  { resource: 'notifications', actions: ['read', 'update'] },
+];
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -55,10 +65,28 @@ async function main() {
   const roles = db.collection('roles');
 
   const tenantless = { $or: [{ tenantId: null }, { tenantId: { $exists: false } }] };
-  const role = await roles.findOne({ name: 'medical-representative', ...tenantless });
-  if (!role) throw new Error('No medical-representative role in this database. Create one rep through the app or web first.');
-
   const now = new Date();
+
+  // The tenant-less rep role, created as the MedicalRepresentative post-save hook would on the
+  // first rep sign-up ({tenantId: null} also matches a role without the field).
+  const standard = STANDARD_ROLE['medical-representative'];
+  const role = await roles.findOneAndUpdate(
+    { name: 'medical-representative', tenantId: null },
+    {
+      $setOnInsert: {
+        displayName: standard.displayName,
+        description: standard.description,
+        level: standard.level,
+        isActive: true,
+        defaultPermissions: REP_DEFAULT_PERMISSIONS,
+        createdAt: now,
+        updatedAt: now,
+      },
+    },
+    { upsert: true, returnDocument: 'after' }
+  );
+  if (!role) throw new Error('Could not find or create the medical-representative role.');
+
   const oneYear = new Date(now);
   oneYear.setFullYear(oneYear.getFullYear() + 1);
   const hash = await bcrypt.hash(password, 12);

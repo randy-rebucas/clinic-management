@@ -5,7 +5,7 @@ import { Types } from 'mongoose';
 import { isValidId, notFound } from '@/lib/api/tenant-session';
 import { getClinicForReps, repMayBook, slotRemaining, notifyClinicOfVisit } from '@/lib/rep-visits';
 import { repBookingAccess } from '@/lib/rep-billing';
-import { REP_VISIT_STATUSES, PERSONAL_VISIT_STATUSES, ACTIVE_CLINIC_STATUSES, parseVisitDay } from '@/lib/rep-visit-rules';
+import { REP_VISIT_STATUSES, PERSONAL_VISIT_STATUSES, ACTIVE_CLINIC_STATUSES, parseVisitDay, localNow } from '@/lib/rep-visit-rules';
 import { requireRepSession, isRepSessionError } from '../_lib/rep-session';
 import {
   loadRepProfileForVisits,
@@ -16,13 +16,31 @@ import {
   resolveLinkedClinic,
 } from '../_lib/rep-visit-input';
 
+/** The rep app's calendar: visit days are clinic days, and the clinics are in the Philippines. */
+const REP_TIME_ZONE = 'Asia/Manila';
+
+/** Status groups → the Past screen's outcome buckets. Today's open visits aren't "never closed" yet. */
+function outcomeSummary(groups: { _id: { status: string; past: boolean }; n: number }[]) {
+  const summary = { done: 0, notSeen: 0, cancelled: 0, open: 0 };
+  for (const { _id, n } of groups) {
+    if (_id.status === 'completed') summary.done += n;
+    else if (_id.status === 'no-show' || _id.status === 'declined') summary.notSeen += n;
+    else if (_id.status === 'cancelled') summary.cancelled += n;
+    else if (_id.past) summary.open += n;
+  }
+  return summary;
+}
+
 /**
  * GET /api/medical-representatives/visits
  * The rep's visits, newest first (`sort=asc`: soonest first).
  * Query params: page (default 1), limit (default 50, max 100),
  *   status? (requested | scheduled | declined | completed | cancelled | no-show; several
  *   comma-separated), clinicId? (visits booked with that clinic), own? (1: only the rep's own log
- *   entries, which have no clinic), from? / to? (ISO dates, inclusive), sort? (desc | asc)
+ *   entries, which have no clinic), from? / to? (ISO dates, inclusive), sort? (desc | asc),
+ *   summary? (1: also return `summary`, the outcome counts for the same filters without `status`:
+ *   done, notSeen (no-show or declined), cancelled, and open = still requested/scheduled on a day
+ *   before today, Manila time). Visits on the same day come latest time first (`asc`: earliest).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -47,7 +65,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid sort value.' }, { status: 400 });
     }
     const sort: Record<string, 1 | -1> =
-      sortParam === 'asc' ? { date: 1, time: 1, createdAt: 1 } : { date: -1, createdAt: -1 };
+      // "HH:mm" strings sort correctly as text; without `time` a day's visits came in creation order.
+      sortParam === 'asc' ? { date: 1, time: 1, createdAt: 1 } : { date: -1, time: -1, createdAt: -1 };
     const clinicId = searchParams.get('clinicId');
     if (clinicId) {
       if (!isValidId(clinicId)) return NextResponse.json({ success: false, error: 'Invalid clinicId.' }, { status: 400 });
@@ -70,19 +89,32 @@ export async function GET(request: NextRequest) {
 
     await connectDB();
 
-    const [visits, total] = await Promise.all([
+    const wantSummary = searchParams.get('summary') === '1';
+    // The outcome counts ignore the status filter: they are what the rep filters by.
+    const summaryQuery = { ...query };
+    delete summaryQuery.status;
+    const todayStart = parseVisitDay(localNow(REP_TIME_ZONE).day)!;
+
+    const [visits, total, outcomes] = await Promise.all([
       MedicalRepresentativeVisit.find(query)
         .sort(sort)
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
       MedicalRepresentativeVisit.countDocuments(query),
+      wantSummary
+        ? MedicalRepresentativeVisit.aggregate<{ _id: { status: string; past: boolean }; n: number }>([
+            { $match: summaryQuery },
+            { $group: { _id: { status: '$status', past: { $lt: ['$date', todayStart] } }, n: { $sum: 1 } } },
+          ])
+        : null,
     ]);
 
     return NextResponse.json({
       success: true,
       data: visits,
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      ...(outcomes ? { summary: outcomeSummary(outcomes) } : {}),
     });
   } catch (error: any) {
     console.error('Get visits error:', error);
