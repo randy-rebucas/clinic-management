@@ -47,7 +47,7 @@ describe('GET /api/medical-representatives/products', () => {
 
   it('expiring=1 lists active products through 30 days from today (expired included), soonest first', async () => {
     await get('expiring=1&status=inactive');
-    const q = vi.mocked(Product.find).mock.calls[0][0] as any;
+    const q = (vi.mocked(Product.find).mock.calls[0] as unknown[])[0] as any;
     expect(q.status).toBe('active');
     expect(q.expiryDate).toEqual({ $lt: day('2026-12-14') });
     expect(q.expiryDate.$gte).toBeUndefined();
@@ -56,7 +56,7 @@ describe('GET /api/medical-representatives/products', () => {
 
   it('searches name, manufacturer and category, with regex characters escaped', async () => {
     await get('search=amlo%20(5');
-    const q = vi.mocked(Product.find).mock.calls[0][0] as any;
+    const q = (vi.mocked(Product.find).mock.calls[0] as unknown[])[0] as any;
     expect(q.$or.map((o: any) => Object.keys(o)[0])).toEqual(['name', 'manufacturer', 'category']);
     expect(() => new RegExp(q.$or[0].name.$regex)).not.toThrow();
     expect(q.userId).toBe(USER);

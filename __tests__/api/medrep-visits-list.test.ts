@@ -75,6 +75,6 @@ describe('GET /api/medical-representatives/visits', () => {
     expect(pipeline[0].$match.date.$gte).toEqual(new Date('2026-11-01'));
     expect(pipeline[1].$group._id.past.$lt[1]).toEqual(new Date('2026-11-13T00:00:00.000Z'));
     // The list itself still filters by status.
-    expect(vi.mocked(Visit.find).mock.calls[0][0]).toMatchObject({ status: 'completed' });
+    expect((vi.mocked(Visit.find).mock.calls[0] as unknown[])[0]).toMatchObject({ status: 'completed' });
   });
 });
