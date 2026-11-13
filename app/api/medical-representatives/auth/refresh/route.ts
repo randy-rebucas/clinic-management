@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { consumeRefreshToken, revokeRefreshFamily } from '@/app/lib/refresh-tokens';
-import { issueRepAppTokens, loadActiveRep } from '../../_lib/rep-login';
+import { issueRepAppTokens, loadActiveRep, MEDREP_DEACTIVATED, DEACTIVATED_MESSAGE } from '../../_lib/rep-login';
 
 /**
  * POST /api/medical-representatives/auth/refresh
@@ -10,7 +10,8 @@ import { issueRepAppTokens, loadActiveRep } from '../../_lib/rep-login';
  * Trade a refresh token for a new Bearer token and a new refresh token (the old one is spent).
  * 401 `REFRESH_INVALID`: unknown, expired, revoked, account no longer active, or the rep signed
  * out everywhere / changed their password. 401 `REFRESH_REUSED`: the token was already spent,
- * so every token in its chain is revoked. Either way the app must sign in again.
+ * so every token in its chain is revoked. 401 `MEDREP_DEACTIVATED`: an admin deactivated the
+ * (already paid) rep; the chain is revoked too. Any 401 means the app must sign in again.
  */
 export async function POST(request: NextRequest) {
   // Not the strict sign-in limit: refresh tokens are 256-bit random (nothing to guess), and
@@ -25,8 +26,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Invalid request body. Expected JSON.' }, { status: 400 });
   }
 
-  const invalid = (code: string) =>
-    NextResponse.json({ success: false, error: 'Please sign in again.', code }, { status: 401 });
+  const invalid = (code: string, error = 'Please sign in again.') =>
+    NextResponse.json({ success: false, error, code }, { status: 401 });
 
   try {
     const consumed = await consumeRefreshToken(body.refreshToken, 'user');
@@ -34,8 +35,9 @@ export async function POST(request: NextRequest) {
     const { subjectId, sessionVersion, family } = consumed.value;
 
     const rep = await loadActiveRep(subjectId);
-    if (!rep || (rep.user.sessionVersion ?? 0) !== sessionVersion) {
+    if (!rep.ok || (rep.user.sessionVersion ?? 0) !== sessionVersion) {
       await revokeRefreshFamily(family);
+      if (!rep.ok && rep.deactivated) return invalid(MEDREP_DEACTIVATED, DEACTIVATED_MESSAGE);
       return invalid('REFRESH_INVALID');
     }
 

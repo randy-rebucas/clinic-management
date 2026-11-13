@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
 import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
+import RepDelivery from '@/models/RepDelivery';
 import { isValidId, notFound } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError } from '@/lib/api/validate';
 import { getClinicForReps, repMayBook, slotRemaining, notifyClinicOfVisit } from '@/lib/rep-visits';
@@ -235,6 +236,9 @@ async function updateClinicVisit(
 /**
  * DELETE /api/medical-representatives/visits/[id]
  * Delete a visit. A visit still open with a clinic has to be cancelled first, so the clinic hears of it.
+ * A visit with deliveries recorded against it (any status: pending ones would be orphaned, and
+ * received / rejected / cancelled ones are the clinic's record of what it got) can't be deleted:
+ * 409 HAS_DELIVERIES.
  */
 export async function DELETE(
   request: NextRequest,
@@ -248,6 +252,16 @@ export async function DELETE(
     if (!isValidId(visitId)) return notFound('Visit');
 
     await connectDB();
+
+    const deliveries = await RepDelivery.find({ ...rep.ownerFilter, visitId }).select('status').limit(50).lean<{ status: string }[]>();
+    if (deliveries.length) {
+      const pending = deliveries.some((d) => d.status === 'pending');
+      return visitError(
+        409,
+        pending ? 'This visit has deliveries. Cancel them first.' : 'This visit has delivery records, so it can’t be deleted.',
+        'HAS_DELIVERIES'
+      );
+    }
 
     const deletedVisit = await MedicalRepresentativeVisit.findOneAndDelete({
       ...rep.ownerFilter,

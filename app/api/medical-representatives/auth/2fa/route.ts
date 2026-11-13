@@ -5,7 +5,7 @@ import MedicalRepresentative from '@/models/MedicalRepresentative';
 import { verifyPending2faToken } from '@/app/lib/dal';
 import { verifyUserTotp } from '@/app/api/auth/2fa/totp';
 import { applyAuthRateLimits } from '@/lib/middleware/rate-limit';
-import { auditRepSignIn, repTokenResponse } from '../../_lib/rep-login';
+import { auditRepSignIn, repTokenResponse, isRepDeactivated, MEDREP_DEACTIVATED, DEACTIVATED_MESSAGE } from '../../_lib/rep-login';
 
 const EXPIRED = 'Your sign-in attempt expired. Please sign in again.';
 
@@ -52,6 +52,9 @@ export async function POST(request: NextRequest) {
     const medicalRep = user.medicalRepresentativeProfile
       ? await MedicalRepresentative.findById(user.medicalRepresentativeProfile)
       : await MedicalRepresentative.findOne({ email: user.email });
+    if (isRepDeactivated(medicalRep)) {
+      return NextResponse.json({ success: false, error: DEACTIVATED_MESSAGE, code: MEDREP_DEACTIVATED }, { status: 403 });
+    }
     if (!medicalRep || !medicalRep.isActivated || medicalRep.status !== 'active') {
       return NextResponse.json(
         { success: false, error: 'Your account is not activated. Please complete payment or contact support.', code: 'MEDREP_INACTIVE' },

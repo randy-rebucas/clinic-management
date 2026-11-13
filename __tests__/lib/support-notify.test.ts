@@ -8,6 +8,8 @@ vi.mock('@/lib/email', () => ({ sendEmail: vi.fn().mockResolvedValue({ success: 
 vi.mock('@/lib/platform-auth', () => ({ platformAdminEmails: () => ['ops@myclinicsoft.test'] }));
 vi.mock('@/lib/platform-console', () => ({ supportReference: (id: string) => `SR-${id.slice(-6)}` }));
 vi.mock('@/lib/notify', () => ({ notifyStaff: vi.fn().mockResolvedValue({ recipients: 1, batchId: 'b' }) }));
+vi.mock('@/lib/push-notifications', () => ({ sendPushToUserDevices: vi.fn() }));
+vi.mock('@/models/MedicalRepresentative', () => ({ default: { findOne: () => ({ select: () => ({ lean: async () => null }) }) } }));
 vi.mock('@/models/SupportRequest', () => ({ default: { findOne: vi.fn(), updateOne: vi.fn() } }));
 
 import SupportRequest from '@/models/SupportRequest';

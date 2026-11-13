@@ -64,6 +64,14 @@ export async function DELETE(request: NextRequest) {
     // access token has expired. Unregistering one's own device from push needs nothing more.
     const tokenOwner =
       refreshToken && deviceId && !all ? await findRefreshTokenSubject(refreshToken, 'user').catch(() => null) : null;
+    // Signing out everywhere (or a device without that proof) needs a live access token. Check it
+    // before revoking the refresh token: on a 401 the app refreshes with that token and retries,
+    // which would fail on a token this very request had just revoked.
+    let rep: Awaited<ReturnType<typeof requireRepSession>> | null = null;
+    if (all || (deviceId && !tokenOwner)) {
+      rep = await requireRepSession();
+      if (isRepSessionError(rep)) return rep;
+    }
     if (refreshToken) await revokeRefreshToken(refreshToken, 'user');
 
     if (tokenOwner && deviceId) {
@@ -72,9 +80,7 @@ export async function DELETE(request: NextRequest) {
         { userId: new Types.ObjectId(tokenOwner.subjectId), deviceId, patientId: { $exists: false } },
         { $set: { revokedAt: new Date(), pushToken: null } }
       );
-    } else if (all || deviceId) {
-      const rep = await requireRepSession();
-      if (isRepSessionError(rep)) return rep;
+    } else if (rep) {
       await connectDB();
       if (deviceId) {
         await MobileDevice.updateOne(

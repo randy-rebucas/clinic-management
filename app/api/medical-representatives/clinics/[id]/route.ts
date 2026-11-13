@@ -4,11 +4,13 @@ import connectDB from '@/lib/mongodb';
 import MedicalRepresentative from '@/models/MedicalRepresentative';
 import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
 import { isValidId, notFound } from '@/lib/api/tenant-session';
-import { ACTIVE_CLINIC_STATUSES } from '@/lib/rep-visit-rules';
+import { ACTIVE_CLINIC_STATUSES, localNow, parseVisitDay } from '@/lib/rep-visit-rules';
 import { getClinicForReps } from '@/lib/rep-visits';
 import { notifyClinicRepLeft } from '@/lib/rep-access';
 import { requireRepSession, isRepSessionError } from '../../_lib/rep-session';
 import { loadRepProfileForVisits, repDisplayName, visitError } from '../../_lib/rep-visit-input';
+
+const REP_TIME_ZONE = 'Asia/Manila';
 
 /**
  * DELETE /api/medical-representatives/clinics/[id]
@@ -35,7 +37,8 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
         ...rep.ownerFilter,
         clinicId: new Types.ObjectId(id),
         status: { $in: ACTIVE_CLINIC_STATUSES },
-        date: { $gte: new Date(new Date().toISOString().slice(0, 10)) },
+        // Visit days are stored as UTC midnight of the Manila day, like the rep's other lists.
+        date: { $gte: parseVisitDay(localNow(REP_TIME_ZONE).day)! },
       });
       if (count > 0) {
         return NextResponse.json(

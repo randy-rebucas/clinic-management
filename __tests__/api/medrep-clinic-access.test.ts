@@ -204,6 +204,19 @@ describe('DELETE /api/medical-representatives/clinics/[id] (rep leaves)', () => 
     expect((await res.json()).data.canBook).toBe(true);
   });
 
+  it('counts upcoming visits from today in Manila, not the UTC day', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    // 07:30 on 14 Nov in Manila is still 13 Nov in UTC: a visit on the 13th is past already.
+    vi.setSystemTime(new Date('2026-11-13T23:30:00.000Z'));
+    try {
+      await leave(req('DELETE'), ctx(CLINIC));
+    } finally {
+      vi.useRealTimers();
+    }
+    const visits = (await import('@/models/MedicalRepresentativeVisit')).default as any;
+    expect(visits.countDocuments.mock.calls[0][0].date).toEqual({ $gte: new Date('2026-11-14T00:00:00.000Z') });
+  });
+
   it('404 when not on the clinic’s list', async () => {
     vi.mocked(loadRepProfileForVisits).mockResolvedValueOnce({ _id: REP, firstName: 'A', lastName: 'C', tenantIds: [] } as any);
     expect((await leave(req('DELETE'), ctx(CLINIC))).status).toBe(404);
