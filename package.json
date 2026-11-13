@@ -47,6 +47,7 @@
     "db:migrate:lab-order-codes": "tsx scripts/migrate-lab-order-codes.ts",
     "db:migrate:emcr-temp-passwords": "tsx scripts/migrate-emcr-temp-passwords.ts",
     "db:migrate:contact-family-links": "tsx scripts/migrate-contact-family-links.ts",
+    "db:create-review-rep": "tsx scripts/create-review-rep.ts",
     "storage:migrate-attachments": "tsx scripts/migrate-attachments-to-cloudinary.ts",
     "users:rotate-default-passwords": "tsx scripts/rotate-default-passwords.ts",
     "storage:migrate-private": "tsx scripts/migrate-cloudinary-private.ts"
