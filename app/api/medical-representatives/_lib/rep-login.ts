@@ -14,6 +14,14 @@ import { applyAuthRateLimits, getClientIp, rateLimiters, resetRateLimit } from '
 
 const INVALID_CREDENTIALS = 'Invalid email or password.';
 
+/** A rep who paid (activated) and was later switched off by an admin: paying again can't help. */
+export const MEDREP_DEACTIVATED = 'MEDREP_DEACTIVATED';
+export const DEACTIVATED_MESSAGE = 'Your account has been deactivated. Contact support.';
+
+export function isRepDeactivated(medicalRep: { isActivated?: boolean; status?: string } | null | undefined): boolean {
+	return !!medicalRep?.isActivated && medicalRep.status !== 'active';
+}
+
 let dummyHash: string | null = null;
 function getDummyHash(): string {
 	if (!dummyHash) dummyHash = bcrypt.hashSync('timing-equalizer-not-a-password', 12);
@@ -146,6 +154,10 @@ export async function verifyRepCredentials(
 		return fail('Medical representative profile not found.', 404);
 	}
 
+	if (isRepDeactivated(medicalRep)) {
+		await auditRepSignIn(request, user, sanitizedEmail, tenantId, false, 'Representative profile deactivated');
+		return fail(DEACTIVATED_MESSAGE, 403, { code: MEDREP_DEACTIVATED });
+	}
 	if (!medicalRep.isActivated || medicalRep.status !== 'active') {
 		await auditRepSignIn(request, user, sanitizedEmail, tenantId, false, 'Representative profile not activated');
 		return fail('Your account is not activated. Please complete payment or contact support.', 403, { code: 'MEDREP_INACTIVE' });
@@ -203,18 +215,21 @@ export async function issueRepAppTokens(user: any, roleId?: string, family?: str
 
 /**
  * Whether a user may still hold a rep app session: active account, still a medical
- * representative, and an activated rep profile.
+ * representative, and an activated rep profile. When not, `deactivated` says the rep profile was
+ * switched off after activation (as opposed to a closed account or a dead session).
  */
-export async function loadActiveRep(userId: string): Promise<{ user: any; roleId?: string } | null> {
+export async function loadActiveRep(
+	userId: string
+): Promise<{ ok: true; user: any; roleId?: string } | { ok: false; deactivated: boolean }> {
 	await connectDB();
 	const user = await User.findById(userId).populate('role');
 	const role = user?.role as any;
-	if (!user || user.status !== 'active' || role?.name !== 'medical-representative') return null;
+	if (!user || user.status !== 'active' || role?.name !== 'medical-representative') return { ok: false, deactivated: false };
 	const medicalRep = user.medicalRepresentativeProfile
 		? await MedicalRepresentative.findById(user.medicalRepresentativeProfile).select('isActivated status').lean<any>()
 		: await MedicalRepresentative.findOne({ email: user.email }).select('isActivated status').lean<any>();
-	if (!medicalRep?.isActivated || medicalRep.status !== 'active') return null;
-	return { user, roleId: role?._id?.toString() };
+	if (!medicalRep?.isActivated || medicalRep.status !== 'active') return { ok: false, deactivated: isRepDeactivated(medicalRep) };
+	return { ok: true, user, roleId: role?._id?.toString() };
 }
 
 /** The rep summary returned on sign-in. */

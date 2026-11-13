@@ -20,7 +20,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (isValidationError(parsed)) return parsed;
 
   await connectDB();
-  const before = await SupportRequest.findByIdAndUpdate(id, { $set: { status: parsed.data.status } }, { new: false, projection: { status: 1, subject: 1, userId: 1, tenantId: 1 } }).lean<any>();
+  const before = await SupportRequest.findByIdAndUpdate(id, { $set: { status: parsed.data.status } }, { new: false, projection: { status: 1, subject: 1, userId: 1, tenantId: 1, source: 1 } }).lean<any>();
   if (!before) return notFound('Support request');
   if (parsed.data.status === 'resolved' && before.status !== 'resolved') {
     await notifyRequesterInApp(before, id, `Resolved: ${before.subject}`, 'MyClinicSoft support marked your request resolved. Reply if anything is still wrong.');

@@ -12,7 +12,11 @@ import { requireRepSession, isRepSessionError, repProfileFilter } from '../_lib/
 /** The rep app's calendar: visit days are clinic days, and the clinics are in the Philippines. */
 const REP_TIME_ZONE = 'Asia/Manila';
 
-type History = { lastVisit: string | null; nextVisit: { date: string; time: string } | null };
+type NextSlot = { date: string; time: string };
+type History = { lastVisit: string | null; nextVisit: NextSlot | null; nextBooking: NextSlot | null };
+
+/** "YYYY-MM-DD HH:mm" → { date, time }. */
+const toSlot = (v: string | null): NextSlot | null => (v ? { date: v.slice(0, 10), time: v.slice(11) } : null);
 
 /**
  * The rep's last completed and next open visit with each of these clinics, in one aggregation on
@@ -22,7 +26,7 @@ async function visitHistory(ownerFilter: Record<string, unknown>, clinicIds: unk
   if (!clinicIds.length) return new Map();
   const todayStart = parseVisitDay(localNow(REP_TIME_ZONE).day)!;
   const day = { $dateToString: { format: '%Y-%m-%d', date: '$date', timezone: 'UTC' } };
-  const rows = await MedicalRepresentativeVisit.aggregate<{ _id: unknown; lastDone: string | null; nextOpen: string | null }>([
+  const rows = await MedicalRepresentativeVisit.aggregate<{ _id: unknown; lastDone: string | null; nextOpen: string | null; nextBooked?: string | null }>([
     {
       $match: {
         ...ownerFilter,
@@ -40,6 +44,16 @@ async function visitHistory(ownerFilter: Record<string, unknown>, clinicIds: unk
             $cond: [{ $and: [{ $ne: ['$status', 'completed'] }, { $gte: ['$date', todayStart] }] }, { $concat: [day, ' ', '$time'] }, null],
           },
         },
+        // The same, bookings with the clinic only (what POST /visits counts as DUPLICATE_REQUEST).
+        nextBooked: {
+          $min: {
+            $cond: [
+              { $and: [{ $eq: [{ $type: '$clinicId' }, 'objectId'] }, { $ne: ['$status', 'completed'] }, { $gte: ['$date', todayStart] }] },
+              { $concat: [day, ' ', '$time'] },
+              null,
+            ],
+          },
+        },
       },
     },
   ]);
@@ -48,7 +62,8 @@ async function visitHistory(ownerFilter: Record<string, unknown>, clinicIds: unk
       String(r._id),
       {
         lastVisit: r.lastDone ?? null,
-        nextVisit: r.nextOpen ? { date: r.nextOpen.slice(0, 10), time: r.nextOpen.slice(11) } : null,
+        nextVisit: toSlot(r.nextOpen),
+        nextBooking: toSlot(r.nextBooked ?? null),
       },
     ])
   );
@@ -65,7 +80,8 @@ async function visitHistory(ownerFilter: Record<string, unknown>, clinicIds: unk
  * waiting) or "none", and `canBook`. Each clinic also carries the rep's own history with it:
  * `lastVisit` (the latest completed visit's day, "YYYY-MM-DD") and `nextVisit` (the soonest
  * requested or scheduled visit from today on, `{ date, time }`), or null. Bookings (`clinicId`)
- * and log entries the rep linked to the clinic (`linkedClinicId`) both count.
+ * and log entries the rep linked to the clinic (`linkedClinicId`) both count. `nextBooking` is
+ * the same from bookings only, which is what a new booking's DUPLICATE_REQUEST check looks at.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -141,6 +157,7 @@ export async function GET(request: NextRequest) {
         instructions: canBook ? settings.instructions || null : null,
         lastVisit: history.get(id)?.lastVisit ?? null,
         nextVisit: history.get(id)?.nextVisit ?? null,
+        nextBooking: history.get(id)?.nextBooking ?? null,
       };
     });
 

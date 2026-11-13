@@ -6,7 +6,7 @@ import { issuePending2faToken } from '@/app/lib/dal';
 import { applyAuthRateLimits, rateLimiters } from '@/lib/middleware/rate-limit';
 import { normalizePhone } from '@/lib/phone';
 import { consumeOtp } from '@/lib/otp';
-import { auditRepSignIn, repTokenResponse } from '../../../_lib/rep-login';
+import { auditRepSignIn, repTokenResponse, isRepDeactivated, MEDREP_DEACTIVATED, DEACTIVATED_MESSAGE } from '../../../_lib/rep-login';
 import { findRepsByVerifiedPhone } from '../../../_lib/rep-otp';
 import { issueActivationToken } from '@/lib/medrep-app-signup';
 
@@ -19,7 +19,7 @@ const fail = (error: string, status: number, code?: string) =>
  *
  * Sign in with the texted code. Same answer as POST /auth/token: the token pair and rep summary,
  * or `{ requires2fa, pendingToken }` (401) for accounts with an authenticator app, and the same
- * refusal codes (MEDREP_INACTIVE, USER_INACTIVE). MULTIPLE_ACCOUNTS: two reps share the number,
+ * refusal codes (MEDREP_INACTIVE, MEDREP_DEACTIVATED, USER_INACTIVE). MULTIPLE_ACCOUNTS: two reps share the number,
  * so the code can't say which one; sign in with email and password instead.
  */
 export async function POST(request: NextRequest) {
@@ -63,6 +63,11 @@ export async function POST(request: NextRequest) {
     if (user.status !== 'active') {
       await auditRepSignIn(request, user, email, null, false, user.status === 'suspended' ? 'Account is suspended' : 'Account is closed');
       return fail('Your account is not active. Please contact support.', 403, 'USER_INACTIVE');
+    }
+    if (isRepDeactivated(medicalRep)) {
+      // Paid, then switched off by an admin: no "pay activation fee" (checkout would say ALREADY_ACTIVE).
+      await auditRepSignIn(request, user, email, null, false, 'Representative profile deactivated');
+      return fail(DEACTIVATED_MESSAGE, 403, MEDREP_DEACTIVATED);
     }
     if (!medicalRep.isActivated || medicalRep.status !== 'active') {
       await auditRepSignIn(request, user, email, null, false, 'Representative profile not activated');

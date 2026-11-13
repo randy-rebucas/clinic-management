@@ -1,20 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { requireRepSession, isRepSessionError } from '../_lib/rep-session';
 import connectDB from '@/lib/mongodb';
-import { sendEmail } from '@/lib/email';
 import SupportRequestModel from '@/models/SupportRequest';
+import { notifyPlatformTeam } from '@/lib/support';
+import { supportReference } from '@/lib/platform-console';
 
 const VALID_CATEGORIES = ['general', 'technical', 'billing', 'account', 'onboarding', 'other'] as const;
 type SupportCategory = typeof VALID_CATEGORIES[number];
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;');
-}
 
 /**
  * GET /api/medical-representatives/support
@@ -44,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: requests.map((r: any) => ({ ...r, reference: `SR-${r._id}` })),
+      data: requests.map((r: any) => ({ ...r, reference: supportReference(String(r._id)) })),
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     });
   } catch (error: any) {
@@ -119,31 +111,14 @@ export async function POST(request: NextRequest) {
       lastReplyBy: 'requester',
     });
 
-    // Send email notification to support team
-    try {
-      await sendEmail({
-        to: 'support@myclinicsoft.solutions',
-        subject: `Support Request: ${escapeHtml(subject)}`,
-        html: `
-          <h2>New Support Request</h2>
-          <p><strong>From:</strong> ${escapeHtml(email)}</p>
-          <p><strong>Category:</strong> ${escapeHtml(category)}</p>
-          <p><strong>Subject:</strong> ${escapeHtml(subject)}</p>
-          <hr />
-          <p><strong>Message:</strong></p>
-          <p>${escapeHtml(message).replace(/\n/g, '<br>')}</p>
-          <p><strong>User ID:</strong> ${escapeHtml(String(session.userId))}</p>
-        `,
-      });
-    } catch (emailError) {
-      console.error('Error sending support email:', emailError);
-      // Don't fail the request if email fails - still log the support request
-    }
+    // The platform team's list, as for clinic requests and rep replies. Failure never blocks the request.
+    const id = String(supportRequest._id);
+    after(() => notifyPlatformTeam(id, subject, 'a medical representative account', email, message, true));
 
     return NextResponse.json({
       success: true,
       message: 'Support request submitted successfully. We will get back to you soon.',
-      reference: `SR-${supportRequest._id}`,
+      reference: supportReference(id),
     });
   } catch (error: any) {
     console.error('Support request error:', error);

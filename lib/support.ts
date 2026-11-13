@@ -76,20 +76,27 @@ async function notifyRequester(to: string, id: string, subject: string, message:
   }
 }
 
+/** A request a medical representative raised from the rep app (older ones carry no source, and no clinic). */
+function isRepRequest(ticket: { tenantId?: unknown; source?: unknown }): boolean {
+  return ticket.source === 'medical-rep' || !ticket.tenantId;
+}
+
 /**
  * The requester's in-app notification (and push): clinic staff open it on the clinic's
- * support page; medical representatives see it in the mobile app. Never throws.
+ * support page; medical representatives see it in the mobile app, where the push opens Support
+ * (`data: { screen: 'support', id }`) unless the rep switched notifications off. Never throws.
  */
 export async function notifyRequesterInApp(
-  ticket: { userId?: unknown; tenantId?: unknown },
+  ticket: { userId?: unknown; tenantId?: unknown; source?: unknown },
   id: string,
   title: string,
   message: string
 ) {
   if (!ticket.userId) return;
+  const rep = isRepRequest(ticket);
   try {
     const { notifyStaff } = await import('@/lib/notify');
-    await notifyStaff({
+    const { recipients, batchId } = await notifyStaff({
       tenantId: ticket.tenantId ? String(ticket.tenantId) : null,
       audience: { userIds: [String(ticket.userId)] },
       type: 'support',
@@ -99,10 +106,37 @@ export async function notifyRequesterInApp(
       actionUrl: ticket.tenantId ? `/admin/support/${id}` : undefined,
       sender: { kind: 'support', name: 'MyClinicSoft support' },
       metadata: { supportRequestId: id },
+      // The rep app routes on data.screen, which the staff push doesn't carry: pushed below.
+      ...(rep ? { push: false } : {}),
     });
+    if (rep && recipients > 0) {
+      const push = () =>
+        pushRepSupport(String(ticket.userId), id, title, message, `notification-${batchId}`).catch((error) =>
+          console.error('[support] rep push failed:', error)
+        );
+      // After the response inside a request; straight away elsewhere.
+      try {
+        after(push);
+      } catch {
+        await push();
+      }
+    }
   } catch (error) {
     console.error('[support] in-app notification failed:', error);
   }
+}
+
+/** Push to the rep's phone, opening Support, unless they switched push off. */
+async function pushRepSupport(userId: string, id: string, title: string, message: string, tag: string) {
+  const MedicalRepresentative = (await import('@/models/MedicalRepresentative')).default;
+  const profile = await MedicalRepresentative.findOne({ userId }).select('notificationsEnabled').lean<{ notificationsEnabled?: boolean } | null>();
+  if (profile?.notificationsEnabled === false) return;
+  const { sendPushToUserDevices } = await import('@/lib/push-notifications');
+  await sendPushToUserDevices(
+    userId,
+    { title: title.slice(0, 200), body: message.slice(0, 240), tag, priority: 'high', data: { screen: 'support', id } },
+    { honorQuietHours: true }
+  );
 }
 
 /**
@@ -122,7 +156,7 @@ export async function addSupportReply(opts: {
   await connectDB();
   const filter: Record<string, unknown> = { _id: opts.id };
   if (opts.tenantId) filter.tenantId = new Types.ObjectId(opts.tenantId);
-  const ticket = await SupportRequest.findOne(filter).select('status email subject tenantId userId').lean<any>();
+  const ticket = await SupportRequest.findOne(filter).select('status email subject tenantId userId source').lean<any>();
   if (!ticket) return null;
 
   let status: SupportStatus = opts.status ?? ticket.status;

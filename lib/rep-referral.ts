@@ -137,7 +137,9 @@ export async function repReferralView(repId: Types.ObjectId, opts: { regenerate?
   }
   const doc = await activeRepCode(repId);
   const [clinics, total] = await Promise.all([
-    Tenant.find({ 'referral.repId': repId }).sort({ createdAt: -1 }).limit(50).select('name displayName referral.at').lean<any[]>(),
+    // Newest referral first, as the app lists them (joinedOn): a clinic can link the code long after
+    // signing up. The index is on createdAt; a rep's referred clinics are few, so the sort is cheap.
+    Tenant.find({ 'referral.repId': repId }).sort({ 'referral.at': -1, createdAt: -1 }).limit(50).select('name displayName referral.at').lean<any[]>(),
     Tenant.countDocuments({ 'referral.repId': repId }),
   ]);
   return {

@@ -12,6 +12,8 @@ vi.mock('@/lib/middleware/rate-limit', () => ({ applyRateLimit: vi.fn().mockReso
 vi.mock('@/app/api/medical-representatives/_lib/rep-login', () => ({
   loadActiveRep: vi.fn(),
   issueRepAppTokens: vi.fn(),
+  MEDREP_DEACTIVATED: 'MEDREP_DEACTIVATED',
+  DEACTIVATED_MESSAGE: 'Your account has been deactivated. Contact support.',
 }));
 
 import { headers } from 'next/headers';
@@ -73,7 +75,7 @@ describe('POST /api/medical-representatives/auth/refresh', () => {
 
   it('rotates within the same family for an active rep', async () => {
     vi.mocked(consumeRefreshToken).mockResolvedValue({ ok: true, value: { subjectId: REP_USER, sessionVersion: 4, family: 'fam' } });
-    vi.mocked(loadActiveRep).mockResolvedValue({ user: { _id: REP_USER, sessionVersion: 4 }, roleId: 'role' });
+    vi.mocked(loadActiveRep).mockResolvedValue({ ok: true, user: { _id: REP_USER, sessionVersion: 4 }, roleId: 'role' });
     vi.mocked(issueRepAppTokens).mockResolvedValue({ token: 't', refreshToken: 'r' } as any);
     const res = await post({ refreshToken: 'x' });
     expect(res.status).toBe(200);
@@ -83,7 +85,7 @@ describe('POST /api/medical-representatives/auth/refresh', () => {
 
   it('refuses and revokes the family after a password change (version moved on)', async () => {
     vi.mocked(consumeRefreshToken).mockResolvedValue({ ok: true, value: { subjectId: REP_USER, sessionVersion: 4, family: 'fam' } });
-    vi.mocked(loadActiveRep).mockResolvedValue({ user: { _id: REP_USER, sessionVersion: 5 } });
+    vi.mocked(loadActiveRep).mockResolvedValue({ ok: true, user: { _id: REP_USER, sessionVersion: 5 } });
     const res = await post({ refreshToken: 'x' });
     expect(res.status).toBe(401);
     expect((await res.json()).code).toBe('REFRESH_INVALID');
@@ -91,10 +93,27 @@ describe('POST /api/medical-representatives/auth/refresh', () => {
     expect(issueRepAppTokens).not.toHaveBeenCalled();
   });
 
-  it('refuses a deactivated rep', async () => {
+  it('refuses a closed account as a plain sign-in-again', async () => {
     vi.mocked(consumeRefreshToken).mockResolvedValue({ ok: true, value: { subjectId: REP_USER, sessionVersion: 0, family: 'fam' } });
-    vi.mocked(loadActiveRep).mockResolvedValue(null);
-    expect((await post({ refreshToken: 'x' })).status).toBe(401);
+    vi.mocked(loadActiveRep).mockResolvedValue({ ok: false, deactivated: false });
+    const res = await post({ refreshToken: 'x' });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ success: false, error: 'Please sign in again.', code: 'REFRESH_INVALID' });
+    expect(revokeRefreshFamily).toHaveBeenCalledWith('fam');
+  });
+
+  it('tells a deactivated (already paid) rep why, still as a 401 the app signs out on', async () => {
+    vi.mocked(consumeRefreshToken).mockResolvedValue({ ok: true, value: { subjectId: REP_USER, sessionVersion: 0, family: 'fam' } });
+    vi.mocked(loadActiveRep).mockResolvedValue({ ok: false, deactivated: true });
+    const res = await post({ refreshToken: 'x' });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({
+      success: false,
+      error: 'Your account has been deactivated. Contact support.',
+      code: 'MEDREP_DEACTIVATED',
+    });
+    expect(revokeRefreshFamily).toHaveBeenCalledWith('fam');
+    expect(issueRepAppTokens).not.toHaveBeenCalled();
   });
 
   it('passes a reuse signal through to the app', async () => {
