@@ -241,7 +241,7 @@ describe('signing out one patient device', () => {
     expect(typeof signedIn?.jti).toBe('string');
 
     await revokePatientToken(phone);
-    const pushed = vi.mocked(Patient.updateOne).mock.calls.find((c) => (c[1] as any).$push);
+    const pushed = vi.mocked(Patient.updateOne).mock.calls.find((c) => (c as any[])[1]?.$push) as any[] | undefined;
     expect((pushed?.[1] as any).$push.revokedSessions.jti).toBe(signedIn!.jti);
 
     patientState({ active: true, sessionVersion: 2, revokedSessions: [{ jti: signedIn!.jti! }] });
