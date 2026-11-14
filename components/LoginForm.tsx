@@ -3,6 +3,8 @@
 import { login } from '@/app/actions/auth';
 import { useActionState, useState, useEffect, useSyncExternalStore } from 'react';
 import Link from 'next/link';
+import type { LoginFormState } from '@/app/lib/definitions';
+import TurnstileWidget, { TURNSTILE_SITE_KEY } from './TurnstileWidget';
 
 interface Clinic {
   _id: string;
@@ -22,6 +24,14 @@ interface Clinic {
 
 const subscribeNoop = () => () => {};
 
+type AttemptState = (NonNullable<LoginFormState> & { attempt: number }) | undefined;
+
+/** Counts attempts so the security check remounts with a fresh (single-use) token after each one. */
+async function loginAttempt(prev: AttemptState, formData: FormData): Promise<AttemptState> {
+  const result = await login(prev, formData);
+  return { ...result, attempt: (prev?.attempt ?? 0) + 1 };
+}
+
 /** Clinic subdomain from the current hostname, '' on the root domain (incl. www), null during SSR. */
 function getHostSubdomain(): string {
   const parts = window.location.hostname.split('.');
@@ -36,7 +46,9 @@ function getHostSubdomain(): string {
 }
 
 export default function LoginForm() {
-  const [state, action, pending] = useActionState(login, undefined);
+  const [state, action, pending] = useActionState(loginAttempt, undefined);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const needsCaptcha = !!TURNSTILE_SITE_KEY && !captchaToken;
   const [showPassword, setShowPassword] = useState(false);
   const [availableClinics, setAvailableClinics] = useState<Clinic[]>([]);
   const [loadingClinics, setLoadingClinics] = useState(true);
@@ -275,11 +287,18 @@ export default function LoginForm() {
         </div>
       )}
 
+      {TURNSTILE_SITE_KEY && (
+        <div>
+          <TurnstileWidget key={state?.attempt ?? 0} onToken={setCaptchaToken} />
+          <input type="hidden" name="turnstileToken" value={captchaToken ?? ''} />
+        </div>
+      )}
+
       {/* Submit Button */}
       <div>
         <button
           type="submit"
-          disabled={pending}
+          disabled={pending || needsCaptcha}
           className="w-full px-6 sm:px-8 py-3 sm:py-4 bg-brand-teal hover:bg-brand-teal-dark disabled:bg-brand-teal/60 text-white font-semibold rounded-md transition-colors duration-150 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-base sm:text-lg"
         >
           {pending ? (

@@ -10,6 +10,7 @@ import User from '@/models/User';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
 import { isValidationError, parseBody, zEmail, zPersonName, zPhone, zShortText } from '@/lib/api/validate';
 import { normalizePhone } from '@/lib/phone';
+import { turnstileRejection } from '@/lib/turnstile';
 import {
   APP_SIGNUP_TTL_MS,
   EMAIL_CODE_TTL_MINUTES,
@@ -28,11 +29,22 @@ const schema = z.object({
   company: zShortText.min(1),
   territory: zShortText.optional(),
   title: z.string().trim().max(20).optional(),
+  /** From the app's Turnstile WebView (/turnstile/app). */
+  turnstileToken: z.string().max(2048).optional(),
 });
 
 /**
+ * App builds before the Turnstile WebView send no token. Until REP_APP_TURNSTILE_REQUIRED=true
+ * (set it once every install on the stores sends one), a missing token is let through; a token
+ * that is sent is always checked.
+ */
+function captchaRequired(token: string | undefined): boolean {
+  return token !== undefined || process.env.REP_APP_TURNSTILE_REQUIRED === 'true';
+}
+
+/**
  * POST /api/medical-representatives/onboard/app/start
- * Body: { firstName, lastName, email, phone, company, territory?, title? }
+ * Body: { firstName, lastName, email, phone, company, territory?, title?, turnstileToken? }
  * → { signupId, expiresInMinutes }
  *
  * Step one of signing up in the rep app: email a 6-digit code. The phone code follows only after
@@ -54,6 +66,12 @@ export async function POST(request: NextRequest) {
 
     const phone = normalizePhone(body.phone);
     if (!phone) return NextResponse.json({ success: false, error: 'Enter a valid mobile number.' }, { status: 400 });
+
+    // After the field checks, so a typo doesn't use up the single-use token.
+    if (captchaRequired(body.turnstileToken)) {
+      const captchaRejected = await turnstileRejection(request, body.turnstileToken);
+      if (captchaRejected) return captchaRejected;
+    }
 
     const email = body.email;
     const emailLimited = await applyRateLimit(request, rateLimiters.repSignupEmail, email);

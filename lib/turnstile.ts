@@ -3,14 +3,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getClientIp } from '@/lib/middleware/rate-limit';
 
 /**
- * Cloudflare Turnstile check for unauthenticated forms that create records or send SMS
- * (online booking, patient self-registration). Off until TURNSTILE_SECRET_KEY is set, together
- * with NEXT_PUBLIC_TURNSTILE_SITE_KEY for the widget; once on, a missing or failed token is refused.
+ * Cloudflare Turnstile check for public forms: online booking, patient self-registration, phone
+ * verification, clinic sign-up, staff and platform sign-in, and rep sign-up in the eMedRoute app
+ * (through /turnstile/app). Off until TURNSTILE_SECRET_KEY is set, together with
+ * NEXT_PUBLIC_TURNSTILE_SITE_KEY for the widget; once on, a missing or failed token is refused.
  */
 
 const VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 
-async function verifyTurnstile(token: unknown, ip: string): Promise<boolean> {
+/** True when the token verifies, or when Turnstile is off. For server actions, which have no NextRequest. */
+export async function verifyTurnstile(token: unknown, ip: string): Promise<boolean> {
   const secret = process.env.TURNSTILE_SECRET_KEY;
   if (!secret) return true;
   if (typeof token !== 'string' || !token || token.length > 2048) return false;
@@ -26,11 +28,17 @@ async function verifyTurnstile(token: unknown, ip: string): Promise<boolean> {
   }
 }
 
+export function isTurnstileEnabled(): boolean {
+  return !!process.env.TURNSTILE_SECRET_KEY;
+}
+
+export const TURNSTILE_FAILED_MESSAGE = 'Please complete the security check and try again.';
+
 /** A 403 response when the token doesn't verify, otherwise null. */
 export async function turnstileRejection(request: NextRequest, token: unknown): Promise<NextResponse | null> {
   if (await verifyTurnstile(token, getClientIp(request.headers))) return null;
   return NextResponse.json(
-    { success: false, error: 'Please complete the security check and try again.' },
+    { success: false, error: TURNSTILE_FAILED_MESSAGE, code: 'CAPTCHA_FAILED' },
     { status: 403 }
   );
 }

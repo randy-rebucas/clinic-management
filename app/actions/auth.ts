@@ -22,6 +22,7 @@ import User from '@/models/User';
 import Role from '@/models/Role';
 import { consumeRateLimit, resetRateLimit, getClientIp, rateLimiters } from '@/lib/middleware/rate-limit';
 import { verifyUserTotp } from '@/app/api/auth/2fa/totp';
+import { TURNSTILE_FAILED_MESSAGE, verifyTurnstile } from '@/lib/turnstile';
 
 const INVALID_CREDENTIALS = 'Invalid email or password.';
 const SET_PASSWORD_FIRST = 'Check your email to set your password.';
@@ -255,6 +256,11 @@ export async function login(
           email: [`Too many login attempts. Please try again in ${waitMinutes} minute(s).`],
         },
       };
+    }
+
+    // After the rate limits (cheap, local) and before the password check.
+    if (!(await verifyTurnstile(formData.get('turnstileToken'), ip))) {
+      return { message: TURNSTILE_FAILED_MESSAGE };
     }
 
     await connectDB();

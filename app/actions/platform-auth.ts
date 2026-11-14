@@ -14,6 +14,7 @@ import { generatePlatformLoginEmail, isEmailConfigured, sendEmail } from '@/lib/
 import { maskEmail } from '@/lib/user-invite';
 import { consumeRateLimit, getClientIp } from '@/lib/middleware/rate-limit';
 import { getTenantContext } from '@/lib/tenant';
+import { TURNSTILE_FAILED_MESSAGE, verifyTurnstile } from '@/lib/turnstile';
 
 export type PlatformLinkState = { sent?: boolean; error?: string } | undefined;
 
@@ -35,6 +36,7 @@ export async function requestPlatformLink(_state: PlatformLinkState, formData: F
   const ip = getClientIp(h);
   const limits = [await consumeRateLimit(LINK_IP_LIMIT, ip), await consumeRateLimit(LINK_EMAIL_LIMIT, ip, email)];
   if (limits.some((l) => !l.allowed)) return { error: 'Too many requests. Try again in a few minutes.' };
+  if (!(await verifyTurnstile(formData.get('turnstileToken'), ip))) return { error: TURNSTILE_FAILED_MESSAGE };
 
   if (isPlatformAdminEmail(email)) {
     const token = await issuePlatformLoginToken(email);
