@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { Types } from 'mongoose';
 import LabResult from '@/models/LabResult';
-import { zObjectId } from '@/lib/api/validate';
+import { isSafeRecordKey, zObjectId } from '@/lib/api/validate';
 import { nextSequence, formatCode } from '@/lib/counters';
 
 /**
@@ -18,7 +18,7 @@ function safeKeys<T>(rec: Record<string, T>) {
   const out: Record<string, T> = {};
   for (const [k, v] of Object.entries(rec)) {
     const key = safeAnalyteKey(k);
-    if (key) out[key] = v;
+    if (key && isSafeRecordKey(key)) out[key] = v;
   }
   return out;
 }

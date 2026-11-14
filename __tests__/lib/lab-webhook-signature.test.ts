@@ -39,3 +39,21 @@ describe('lab webhook signature', () => {
     expect(verifyWebhookSignature(BODY, { signature: forged, timestamp: ts }, SECRET, now)).toBe(false);
   });
 });
+
+describe('labsWithOwnWebhookSecret', () => {
+  it('lists only labs that sign with their own secret', async () => {
+    const { labsWithOwnWebhookSecret } = await import('@/lib/lab-integration');
+    const prev = process.env.LAB_INTEGRATIONS;
+    process.env.LAB_INTEGRATIONS = JSON.stringify([
+      { labCode: 'ACME', webhookSecret: 's1' },
+      { labCode: 'SHARED' },
+    ]);
+    try {
+      expect(labsWithOwnWebhookSecret()).toEqual(['ACME']);
+      process.env.LAB_INTEGRATIONS = 'not json';
+      expect(labsWithOwnWebhookSecret()).toEqual([]);
+    } finally {
+      process.env.LAB_INTEGRATIONS = prev;
+    }
+  });
+});

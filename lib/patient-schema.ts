@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { zRecordKey } from '@/lib/api/validate';
 import Patient from '@/models/Patient';
 import { nextSequence, formatCode, maxCodeSeed } from '@/lib/counters';
 
@@ -53,7 +54,7 @@ export const patientFieldsSchema = z.object({
   identifiers: z.object({
     philHealth: str(50).optional(),
     govId: str(100).optional(),
-    other: z.record(z.string().max(50), z.string().max(200)).optional(),
+    other: z.record(zRecordKey(50), z.string().max(200)).optional(),
   }).partial().optional(),
   medicalHistory: str(20000).nullable().optional(),
   preExistingConditions: z.array(z.object({

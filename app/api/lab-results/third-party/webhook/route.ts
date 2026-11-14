@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import LabResult from '@/models/LabResult';
-import { handleLabResultWebhook, labWebhookSecret, verifyWebhookSignature } from '@/lib/lab-integration';
+import { handleLabResultWebhook, labsWithOwnWebhookSecret, labWebhookSecret, verifyWebhookSignature } from '@/lib/lab-integration';
 
 // Webhook endpoint for receiving lab results from third-party labs
 export async function POST(request: NextRequest) {
@@ -67,7 +67,14 @@ export async function POST(request: NextRequest) {
       'thirdPartyLab.externalRequestId': resultPayload.externalRequestId,
       'thirdPartyLab.status': { $in: ['sent', 'received'] },
     };
-    if (ownSecret) filter['thirdPartyLab.labCode'] = labCode;
+    if (ownSecret) {
+      filter['thirdPartyLab.labCode'] = labCode;
+    } else {
+      // The shared secret only reaches labs that don't have their own; leaving out X-Lab-Code
+      // must not let one lab write into another lab's requests.
+      const ownSecretLabs = labsWithOwnWebhookSecret();
+      if (ownSecretLabs.length) filter['thirdPartyLab.labCode'] = { $nin: ownSecretLabs };
+    }
     if (typeof body.requestCode === 'string' && body.requestCode) {
       filter.requestCode = body.requestCode;
     }

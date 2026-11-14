@@ -75,7 +75,10 @@ export async function POST(request: NextRequest) {
     // signing in for a child with no phone). An adult's contact number never signs in as them.
     const ownPhone: Record<string, unknown> = { phone: { $in: phoneVariants(phone) }, active: { $ne: false } };
     if (tenant.tenantId) ownPhone.tenantIds = tenant.tenantId;
-    let patient = await Patient.findOne(ownPhone).sort({ updatedAt: -1 });
+    // A record the clinic made comes before a self-registered one: anyone can book with someone
+    // else's number, and that record must not become where the real person's sign-in lands.
+    // (Unset sorts before true.)
+    let patient = await Patient.findOne(ownPhone).sort({ selfRegistered: 1, updatedAt: -1 });
     if (!patient) {
       const contact = await Patient.findOne(query);
       if (contact && isMinor(contact.dateOfBirth)) patient = contact;

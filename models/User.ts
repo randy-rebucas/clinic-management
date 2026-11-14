@@ -37,6 +37,7 @@ export interface IUser extends Document {
    * off the staff list. Removed as soon as the user chooses their own password.
    */
   tempPassword?: string;
+  tempPasswordExpiresAt?: Date; // An unchanged temporary password stops working after this
   createdAt: Date;
   updatedAt: Date;
 }
@@ -104,6 +105,7 @@ const UserSchema = new Schema<IUser>(
     inviteTokenHash: { type: String, select: false },
     inviteExpiresAt: { type: Date, select: false },
     tempPassword: { type: String, select: false },
+    tempPasswordExpiresAt: { type: Date, select: false },
   },
   {
     timestamps: true,

@@ -5,7 +5,7 @@ import SettingsClient from '@/components/account/SettingsClient';
 
 export const metadata = { title: 'Sign-in & security' };
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ replaceTempPassword?: string }> }) {
   const session = await verifySession();
   if (!session) redirect('/login');
 
@@ -15,5 +15,14 @@ export default async function SettingsPage() {
   ]);
   if (!account) redirect('/login');
 
-  return <SettingsClient email={account.email} totpEnabled={account.totpEnabled} activity={activity} />;
+  const { replaceTempPassword } = await searchParams;
+
+  return (
+    <SettingsClient
+      email={account.email}
+      totpEnabled={account.totpEnabled}
+      activity={activity}
+      replaceTempPassword={replaceTempPassword === '1'}
+    />
+  );
 }

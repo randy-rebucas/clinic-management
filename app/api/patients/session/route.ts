@@ -23,7 +23,7 @@ import {
   revokeRefreshToken,
 } from '@/app/lib/refresh-tokens';
 import { revokeAllPatientAccess } from '../auth/shared';
-import { revokeEmcrAccountSessions } from '@/app/lib/dal';
+import { revokeEmcrAccountSessions, revokePatientToken } from '@/app/lib/dal';
 
 // Ensure Doctor model is registered for populate calls
 void Doctor;
@@ -275,8 +275,8 @@ export async function GET(request: NextRequest) {
 
 /**
  * DELETE /api/patients/session[?all=true][&deviceId=...]
- * Sign out. Clears the patient_session cookie; a Bearer token stays valid until it expires
- * unless `all=true`, which revokes every token, cookie, login QR and push registration of this
+ * Sign out. Clears the patient_session cookie and ends the token used for this request (cookie or
+ * Bearer); other devices stay signed in unless `all=true`, which revokes every token, cookie, login QR and push registration of this
  * patient ("sign out everywhere"). `deviceId` also unregisters that device from push.
  * Optional JSON body `{ refreshToken }` revokes the app's refresh token. When the access token
  * has expired, a still-valid refresh token in the body identifies the patient instead, so
@@ -356,6 +356,15 @@ export async function DELETE(request: NextRequest) {
       logger.error('Error signing patient out', error as Error);
       return NextResponse.json({ success: false, error: 'Failed to sign out' }, { status: 500 });
     }
+  }
+
+  // This device's token stops working now, not when it would have expired.
+  try {
+    const bearer = request.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+    await revokePatientToken(request.cookies.get('patient_session')?.value);
+    if (bearer) await revokePatientToken(bearer);
+  } catch (error) {
+    logger.error('Error revoking patient token on sign-out', error as Error);
   }
 
   const response = NextResponse.json({

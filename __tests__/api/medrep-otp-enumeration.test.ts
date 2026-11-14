@@ -9,7 +9,9 @@ vi.mock('@/app/lib/dal', () => ({ issuePending2faToken: vi.fn() }));
 vi.mock('@/lib/middleware/rate-limit', () => ({
   applyRateLimit: vi.fn().mockResolvedValue(null),
   applyAuthRateLimits: vi.fn().mockResolvedValue(null),
-  rateLimiters: {},
+  consumeRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
+  getClientIp: () => '203.0.113.9',
+  rateLimiters: { repLoginCodeGlobal: { config: {} } },
 }));
 vi.mock('@/lib/otp', () => ({
   consumeOtp: vi.fn(),

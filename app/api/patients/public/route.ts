@@ -33,6 +33,14 @@ const publicRegistrationSchema = patientFieldsSchema
  * No authentication required - allows patients to register themselves
  * Rate limited to prevent abuse
  */
+/** The answer to a registration without phone proof: identical whether or not a record was made. */
+function submittedResponse() {
+  return NextResponse.json(
+    { success: true, data: { submitted: true }, message: 'Thank you. Your details were sent to the clinic.' },
+    { status: 201 }
+  );
+}
+
 export async function POST(request: NextRequest) {
   // Apply rate limiting for public endpoint
   const rateLimitResponse = await applyRateLimit(request, rateLimiters.publicWrite);
@@ -72,6 +80,10 @@ export async function POST(request: NextRequest) {
       if (publicPhoneProofRequired()) return phoneProofRequiredResponse();
       const captchaRejected = await turnstileRejection(request, turnstileToken);
       if (captchaRejected) return captchaRejected;
+      const unprovenLimited =
+        (await applyRateLimit(request, rateLimiters.publicUnprovenClinic, String(tenantObjectId))) ||
+        (await applyRateLimit(request, rateLimiters.publicUnprovenGlobal, 'all'));
+      if (unprovenLimited) return unprovenLimited;
     }
 
     // Each registration sends a welcome SMS to the submitted number.
@@ -93,8 +105,11 @@ export async function POST(request: NextRequest) {
     if (data.email) {
       const existingPatient = await Patient.exists({ email: data.email, tenantIds: tenantObjectId });
       if (existingPatient) {
+        logger.info('Public registration for an email already on file', { tenantId: String(tenantObjectId) });
+        // An anonymous caller gets the same answer either way, so the form can't be used to learn
+        // who is a patient here. A caller who proved the phone sees their code, so refuse instead.
+        if (!proven) return submittedResponse();
         return NextResponse.json(
-          // Don't confirm to an anonymous caller that this person is a patient here.
           { success: false, error: 'We could not complete your registration with these details. Please contact the clinic.' },
           { status: 409 }
         );
@@ -156,6 +171,7 @@ export async function POST(request: NextRequest) {
       })
     );
 
+    if (!proven) return submittedResponse();
     return NextResponse.json({
       success: true,
       data: {

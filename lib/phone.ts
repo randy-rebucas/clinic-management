@@ -29,6 +29,18 @@ export function normalizePhone(input: string | null | undefined, defaultCountryC
   return len >= 8 && len <= 15 ? e164 : null;
 }
 
+/**
+ * Country calling codes texts may go to: SMS_ALLOWED_COUNTRY_CODES (comma-separated, e.g. "63,65"),
+ * default Philippines only, "*" for any. Stops SMS pumping (paid texts to premium-rate numbers
+ * abroad) through the public forms and code requests.
+ */
+export function smsCountryAllowed(e164: string): boolean {
+  const raw = (process.env.SMS_ALLOWED_COUNTRY_CODES ?? '63').trim();
+  if (raw === '*') return true;
+  const codes = raw.split(',').map((c) => c.trim().replace(/^\+/, '')).filter(Boolean);
+  return codes.some((code) => e164.startsWith(`+${code}`));
+}
+
 /** "+639171234567" → "+63*******4567" — never log full phone numbers. */
 export function maskPhone(phone: string): string {
   const raw = phone.replace(/\s/g, '');

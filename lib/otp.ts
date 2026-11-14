@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import logger from '@/lib/logger';
-import { maskPhone } from '@/lib/phone';
+import { maskPhone, smsCountryAllowed } from '@/lib/phone';
 import OtpChallenge, { type OtpProvider, type OtpScope } from '@/models/OtpChallenge';
 import { getTwilioClient, isSMSConfigured, sendSMS, smsSent } from '@/lib/sms';
 
@@ -54,6 +54,8 @@ export interface StartOtpOptions {
 
 /** Create the challenge and send the code. False when it couldn't be sent; the caller decides what to say. */
 export async function startOtp(options: StartOtpOptions): Promise<boolean> {
+  // Covers the Twilio Verify path too, which doesn't go through sendSMS.
+  if (!smsCountryAllowed(options.phone)) return false;
   await connectDB();
   const provider = activeProvider();
   const code = provider === 'local' ? randomInt(0, 10 ** OTP_LENGTH).toString().padStart(OTP_LENGTH, '0') : null;

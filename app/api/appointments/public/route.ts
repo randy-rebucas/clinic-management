@@ -177,6 +177,10 @@ export async function POST(request: NextRequest) {
       if (publicPhoneProofRequired()) return phoneProofRequiredResponse();
       const captchaRejected = await turnstileRejection(request, body.turnstileToken);
       if (captchaRejected) return captchaRejected;
+      const unprovenLimited =
+        (await applyRateLimit(request, rateLimiters.publicUnprovenClinic, String(tenantId))) ||
+        (await applyRateLimit(request, rateLimiters.publicUnprovenGlobal, 'all'));
+      if (unprovenLimited) return unprovenLimited;
     }
 
     const doctor = await Doctor.findOne({ _id: body.doctorId, status: 'active', tenantId })

@@ -14,9 +14,6 @@ const sendSchema = z.object({
     labId: z.string().max(100).optional(),
     labCode: z.string().max(100).optional(),
     integrationType: z.enum(['manual', 'api', 'hl7', 'other']).optional(),
-    // Only used when no server-side configuration exists for this lab (validated for SSRF).
-    apiEndpoint: z.string().max(2000).optional(),
-    apiKey: z.string().max(2000).optional(),
   }),
 });
 
@@ -44,16 +41,16 @@ export async function POST(request: NextRequest) {
     if (!patient) return notFound('Patient');
     const visit = labResult.visit as any;
 
-    // Prefer the server-side lab configuration; the request's endpoint is only a fallback.
-    const configured = getConfiguredLab(requested.labCode, tenantId);
-    const config: LabIntegrationConfig = configured ?? {
-      labName: requested.labName,
-      labId: requested.labId,
-      labCode: requested.labCode,
-      integrationType: requested.integrationType || 'api',
-      apiEndpoint: requested.apiEndpoint,
-      apiKey: requested.apiKey,
-    };
+    // Only labs set up on the server (LAB_INTEGRATIONS) for this clinic. An endpoint from the
+    // request would let staff send patient details anywhere, and let the reply claim another
+    // clinic's request id.
+    const config: LabIntegrationConfig | null = getConfiguredLab(requested.labCode, tenantId);
+    if (!config) {
+      return NextResponse.json(
+        { success: false, error: 'This lab is not connected for your clinic. Ask MyClinicSoft support to set it up.' },
+        { status: 400 }
+      );
+    }
 
     const requestPayload = {
       requestCode: labResult.requestCode || '',

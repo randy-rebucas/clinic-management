@@ -25,7 +25,7 @@ interface MedicalRep {
   bio?: string;
   status: 'active' | 'inactive' | 'on-leave';
   isActivated?: boolean;
-  tenantIds?: string[];
+  sharedWithOtherClinics?: boolean;
   /** Pays for this clinic's plan (an accepted sponsorship). */
   sponsoring?: boolean;
   availability?: {
@@ -50,7 +50,7 @@ interface MedicalRep {
 }
 
 /** Linked to other clinics too, so what this clinic writes on the profile would reach them. */
-const isShared = (rep: MedicalRep) => (rep.tenantIds?.length ?? 0) > 1;
+const isShared = (rep: MedicalRep) => !!rep.sharedWithOtherClinics;
 /** The account isn't this clinic's to change: the rep paid for it, or other clinics share it. */
 const isRepsOwnAccount = (rep: MedicalRep) => !!rep.isActivated || isShared(rep);
 

@@ -39,6 +39,17 @@ export function isValidationError<T>(value: { data: T } | NextResponse): value i
 /** Common field schemas. */
 export const zObjectId = z.string().regex(/^[a-f0-9]{24}$/i, 'Invalid id');
 export const zEmail = z.string().trim().toLowerCase().email().max(254);
+
+/** Names that would shadow built-in object behaviour if used as a key ("constructor", "__proto__"…). */
+const RESERVED_KEYS = new Set([...Object.getOwnPropertyNames(Object.prototype), '__proto__', 'prototype']);
+
+/** True for a free-form key safe to store: not a built-in name, no "." and no leading "$". */
+export function isSafeRecordKey(key: string): boolean {
+  return !!key && !RESERVED_KEYS.has(key) && !key.includes('.') && !key.startsWith('$');
+}
+
+/** Key schema for z.record over user-chosen names (exam sections, custom identifiers…). */
+export const zRecordKey = (max: number) => z.string().max(max).refine(isSafeRecordKey, 'Invalid field name');
 export const zPhone = z.string().trim().min(7).max(20).regex(/^[+0-9 ()-]+$/, 'Invalid phone number');
 export const zShortText = z.string().trim().max(200);
 export const zLongText = z.string().max(20000);

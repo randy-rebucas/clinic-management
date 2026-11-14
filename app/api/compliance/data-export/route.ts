@@ -4,6 +4,7 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { logDataExport } from '@/lib/audit';
+import { patientRecordForClinic } from '@/lib/patient-attachments';
 import {
   requireTenantSession,
   isTenantSessionError,
@@ -40,8 +41,8 @@ export async function POST(request: NextRequest) {
     if (!patient) {
       return notFound('Patient');
     }
-    // Do not reveal which other clinics this patient is registered with.
-    delete patient.tenantIds;
+    // Only this clinic's files and family links, and no list of the other clinics they attend.
+    const ownRecord = patientRecordForClinic(patient, tenantId);
 
     const Visit = (await import('@/models/Visit')).default;
     const Appointment = (await import('@/models/Appointment')).default;
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
 
     const exportData = {
       exportDate: new Date().toISOString(),
-      patient,
+      patient: ownRecord,
       visits,
       appointments,
       prescriptions,

@@ -9,12 +9,9 @@ import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { sanitizeSearch } from '@/lib/utils';
 import { requireTenantSession, isTenantSessionError } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zEmail } from '@/lib/api/validate';
-import { hideOtherClinicsNotes } from './_lib/shared-rep';
+import { HIDDEN_REP_FIELDS, repForClinic } from './_lib/shared-rep';
 
 const REP_STATUSES = ['active', 'inactive', 'on-leave'] as const;
-
-// Payment/activation details belong to the rep's own account and are not shown to clinics.
-const HIDDEN_REP_FIELDS = '-internalNotes -paymentDate -paymentAmount -paymentMethod -paymentReference -password -subscription -teamInvite';
 
 // The UI may send company as { name } and territory as a list; both are stored as strings.
 const companyField = z.union([
@@ -85,7 +82,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: representatives.map((rep) => ({
-        ...hideOtherClinicsNotes(rep as { tenantIds?: unknown[]; notes?: string }, tenantObjectId),
+        ...repForClinic(rep as Record<string, unknown>, tenantObjectId),
         sponsoring: sponsorId !== null && String((rep as { _id: unknown })._id) === sponsorId,
       })),
       pagination: {
@@ -129,7 +126,10 @@ export async function POST(request: NextRequest) {
         { _id: existingRep._id },
         { $addToSet: { tenantIds: tenantObjectId } },
         { new: true }
-      ).populate('userId', 'name email status');
+      )
+        .select(HIDDEN_REP_FIELDS)
+        .populate('userId', 'name email status')
+        .lean<Record<string, unknown>>();
       // Any access request they had pending with this clinic is answered by this.
       await RepAccessRequest.updateMany(
         { tenantId: tenantObjectId, medicalRepresentativeId: existingRep._id, status: 'pending' },
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         linked: true,
-        data: linked,
+        data: linked ? repForClinic(linked, tenantObjectId) : null,
         message: 'This rep already has a MyClinicSoft account, so they were added to your list. They’ve been told.',
       });
     }
@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: representative,
+      data: repForClinic(representative.toObject(), tenantObjectId),
       message: 'Medical representative created successfully',
     }, { status: 201 });
   } catch (error: any) {

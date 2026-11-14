@@ -7,7 +7,7 @@ import twilio from 'twilio';
 import { Types } from 'mongoose';
 import SmsMessage from '@/models/SmsMessage';
 import { decideSms, isFinalBlock, refundSmsQuota, smsSegments, type SmsBlockReason, type SmsCategory, type SmsDecision } from './sms-policy';
-import { maskPhone, normalizePhone } from './phone';
+import { maskPhone, normalizePhone, smsCountryAllowed } from './phone';
 
 let twilioClient: ReturnType<typeof twilio> | null = null;
 
@@ -75,6 +75,9 @@ export async function sendSMS(options: SMSOptions): Promise<SMSResult> {
   const to = normalizePhone(options.to);
   if (!to) {
     return { success: false, error: 'Invalid phone number' };
+  }
+  if (!smsCountryAllowed(to)) {
+    return { success: false, error: 'Texts to this country are not enabled' };
   }
 
   const client = getTwilioClient();

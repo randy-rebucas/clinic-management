@@ -110,6 +110,8 @@ export interface IPatient extends Document {
   otpExpiry?: Date;
   otpAttempts?: number;
   sessionVersion?: number;
+  /** jti of patient tokens signed out one by one (logout on one device). */
+  revokedSessions?: Array<{ jti: string; exp: Date }>;
   loginQrTokenHash?: string;
   loginQrTokenExpiry?: Date;
   /** Clinic that issued the current login QR; sessions from it are scoped to that clinic. */
@@ -378,6 +380,7 @@ const PatientSchema: Schema = new Schema(
       type: Number,
       default: 0,
     },
+    revokedSessions: { type: [{ _id: false, jti: String, exp: Date }], default: undefined, select: false },
     // SHA-256 of the server-issued QR login token
     loginQrTokenHash: {
       type: String,

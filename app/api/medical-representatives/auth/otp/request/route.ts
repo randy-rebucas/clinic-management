@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from 'next/server';
 import logger from '@/lib/logger';
-import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
+import { applyRateLimit, consumeRateLimit, getClientIp, rateLimiters } from '@/lib/middleware/rate-limit';
 import { maskPhone, normalizePhone } from '@/lib/phone';
 import { otpAvailable, startDecoyOtp, startOtp } from '@/lib/otp';
 import { phoneRateKey } from '@/app/api/patients/auth/shared';
@@ -27,10 +27,9 @@ export async function POST(request: NextRequest) {
   const phone = normalizePhone(typeof body.phone === 'string' ? body.phone : '');
   if (!phone) return NextResponse.json({ success: false, error: 'Enter a valid mobile number.' }, { status: 400 });
 
-  const limited =
-    (await applyRateLimit(request, rateLimiters.otpSend, phoneRateKey(phone))) ||
-    (await applyRateLimit(request, rateLimiters.publicCodeGlobal, 'all'));
+  const limited = await applyRateLimit(request, rateLimiters.otpSend, phoneRateKey(phone));
   if (limited) return limited;
+  const ip = getClientIp(request.headers);
 
   // Before any lookup: refusing after one would reveal which numbers are on file.
   if (!otpAvailable()) {
@@ -47,6 +46,12 @@ export async function POST(request: NextRequest) {
       const reps = await findRepsByVerifiedPhone(phone);
       // No account: a challenge nothing passes, so /otp/verify can't tell the two apart.
       if (reps.length === 0) return startDecoyOtp({ scope: 'medrep-login', phone });
+      // Counted only for a real send; refusing here can't reveal anything, the answer is already out.
+      const budget = await consumeRateLimit(rateLimiters.repLoginCodeGlobal.config, ip, 'all');
+      if (!budget.allowed) {
+        logger.error('Rep sign-in code budget used up for today', new Error('Rep code budget exhausted'));
+        return startDecoyOtp({ scope: 'medrep-login', phone });
+      }
       await startOtp({ scope: 'medrep-login', phone, message: repLoginCodeMessage });
       logger.info('Rep sign-in code sent', { phone: maskPhone(phone) });
     } catch (error) {

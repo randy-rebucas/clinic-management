@@ -10,7 +10,7 @@ import { checkSubscriptionLimit } from '@/lib/subscription-limits';
 import { STAFF_STATUSES, STAFF_TYPE, STAFF_TYPES, isStaffStatus, type StaffRow, type StaffType } from '@/lib/staff';
 import type { UserStatus } from '@/lib/users';
 import bcrypt from 'bcryptjs';
-import { generateTempPassword } from '@/lib/user-invite';
+import { generateTempPassword, tempPasswordExpired } from '@/lib/user-invite';
 import { decryptData, encryptData } from '@/lib/encryption';
 import { ACCOUNT_CREATED_LOCAL, INITIAL_PASSWORD_LOCAL, TEMP_PASSWORD_LOCAL } from '@/models/staff-user-link';
 
@@ -63,11 +63,12 @@ type LeanAccount = {
   inviteExpiresAt?: Date | null;
   lastLogin?: Date | null;
   tempPassword?: string | null;
+  tempPasswordExpiresAt?: Date | null;
 } & Record<string, unknown>;
 
-/** The temporary password in readable form, or null if there is none or it can't be decrypted. */
-function openTempPassword(sealed: unknown): string | null {
-  if (typeof sealed !== 'string' || !sealed) return null;
+/** The temporary password in readable form, or null if there is none, it expired, or it can't be decrypted. */
+function openTempPassword(sealed: unknown, expiresAt: unknown): string | null {
+  if (typeof sealed !== 'string' || !sealed || tempPasswordExpired(expiresAt)) return null;
   try {
     return decryptData(sealed);
   } catch {
@@ -103,7 +104,7 @@ function toRow(type: StaffType, p: LeanProfile, account: LeanAccount | undefined
           mustSetPassword: !!account.mustSetPassword,
           inviteExpiresAt: iso(account.inviteExpiresAt),
           lastLogin: iso(account.lastLogin),
-          tempPassword: openTempPassword(account.tempPassword),
+          tempPassword: openTempPassword(account.tempPassword, account.tempPasswordExpiresAt),
         }
       : null,
   };
@@ -133,7 +134,7 @@ export async function GET() {
 
     const or = STAFF_TYPES.map((type, i) => ({ [STAFF_TYPE[type].profileField]: { $in: lists[i].map((p) => p._id) } }));
     const accounts = await User.find(tenantFilter(tenantId, { $or: or }))
-      .select('status mustSetPassword inviteExpiresAt lastLogin +tempPassword nurseProfile receptionistProfile accountantProfile medicalTechnologistProfile')
+      .select('status mustSetPassword inviteExpiresAt lastLogin +tempPassword +tempPasswordExpiresAt nurseProfile receptionistProfile accountantProfile medicalTechnologistProfile')
       .lean<LeanAccount[]>();
 
     const byProfile = new Map<string, LeanAccount>();
@@ -207,7 +208,7 @@ export async function POST(request: NextRequest) {
     const profileField = STAFF_TYPE[staffType].profileField;
     const findAccount = () =>
       User.findOne(tenantFilter(tenantId, { [profileField]: staff._id }))
-        .select('status mustSetPassword inviteExpiresAt lastLogin +tempPassword')
+        .select('status mustSetPassword inviteExpiresAt lastLogin +tempPassword +tempPasswordExpiresAt')
         .lean<LeanAccount | null>();
     let user = await findAccount();
     if (!user) {
