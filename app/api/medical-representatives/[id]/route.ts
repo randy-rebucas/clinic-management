@@ -6,9 +6,7 @@ import { isAdmin, refuseAccess } from '@/app/lib/auth-helpers';
 import { revokeUserSessions } from '@/app/lib/dal';
 import { requireTenantSession, isTenantSessionError, isValidId } from '@/lib/api/tenant-session';
 import { parseBody, isValidationError, zEmail } from '@/lib/api/validate';
-import { hideOtherClinicsNotes, REP_ACCOUNT_ERROR, refusedRepChanges, worksWithOtherClinics } from '../_lib/shared-rep';
-
-const HIDDEN_REP_FIELDS = '-internalNotes -paymentDate -paymentAmount -paymentMethod -paymentReference -password -subscription -teamInvite';
+import { HIDDEN_REP_FIELDS, REP_ACCOUNT_ERROR, refusedRepChanges, repForClinic } from '../_lib/shared-rep';
 
 const companyField = z.union([
   z.string().trim().max(200),
@@ -71,11 +69,11 @@ export async function GET(
     const representative = await MedicalRepresentative.findOne({ _id: id, tenantIds: ctx.tenantObjectId })
       .select(HIDDEN_REP_FIELDS)
       .populate('userId', 'name email status')
-      .lean<{ tenantIds?: unknown[]; notes?: string } | null>();
+      .lean<Record<string, unknown> | null>();
 
     if (!representative) return repNotFound();
 
-    return NextResponse.json({ success: true, data: hideOtherClinicsNotes(representative, ctx.tenantObjectId) });
+    return NextResponse.json({ success: true, data: repForClinic(representative, ctx.tenantObjectId) });
   } catch (error: any) {
     console.error('Error fetching medical representative:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch medical representative' }, { status: 500 });
@@ -109,7 +107,6 @@ export async function PUT(
 
     // Status, the login email and the rep's details belong to their account, not to this clinic: a
     // change could reach other clinics, or take over or end a sign-in the rep paid for.
-    const shared = worksWithOtherClinics(representative, tenantId);
     const fields = refusedRepChanges(representative, tenantId, { firstName, lastName, email, phone, company, territory, products, notes, status, availability });
     if (fields.length) {
       return NextResponse.json({ success: false, code: 'REP_ACCOUNT', error: REP_ACCOUNT_ERROR, fields }, { status: 403 });
@@ -155,20 +152,9 @@ export async function PUT(
       }
     }
 
-    const result = representative.toObject();
-    delete result.internalNotes;
-    delete result.paymentDate;
-    delete result.paymentAmount;
-    delete result.paymentMethod;
-    delete result.paymentReference;
-    delete result.password;
-    delete result.subscription;
-    delete result.teamInvite;
-    if (shared) delete result.notes;
-
     return NextResponse.json({
       success: true,
-      data: result,
+      data: repForClinic(representative.toObject(), tenantObjectId),
       message: 'Medical representative updated successfully',
     });
   } catch (error: any) {

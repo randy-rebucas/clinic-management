@@ -145,11 +145,23 @@ describe('POST /api/medical-representatives (clinic adds a rep)', () => {
 
   it('links a rep who already has an account instead of refusing, and tells them', async () => {
     vi.mocked(MedicalRepresentative.findOne).mockReturnValueOnce(lean({ _id: REP, tenantIds: [new Types.ObjectId()] }) as any);
-    vi.mocked(MedicalRepresentative.findOneAndUpdate).mockReturnValueOnce({ populate: async () => ({ _id: REP }) } as any);
+    // The stored profile carries other clinics' notes and the rep's own account fields.
+    const stored = {
+      _id: REP,
+      tenantIds: [new Types.ObjectId(), new Types.ObjectId(CLINIC)],
+      notes: 'Another clinic wrote this',
+      internalNotes: 'private',
+      paymentAmount: 499,
+      subscription: { plan: 'pro' },
+      teamInvite: { teamId: 'x' },
+    };
+    const chain = { select: () => chain, populate: () => chain, lean: async () => stored };
+    vi.mocked(MedicalRepresentative.findOneAndUpdate).mockReturnValueOnce(chain as any);
     const res = await addRep(req('POST', BODY));
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.linked).toBe(true);
+    expect(json.data).toEqual({ _id: String(REP), sharedWithOtherClinics: true });
     expect(vi.mocked(MedicalRepresentative.findOneAndUpdate).mock.calls[0][1]).toEqual({ $addToSet: { tenantIds: new Types.ObjectId(CLINIC) } });
     expect(vi.mocked(RepAccessRequest.updateMany).mock.calls[0][0]).toMatchObject({ medicalRepresentativeId: REP, status: 'pending' });
     expect(notifyRepAddedByClinic).toHaveBeenCalledWith(REP, new Types.ObjectId(CLINIC));

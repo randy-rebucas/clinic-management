@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import bcrypt from 'bcryptjs';
 import { LoginFormSchema, LoginFormState } from '@/app/lib/definitions';
 import {
@@ -14,7 +14,7 @@ import {
   revokeUserSessions,
   type StaffRole,
 } from '@/app/lib/dal';
-import { hashInviteToken, isInviteTokenFormat, validatePasswordPolicy, verifyInviteToken } from '@/lib/user-invite';
+import { hashInviteToken, isInviteTokenFormat, tempPasswordExpired, validatePasswordPolicy, verifyInviteToken } from '@/lib/user-invite';
 import { sanitizeEmail } from '@/app/lib/security';
 import { getTenantContext } from '@/lib/tenant';
 import connectDB from '@/lib/mongodb';
@@ -23,10 +23,12 @@ import Role from '@/models/Role';
 import { consumeRateLimit, resetRateLimit, getClientIp, rateLimiters } from '@/lib/middleware/rate-limit';
 import { verifyUserTotp } from '@/app/api/auth/2fa/totp';
 import { TURNSTILE_FAILED_MESSAGE, verifyTurnstile } from '@/lib/turnstile';
+import { createLoginDeviceToken, isKnownLoginDevice, LOGIN_DEVICE_COOKIE, loginDeviceCookieOptions } from '@/lib/login-device';
 
 const INVALID_CREDENTIALS = 'Invalid email or password.';
 const SET_PASSWORD_FIRST = 'Check your email to set your password.';
 const MOBILE_APP_ONLY = 'Medical representative accounts sign in through the MyClinicSoft mobile app.';
+const TEMP_PASSWORD_EXPIRED = 'Your temporary password has expired. Ask your administrator for a new one.';
 const INVALID_INVITE = 'This link is invalid or has expired. Ask your administrator to send a new one.';
 
 // Generous per-IP cap: a whole clinic may share one public IP
@@ -49,19 +51,46 @@ async function clientIp(): Promise<string> {
   }
 }
 
+const waitMinutes = (c: { allowed: boolean; retryAfter: number } | undefined) =>
+  c && !c.allowed ? Math.max(1, Math.ceil(c.retryAfter / 60)) : null;
+
 /**
- * Count one attempt for this account. Limits apply per (account + IP) and, more loosely,
- * per account across all IPs, so one client cannot quickly lock the real user out.
+ * Count one attempt from this IP: per IP, and per (account + IP). Only this client is slowed down.
  * Returns the wait in minutes when blocked.
  */
-async function checkLoginLimits(ip: string, account: string): Promise<number | null> {
+async function checkIpLoginLimits(ip: string, account: string): Promise<number | null> {
   const checks = [
     await consumeRateLimit(STAFF_LOGIN_IP_LIMIT, ip),
     await consumeRateLimit(rateLimiters.authAccount.config, ip, account),
-    await consumeRateLimit(rateLimiters.authAccountGlobal.config, ip, account),
   ];
-  const blocked = checks.find((c) => !c.allowed);
-  return blocked ? Math.max(1, Math.ceil(blocked.retryAfter / 60)) : null;
+  return waitMinutes(checks.find((c) => !c.allowed));
+}
+
+/**
+ * Count one attempt against the account across all IPs (stops distributed guessing). A browser
+ * that has signed in to this account before is not counted or blocked here, so flooding the
+ * account with wrong passwords cannot lock the real user out of their usual device.
+ */
+async function checkAccountLoginLimit(ip: string, account: string, knownDevice: boolean): Promise<number | null> {
+  if (knownDevice) return null;
+  return waitMinutes(await consumeRateLimit(rateLimiters.authAccountGlobal.config, ip, account));
+}
+
+/** Both limits, for steps that already proved the password (the 2FA code). */
+async function checkLoginLimits(ip: string, account: string): Promise<number | null> {
+  return (await checkIpLoginLimits(ip, account)) ?? (await checkAccountLoginLimit(ip, account, false));
+}
+
+const staffAccountKey = (tenantId: string | null | undefined, email: string) => `staff:${tenantId ?? 'global'}:${email}`;
+
+/** Remember this browser as one that has signed in to the account (see lib/login-device.ts). */
+async function rememberLoginDevice(accountKey: string): Promise<void> {
+  try {
+    const { token, expiresAt } = createLoginDeviceToken(accountKey);
+    (await cookies()).set(LOGIN_DEVICE_COOKIE, token, loginDeviceCookieOptions(expiresAt));
+  } catch (error) {
+    console.error('Could not set login device cookie:', (error as Error)?.message);
+  }
 }
 
 type ResolvedRole = { roleName: StaffRole; roleId?: string };
@@ -247,26 +276,39 @@ export async function login(
     // Get tenant context for multi-tenant support
     const tenantContext = await getTenantContext();
     const tenantId = tenantContext.tenantId;
-    const accountKey = `staff:${tenantId ?? 'global'}:${sanitizedEmail}`;
+    const accountKey = staffAccountKey(tenantId, sanitizedEmail);
 
-    const waitMinutes = await checkLoginLimits(ip, accountKey);
-    if (waitMinutes) {
+    const ipWait = await checkIpLoginLimits(ip, accountKey);
+    if (ipWait) {
       return {
         errors: {
-          email: [`Too many login attempts. Please try again in ${waitMinutes} minute(s).`],
+          email: [`Too many login attempts. Please try again in ${ipWait} minute(s).`],
         },
       };
     }
 
-    // After the rate limits (cheap, local) and before the password check.
+    // After the per-IP limits (cheap) and before the account-wide limit, so an attacker without a
+    // solved challenge can't use up the account's budget.
     if (!(await verifyTurnstile(formData.get('turnstileToken'), ip))) {
       return { message: TURNSTILE_FAILED_MESSAGE };
+    }
+
+    const knownDevice = isKnownLoginDevice((await cookies()).get(LOGIN_DEVICE_COOKIE)?.value, accountKey);
+    const accountWait = await checkAccountLoginLimit(ip, accountKey, knownDevice);
+    if (accountWait) {
+      return {
+        errors: {
+          email: [
+            `Too many sign-in attempts for this account from new devices. Try again in ${accountWait} minute(s), or sign in from a device you've used before.`,
+          ],
+        },
+      };
     }
 
     await connectDB();
 
     const user = await User.findOne(tenantUserQuery(sanitizedEmail, tenantId))
-      .select('+password')
+      .select('+password +tempPassword +tempPasswordExpiresAt')
       .populate('role', 'name displayName');
 
     // Always run bcrypt so response time does not reveal whether the account exists
@@ -282,6 +324,12 @@ export async function login(
     if (user.mustSetPassword) {
       await auditFailedLogin(user, 'Invite not accepted yet', ip, tenantId);
       return { errors: { email: [SET_PASSWORD_FIRST] } };
+    }
+    // Still on the temporary password an admin made: it stops working after a week.
+    const onTempPassword = !!user.tempPassword;
+    if (onTempPassword && tempPasswordExpired(user.tempPasswordExpiresAt)) {
+      await auditFailedLogin(user, 'Temporary password expired', ip, tenantId);
+      return { errors: { email: [TEMP_PASSWORD_EXPIRED] } };
     }
     if (user.status !== 'active') {
       await auditFailedLogin(user, user.status === 'suspended' ? 'Account is suspended' : 'Account is closed', ip, tenantId);
@@ -313,8 +361,10 @@ export async function login(
         user.sessionVersion ?? 0
       );
       await auditLogin(user, roleName, ip, tenantId);
+      await rememberLoginDevice(accountKey);
       revalidatePath('/dashboard');
-      destination = '/dashboard';
+      // The admin can still read a temporary password, so send the person to replace it first.
+      destination = onTempPassword ? '/settings?replaceTempPassword=1' : '/dashboard';
     }
   } catch (error: any) {
     // Log full details server-side only — never expose error internals to the client
@@ -405,6 +455,7 @@ export async function verifyLoginTotp(
       user.sessionVersion ?? 0
     );
     await auditLogin(user, roleName, ip, tenantId);
+    await rememberLoginDevice(staffAccountKey(tenantId, sanitizeEmail(user.email)));
     revalidatePath('/dashboard');
     destination = '/dashboard';
   } catch (error: any) {
@@ -483,7 +534,7 @@ export async function setPasswordWithToken(
       { _id: user._id, inviteTokenHash: tokenHash, inviteExpiresAt: { $gt: new Date() } },
       {
         $set: { password: passwordHash, mustSetPassword: false },
-        $unset: { inviteTokenHash: 1, inviteExpiresAt: 1, tempPassword: 1 },
+        $unset: { inviteTokenHash: 1, inviteExpiresAt: 1, tempPassword: 1, tempPasswordExpiresAt: 1 },
       },
       { new: false, projection: { _id: 1 } }
     ).lean();

@@ -7,6 +7,8 @@ import mongoose, { Types } from 'mongoose';
 import BackupRecord from '@/models/BackupRecord';
 import User from '@/models/User';
 import { MAX_BACKUP_BYTES, MAX_BACKUPS_PER_CLINIC, SECRET_FIELDS, SKIPPED_COLLECTIONS, sizeLabel, type BackupRow, type BackupSummary } from '@/lib/backups';
+import { patientRecordForClinic } from '@/lib/patient-attachments';
+import { repForClinic } from '@/app/api/medical-representatives/_lib/shared-rep';
 
 const { EJSON } = mongoose.mongo.BSON;
 
@@ -101,6 +103,22 @@ const SKIPPED = new Set(SKIPPED_COLLECTIONS);
 
 class BackupTooLargeError extends Error {}
 
+/**
+ * Documents shared by several clinics (`tenantIds`) are cut down to this clinic's side: a patient's
+ * own files and family links, a rep's profile without other clinics' notes or the rep's account
+ * fields, and never the list of the other clinics.
+ */
+function forThisClinic(collection: string, doc: Record<string, unknown>, tenantId: Types.ObjectId): Record<string, unknown> {
+  if (collection === 'patients') return { ...patientRecordForClinic(doc, tenantId), tenantIds: [tenantId] };
+  if (collection === 'medicalrepresentatives') {
+    const { sharedWithOtherClinics: _shared, ...rep } = repForClinic(doc, tenantId);
+    void _shared;
+    return { ...rep, tenantIds: [tenantId] };
+  }
+  if (Array.isArray(doc.tenantIds)) return { ...doc, tenantIds: [tenantId] };
+  return doc;
+}
+
 /** POST /api/backups — snapshot THIS clinic's data (never other clinics', never credentials). */
 export async function POST(request: NextRequest) {
   const ctx = await requireTenantSession();
@@ -142,9 +160,10 @@ export async function POST(request: NextRequest) {
 
       const docs: unknown[] = [];
       for await (const doc of db.collection(col.name).find(filter, { projection: SECRET_PROJECTION })) {
-        sizeBytes += Buffer.byteLength(EJSON.stringify(doc), 'utf8');
+        const own = forThisClinic(col.name, doc, tenantObjectId);
+        sizeBytes += Buffer.byteLength(EJSON.stringify(own), 'utf8');
         if (sizeBytes > MAX_BACKUP_BYTES) throw new BackupTooLargeError();
-        docs.push(doc);
+        docs.push(own);
       }
       if (docs.length) backupData[col.name] = docs;
     }

@@ -6,6 +6,7 @@ import Prescription from '@/models/Prescription';
 import { hasPermission, requirePermission } from '@/app/lib/auth-helpers';
 import { requireTenantSession, isTenantSessionError, patientTenantFilter, tenantFilter } from '@/lib/api/tenant-session';
 import { logDataExport } from '@/lib/audit';
+import { patientRecordForClinic } from '@/lib/patient-attachments';
 import {
   buildFHIRPatient,
   buildFHIREncounter,
@@ -46,10 +47,12 @@ export async function GET(
   try {
     await connectDB();
 
-    const patient = await Patient.findOne(patientTenantFilter(tenantId, { _id: id })).lean();
-    if (!patient) {
+    const stored = await Patient.findOne(patientTenantFilter(tenantId, { _id: id })).lean<Record<string, any>>();
+    if (!stored) {
       return NextResponse.json({ success: false, error: 'Patient not found' }, { status: 404 });
     }
+    // The record is shared by every clinic the patient attends; export only this clinic's side of it.
+    const patient = patientRecordForClinic(stored, tenantId);
 
     const patientQuery = tenantFilter(tenantId, { patient: new Types.ObjectId(id) });
 

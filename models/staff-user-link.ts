@@ -4,6 +4,7 @@ import {
   inviteUpdate,
   randomUnusablePasswordHash,
   sendSetPasswordEmail,
+  tempPasswordExpiry,
 } from '../lib/user-invite';
 
 const NO_TENANT = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
@@ -133,7 +134,7 @@ export async function ensureStaffUser(options: {
     const credentials =
       typeof presetHash === 'string' && presetHash
         ? {
-            fields: { password: presetHash, mustSetPassword: false, ...(typeof sealed === 'string' && sealed ? { tempPassword: sealed } : {}) },
+            fields: { password: presetHash, mustSetPassword: false, ...(typeof sealed === 'string' && sealed ? { tempPassword: sealed, tempPasswordExpiresAt: tempPasswordExpiry() } : {}) },
             token: null,
           }
         : await newAccountCredentials();

@@ -25,15 +25,24 @@ export default function SettingsClient({
   email,
   totpEnabled,
   activity,
+  replaceTempPassword = false,
 }: {
   email: string;
   totpEnabled: boolean;
   activity: AccountActivity[];
+  /** Signed in with a temporary password an admin made: ask for their own first. */
+  replaceTempPassword?: boolean;
 }) {
   return (
     <section className="px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
       <div className="max-w-5xl mx-auto flex flex-col gap-6">
         <AccountHeader title="Sign-in & security" subtitle={`How you sign in as ${email}.`} current="settings" />
+        {replaceTempPassword && (
+          <Notice tone="error">
+            You signed in with a temporary password from your administrator. Set your own password below. The
+            temporary one stops working after a week.
+          </Notice>
+        )}
         <div>
           <PasswordSection />
           <TwoStepSection initialEnabled={totpEnabled} />

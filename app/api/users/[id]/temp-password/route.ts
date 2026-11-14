@@ -8,7 +8,7 @@ import { createAuditLog } from '@/lib/audit';
 import { encryptData } from '@/lib/encryption';
 import { requireTenantSession, isTenantSessionError, tenantFilter, isValidId, notFound } from '@/lib/api/tenant-session';
 import { consumeRateLimit, getClientIp } from '@/lib/middleware/rate-limit';
-import { generateTempPassword } from '@/lib/user-invite';
+import { generateTempPassword, tempPasswordExpiry } from '@/lib/user-invite';
 
 const ADMIN_LIMIT = { name: 'user-temp-password-admin', windowMs: 60 * 60 * 1000, maxRequests: 30 };
 
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const tempPassword = generateTempPassword();
     await User.updateOne(target, {
-      $set: { password: await bcrypt.hash(tempPassword, 12), mustSetPassword: false, tempPassword: encryptData(tempPassword) },
+      $set: { password: await bcrypt.hash(tempPassword, 12), mustSetPassword: false, tempPassword: encryptData(tempPassword), tempPasswordExpiresAt: tempPasswordExpiry() },
       $unset: { inviteTokenHash: 1, inviteExpiresAt: 1 },
     });
     await revokeUserSessions(id);

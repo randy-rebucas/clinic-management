@@ -15,3 +15,28 @@ export function ownAttachments<T extends { tenantId?: unknown }>(attachments: T[
 export function ownAttachmentMatch(tenantId: string | Types.ObjectId, fileId: string) {
   return { _id: new Types.ObjectId(fileId), tenantId: new Types.ObjectId(String(tenantId)) };
 }
+
+type SharedPatientFields = {
+  attachments?: Array<{ tenantId?: unknown }> | null;
+  guardians?: Array<{ source?: string; tenantId?: unknown }> | null;
+  tenantIds?: unknown;
+};
+
+/**
+ * A whole patient document as one clinic may export it: only that clinic's files, family links
+ * the patient made themselves or this clinic made, and no list of the other clinics they attend.
+ * Use on every path that hands out the full record (exports, backups).
+ */
+export function patientRecordForClinic<T extends SharedPatientFields>(patient: T, tenantId: string | Types.ObjectId): Omit<T, 'tenantIds'> {
+  const own = String(tenantId);
+  const { tenantIds: _tenantIds, ...rest } = patient;
+  void _tenantIds;
+  const out = { ...rest } as Omit<T, 'tenantIds'> & SharedPatientFields;
+  if (patient.attachments !== undefined) out.attachments = ownAttachments(patient.attachments, tenantId);
+  if (patient.guardians !== undefined) {
+    out.guardians = (patient.guardians ?? []).filter(
+      (g) => g.source === 'phone' || (g.tenantId != null && String(g.tenantId) === own)
+    );
+  }
+  return out;
+}

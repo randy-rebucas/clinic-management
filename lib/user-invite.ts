@@ -67,6 +67,21 @@ const TEMP_PASSWORD_ALPHABET = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23
 
 export const TEMP_PASSWORD_LENGTH = 8;
 
+/** How long an admin-issued temporary password works if the person never replaces it. */
+export const TEMP_PASSWORD_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function tempPasswordExpiry(now = Date.now()): Date {
+  return new Date(now + TEMP_PASSWORD_TTL_MS);
+}
+
+/**
+ * True when a stored temporary password may no longer be used or shown. Temporary passwords issued
+ * before expiry existed have no date and stay valid, so no one is locked out by the change.
+ */
+export function tempPasswordExpired(expiresAt: unknown, now = Date.now()): boolean {
+  return expiresAt instanceof Date && expiresAt.getTime() <= now;
+}
+
 /**
  * Temporary password an admin hands to staff, e.g. "k7Qmz2hx": 8 characters (~46 bits), short enough
  * to read out. Sign-in is rate limited per account and IP, and the person replaces it with their own

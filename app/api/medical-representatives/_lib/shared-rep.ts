@@ -62,6 +62,35 @@ export function refusedRepChanges(rep: RepProfile, tenantId: unknown, input: Rep
   });
 }
 
+/** Account fields that belong to the rep (payment, sign-in, team) and are never shown to a clinic. */
+export const PRIVATE_REP_FIELDS = [
+  'internalNotes',
+  'paymentDate',
+  'paymentAmount',
+  'paymentMethod',
+  'paymentReference',
+  'password',
+  'subscription',
+  'teamInvite',
+] as const;
+
+/** Mongoose projection that leaves out PRIVATE_REP_FIELDS. */
+export const HIDDEN_REP_FIELDS = PRIVATE_REP_FIELDS.map((f) => `-${f}`).join(' ');
+
+/**
+ * A rep profile as one clinic may see it: no private account fields, no notes when another clinic
+ * shares the profile, and no list of the other clinics (only whether there are any).
+ */
+export function repForClinic(rep: Record<string, unknown>, tenantId: unknown): Record<string, unknown> {
+  const shared = worksWithOtherClinics(rep as Pick<RepProfile, 'tenantIds'>, tenantId);
+  const out: Record<string, unknown> = { ...rep };
+  for (const field of PRIVATE_REP_FIELDS) delete out[field];
+  if (shared) delete out.notes;
+  delete out.tenantIds;
+  out.sharedWithOtherClinics = shared;
+  return out;
+}
+
 /** Notes are a clinic's own and say nothing of who wrote them, so a shared profile shows none. */
 export function hideOtherClinicsNotes<T extends { tenantIds?: unknown[]; notes?: string }>(rep: T, tenantId: unknown): T {
   if (!worksWithOtherClinics(rep, tenantId)) return rep;
