@@ -22,6 +22,7 @@ const PAGES: Entry[] = [
   ["/medical-representatives/onboard", 0.4, "yearly"],
   ["/privacy", 0.3, "yearly"],
   ["/terms", 0.3, "yearly"],
+  ["/delete-account", 0.3, "yearly"],
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {

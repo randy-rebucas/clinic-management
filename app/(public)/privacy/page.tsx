@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Metadata } from 'next';
 import { pageMetadata } from '@/lib/seo';
 import LegalDocument, { ContactCard, H3, List, P, type LegalSection } from '@/components/LegalDocument';
@@ -201,7 +202,11 @@ const sections: LegalSection[] = [
           keep.
         </P>
         <P>
-          eMCR accounts are kept until you ask us to close them. Backups and logs are overwritten on a rolling basis.
+          eMCR and eMedRoute accounts are kept until you ask us to close them; you can{' '}
+          <Link href="/delete-account" className="font-semibold text-brand-teal-dark hover:underline underline-offset-2">
+            request account deletion here
+          </Link>
+          . Backups and logs are overwritten on a rolling basis.
         </P>
       </>
     ),
@@ -253,11 +258,12 @@ export default function PrivacyPage() {
     <LegalDocument
       title="Privacy Policy"
       summary="What information MyClinicSoft and the eMCR app collect, why, and how we keep it safe under the Philippine Data Privacy Act."
-      updated="2026-10-22"
+      updated="2026-11-14"
       sections={sections}
       related={[
         { href: '/terms', label: 'Terms of Service' },
         { href: '/security', label: 'Security' },
+        { href: '/delete-account', label: 'Delete your account' },
       ]}
     />
   );
