@@ -25,7 +25,9 @@ vi.mock('@/models/Notification', () => ({ default: {} }));
 vi.mock('@/app/api/notifications/_lib/scope', () => ({ requireNotificationScope: vi.fn(), isNotificationScopeError: vi.fn() }));
 vi.mock('@/lib/platform-auth', () => ({ requirePlatformApi: vi.fn(), isPlatformError: (v: unknown) => v instanceof NextResponse }));
 vi.mock('@/models/Tenant', () => ({ default: { find: vi.fn() } }));
-vi.mock('@/models/PlatformAnnouncement', () => ({ default: { create: vi.fn().mockResolvedValue({ _id: 'a1' }) } }));
+vi.mock('@/models/PlatformAnnouncement', () => ({
+  default: { create: vi.fn().mockResolvedValue({ _id: 'a1' }), updateOne: vi.fn().mockResolvedValue({}) },
+}));
 
 import { Types } from 'mongoose';
 import { requireTenantSession } from '@/lib/api/tenant-session';
@@ -34,6 +36,7 @@ import { notifyStaff, notifyPatients } from '@/lib/notify';
 import User from '@/models/User';
 import Patient from '@/models/Patient';
 import Tenant from '@/models/Tenant';
+import PlatformAnnouncement from '@/models/PlatformAnnouncement';
 import { POST as sendStaff } from '@/app/api/notifications/route';
 import { POST as messagePatient } from '@/app/api/patients/[id]/messages/route';
 import { POST as platformSend } from '@/app/api/platform/notifications/route';
@@ -143,5 +146,8 @@ describe('platform → clinic announcements', () => {
       expect.objectContaining({ type: 'announcement', audience: { roles: ['admin', 'owner'] }, sender: { kind: 'platform', name: 'MyClinicSoft' } })
     );
     expect(((vi.mocked(Tenant.find).mock.calls[0] as unknown[])[0] as any).status).toBe('active');
+    // Each notification carries the announcement's id (read counts), and the record gets the totals.
+    expect(notifyStaff).toHaveBeenCalledWith(expect.objectContaining({ metadata: { platformAnnouncement: true, announcementId: 'a1' } }));
+    expect(PlatformAnnouncement.updateOne).toHaveBeenCalledWith({ _id: 'a1' }, { $set: { clinics: 2, recipients: 6 } });
   });
 });

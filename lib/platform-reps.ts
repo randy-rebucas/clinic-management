@@ -7,6 +7,7 @@ import Tenant from '@/models/Tenant';
 import User from '@/models/User';
 import ClinicSponsorship from '@/models/ClinicSponsorship';
 import RepReferralCode from '@/models/RepReferralCode';
+import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
 import { escapeRegex } from '@/lib/api/validate';
 import { getPlatformFees } from '@/lib/platform-config';
 
@@ -35,6 +36,18 @@ function stateOf(r: { isActivated?: boolean; status?: string }): RepState {
 }
 
 const iso = (d: Date | string | null | undefined) => (d ? new Date(d).toISOString() : null);
+
+export const REP_MONTHS = 6;
+
+/** YYYY-MM keys for the last `n` months, oldest first, and the UTC start of the first. */
+function lastMonths(now: Date, n: number): { keys: string[]; from: Date } {
+  const keys: string[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    keys.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+  }
+  return { keys, from: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (n - 1), 1)) };
+}
 const nameOf = (r: { firstName?: string; lastName?: string; title?: string }) => `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim() || '—';
 
 /** How the rep may book clinic visits: free for everyone, their own plan, their team's, or none. */
@@ -82,9 +95,19 @@ export interface PlatformRepList {
   page: number;
   pageSize: number;
   counts: Record<RepState | 'all', number>;
+  /** Reps registered per month, last REP_MONTHS months, oldest first (ignores search and state). */
+  signupsByMonth: Array<{ month: string; count: number }>;
 }
 
-export async function loadPlatformReps(opts: { q?: string; state?: RepState | ''; page?: number }): Promise<PlatformRepList> {
+export type RepSort = 'newest' | 'oldest' | 'name';
+export const REP_SORTS: RepSort[] = ['newest', 'oldest', 'name'];
+const REP_SORT_SPEC: Record<RepSort, Record<string, 1 | -1>> = {
+  newest: { createdAt: -1 },
+  oldest: { createdAt: 1 },
+  name: { firstName: 1, lastName: 1, _id: 1 },
+};
+
+export async function loadPlatformReps(opts: { q?: string; state?: RepState | ''; page?: number; sort?: RepSort }): Promise<PlatformRepList> {
   await connectDB();
   const now = new Date();
   const pageSize = 25;
@@ -98,22 +121,32 @@ export async function loadPlatformReps(opts: { q?: string; state?: RepState | ''
   }
   const filter = opts.state ? { ...search, ...STATE_FILTER[opts.state] } : search;
 
-  const [total, countsArr, reps, fees] = await Promise.all([
+  const months = lastMonths(now, REP_MONTHS);
+  const [total, countsArr, reps, fees, signups] = await Promise.all([
     MedicalRepresentative.countDocuments(filter),
     Promise.all(REP_STATES.map((s) => MedicalRepresentative.countDocuments({ ...search, ...STATE_FILTER[s] }))),
     MedicalRepresentative.find(filter)
-      .sort({ createdAt: -1 })
+      .sort(REP_SORT_SPEC[opts.sort ?? 'newest'])
       .skip((page - 1) * pageSize)
       .limit(pageSize)
-      .select('firstName lastName email company territory status isActivated tenantIds teamId subscription.expiresAt performanceMetrics userId lastLogin createdAt')
+      .select('firstName lastName email company territory status isActivated tenantIds teamId subscription.expiresAt userId lastLogin createdAt')
       .lean<any[]>(),
     getPlatformFees(),
+    // Small collection; no createdAt-only index, so this scans it.
+    MedicalRepresentative.aggregate<{ _id: string; count: number }>([
+      { $match: { createdAt: { $gte: months.from } } },
+      { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$createdAt', timezone: 'UTC' } }, count: { $sum: 1 } } },
+    ]),
   ]);
+  const signupBy = new Map(signups.map((x) => [x._id, x.count]));
 
   const ids = reps.map((r) => r._id as Types.ObjectId);
   const teamIds = reps.map((r) => r.teamId).filter(Boolean);
   const userIds = reps.map((r) => r.userId).filter(Boolean);
-  const [teams, users, referred, sponsoring] = await Promise.all([
+  // Visits counted from the records: the stored performanceMetrics counters only move when a
+  // clinic closes a visit, so they miss older and imported ones. Older visits carry only userId.
+  const repByUser = new Map(reps.filter((r) => r.userId).map((r) => [String(r.userId), String(r._id)]));
+  const [teams, users, referred, sponsoring, visitAgg] = await Promise.all([
     teamIds.length ? RepTeam.find({ _id: { $in: teamIds } }).select('name subscription.expiresAt subscription.seats').lean<any[]>() : [],
     userIds.length ? User.find({ _id: { $in: userIds } }).select('lastLogin').lean<any[]>() : [],
     ids.length
@@ -122,7 +155,26 @@ export async function loadPlatformReps(opts: { q?: string; state?: RepState | ''
     ids.length
       ? ClinicSponsorship.aggregate<{ _id: Types.ObjectId; n: number }>([{ $match: { repId: { $in: ids }, status: 'accepted' } }, { $group: { _id: '$repId', n: { $sum: 1 } } }])
       : [],
+    ids.length
+      ? MedicalRepresentativeVisit.aggregate<{ _id: { rep: Types.ObjectId | null; user: Types.ObjectId }; total: number; completed: number }>([
+          { $match: { $or: [{ medicalRepresentativeId: { $in: ids } }, ...(userIds.length ? [{ userId: { $in: userIds } }] : [])] } },
+          {
+            $group: {
+              _id: { rep: '$medicalRepresentativeId', user: '$userId' },
+              total: { $sum: 1 },
+              completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+            },
+          },
+        ])
+      : [],
   ]);
+  const visitsBy = new Map<string, { total: number; completed: number }>();
+  for (const v of visitAgg) {
+    const rep = v._id.rep ? String(v._id.rep) : repByUser.get(String(v._id.user));
+    if (!rep) continue;
+    const cur = visitsBy.get(rep) ?? { total: 0, completed: 0 };
+    visitsBy.set(rep, { total: cur.total + v.total, completed: cur.completed + v.completed });
+  }
   const teamBy = new Map(teams.map((t) => [String(t._id), t]));
   const loginBy = new Map(users.map((u) => [String(u._id), u.lastLogin]));
   const referredBy = new Map(referred.map((x) => [String(x._id), x.n]));
@@ -137,6 +189,7 @@ export async function loadPlatformReps(opts: { q?: string; state?: RepState | ''
     page,
     pageSize,
     counts,
+    signupsByMonth: months.keys.map((month) => ({ month, count: signupBy.get(month) ?? 0 })),
     rows: reps.map((r) => ({
       id: String(r._id),
       name: nameOf(r),
@@ -148,7 +201,7 @@ export async function loadPlatformReps(opts: { q?: string; state?: RepState | ''
       clinics: (r.tenantIds ?? []).length,
       referred: referredBy.get(String(r._id)) ?? 0,
       sponsoring: sponsoringBy.get(String(r._id)) ?? 0,
-      visits: { total: r.performanceMetrics?.totalVisits ?? 0, completed: r.performanceMetrics?.completedVisits ?? 0 },
+      visits: visitsBy.get(String(r._id)) ?? { total: 0, completed: 0 },
       lastLogin: iso(loginBy.get(String(r.userId)) ?? r.lastLogin),
       createdAt: iso(r.createdAt)!,
     })),
@@ -174,10 +227,17 @@ export interface PlatformRepDetail {
   payments: { amount: number; cycle: string; paidAt: string }[];
   team: { name: string; seats: number; until: string | null } | null;
   visits: { total: number; completed: number; cancelled: number };
+  /** From the visit records themselves: every visit by status, and visits per month by the date they're for. */
+  visitLog: {
+    byStatus: Partial<Record<VisitStatus, number>>;
+    byMonth: Array<{ month: string; completed: number; other: number }>;
+  };
   clinics: { id: string; name: string; subdomain: string; referredByThisRep: boolean }[];
   sponsorships: { id: string; clinicId: string; clinic: string; status: string; paidThrough: string | null; payments: number; createdAt: string }[];
   codes: { code: string; source: 'rep' | 'platform'; status: string; uses: number; maxUses: number | null }[];
 }
+
+export type VisitStatus = 'requested' | 'scheduled' | 'declined' | 'completed' | 'cancelled' | 'no-show';
 
 export async function loadPlatformRep(id: string): Promise<PlatformRepDetail | null> {
   if (!Types.ObjectId.isValid(id)) return null;
@@ -189,7 +249,10 @@ export async function loadPlatformRep(id: string): Promise<PlatformRepDetail | n
   const now = new Date();
   const repId = r._id as Types.ObjectId;
 
-  const [team, user, clinics, sponsorships, codes, fees] = await Promise.all([
+  const months = lastMonths(now, REP_MONTHS);
+  // Visits carry medicalRepresentativeId, or only the rep's userId on older records; both are indexed.
+  const visitMatch = { $or: [{ medicalRepresentativeId: repId }, ...(r.userId ? [{ userId: r.userId }] : [])] };
+  const [team, user, clinics, sponsorships, codes, fees, visitStatus, visitMonths] = await Promise.all([
     r.teamId ? RepTeam.findById(r.teamId).select('name subscription.expiresAt subscription.seats').lean<any>() : null,
     r.userId ? User.findById(r.userId).select('lastLogin').lean<any>() : null,
     (r.tenantIds ?? []).length
@@ -198,7 +261,25 @@ export async function loadPlatformRep(id: string): Promise<PlatformRepDetail | n
     ClinicSponsorship.find({ repId }).sort({ createdAt: -1 }).limit(50).select('tenantId status paidThrough payments createdAt').lean<any[]>(),
     RepReferralCode.find({ repId }).sort({ createdAt: -1 }).select('code source status uses maxUses').lean<any[]>(),
     getPlatformFees(),
+    MedicalRepresentativeVisit.aggregate<{ _id: VisitStatus; n: number }>([
+      { $match: visitMatch },
+      { $group: { _id: '$status', n: { $sum: 1 } } },
+    ]),
+    MedicalRepresentativeVisit.aggregate<{ _id: { m: string; done: boolean }; n: number }>([
+      { $match: { ...visitMatch, date: { $gte: months.from } } },
+      {
+        $group: {
+          _id: { m: { $dateToString: { format: '%Y-%m', date: '$date', timezone: 'UTC' } }, done: { $eq: ['$status', 'completed'] } },
+          n: { $sum: 1 },
+        },
+      },
+    ]),
   ]);
+  const monthAgg = new Map<string, { completed: number; other: number }>(months.keys.map((k) => [k, { completed: 0, other: 0 }]));
+  for (const x of visitMonths) {
+    const m = monthAgg.get(x._id.m);
+    if (m) m[x._id.done ? 'completed' : 'other'] += x.n;
+  }
   const sponsoredIds = [...new Set(sponsorships.map((s) => String(s.tenantId)))];
   const sponsoredTenants = sponsoredIds.length
     ? await Tenant.find({ _id: { $in: sponsoredIds } }).select('name displayName').lean<any[]>()
@@ -237,6 +318,10 @@ export async function loadPlatformRep(id: string): Promise<PlatformRepDetail | n
       total: r.performanceMetrics?.totalVisits ?? 0,
       completed: r.performanceMetrics?.completedVisits ?? 0,
       cancelled: r.performanceMetrics?.cancelledVisits ?? 0,
+    },
+    visitLog: {
+      byStatus: Object.fromEntries(visitStatus.map((x) => [x._id, x.n])),
+      byMonth: months.keys.map((month) => ({ month, ...monthAgg.get(month)! })),
     },
     clinics: clinics.map((t) => ({
       id: String(t._id),

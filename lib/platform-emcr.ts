@@ -5,7 +5,7 @@ import VoucherBatch from '@/models/VoucherBatch';
 import ActivationCode from '@/models/ActivationCode';
 import { createAuditLog } from '@/lib/audit';
 import { readBatchCodes } from '@/lib/emcr/activation';
-import type { VoucherBatchRow } from '@/lib/emcr/vouchers';
+import { monthKeys, type VoucherBatchRow } from '@/lib/emcr/vouchers';
 
 /** Loaders for the platform console's eMCR voucher batch pages. Every value returned is plain JSON. */
 
@@ -14,7 +14,13 @@ const iso = (d: Date | string | null | undefined) => (d ? new Date(d).toISOStrin
 export interface VoucherBatchDetail extends VoucherBatchRow {
   unsold: number;
   voidedAt: string | null;
+  /** Codes redeemed per month (UTC) since the batch was made, at most BATCH_MONTHS, oldest first. */
+  redeemedByMonth: Array<{ month: string; count: number }>;
+  firstRedeemedAt: string | null;
+  lastRedeemedAt: string | null;
 }
+
+const BATCH_MONTHS = 12;
 
 /** One batch with its code counts (no codes). Null when the id is not a batch. */
 export async function loadVoucherBatch(id: string): Promise<VoucherBatchDetail | null> {
@@ -22,10 +28,31 @@ export async function loadVoucherBatch(id: string): Promise<VoucherBatchDetail |
   await connectDB();
   const b = await VoucherBatch.findById(id).lean<any>();
   if (!b) return null;
-  const counts = await ActivationCode.aggregate<{ _id: string; n: number }>([
-    { $match: { batchId: b._id } },
-    { $group: { _id: '$status', n: { $sum: 1 } } },
+  const now = new Date();
+  const created = new Date(b.createdAt);
+  const span = (now.getUTCFullYear() - created.getUTCFullYear()) * 12 + now.getUTCMonth() - created.getUTCMonth() + 1;
+  const months = monthKeys(now, Math.min(BATCH_MONTHS, Math.max(1, span)));
+  // Both use the { batchId, status } index.
+  const [counts, redeemed] = await Promise.all([
+    ActivationCode.aggregate<{ _id: string; n: number }>([
+      { $match: { batchId: b._id } },
+      { $group: { _id: '$status', n: { $sum: 1 } } },
+    ]),
+    ActivationCode.aggregate<{ _id: string | null; n: number; first: Date | null; last: Date | null }>([
+      { $match: { batchId: b._id, status: 'redeemed' } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m', date: '$redeemedAt' } },
+          n: { $sum: 1 },
+          first: { $min: '$redeemedAt' },
+          last: { $max: '$redeemedAt' },
+        },
+      },
+    ]),
   ]);
+  const monthCounts = new Map(redeemed.map((m) => [m._id, m.n]));
+  const firsts = redeemed.map((m) => m.first).filter(Boolean) as Date[];
+  const lasts = redeemed.map((m) => m.last).filter(Boolean) as Date[];
   const count = (status: string) => counts.find((c) => c._id === status)?.n ?? 0;
   return {
     id: String(b._id),
@@ -48,6 +75,9 @@ export async function loadVoucherBatch(id: string): Promise<VoucherBatchDetail |
     receivedBy: b.receivedBy ?? null,
     voidReason: b.voidReason ?? null,
     voidedAt: iso(b.voidedAt),
+    redeemedByMonth: months.keys.map((month) => ({ month, count: monthCounts.get(month) ?? 0 })),
+    firstRedeemedAt: firsts.length ? iso(new Date(Math.min(...firsts.map((d) => new Date(d).getTime())))) : null,
+    lastRedeemedAt: lasts.length ? iso(new Date(Math.max(...lasts.map((d) => new Date(d).getTime())))) : null,
     notes: b.notes ?? null,
     createdBy: b.createdBy,
     createdAt: iso(b.createdAt)!,

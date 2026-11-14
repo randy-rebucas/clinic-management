@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import { Types } from 'mongoose';
 import { requirePlatformPage } from '@/lib/platform-auth';
 import connectDB from '@/lib/mongodb';
@@ -23,8 +24,10 @@ export default async function PlatformChatBroadcastPage({ searchParams }: { sear
   return (
     <div className="mx-auto max-w-3xl space-y-5">
       <div>
-        <Link href="/platform/chat" className={`${LINK} text-sm`}>Support chat</Link>
-        <h1 className="mt-1 text-xl font-semibold text-gray-900">Broadcast a message</h1>
+        <Link href="/platform/chat" className={`${LINK} inline-flex items-center gap-1 text-sm`}>
+          <ArrowLeft aria-hidden="true" className="size-4" /> Support chat
+        </Link>
+        <h1 className="mt-2 text-xl font-semibold text-gray-900">Broadcast a message</h1>
         <p className="mt-1 text-sm text-gray-600">
           A chat message from MyClinicSoft Support to many people at once, {clinicName ? `in ${clinicName}` : 'in every active clinic'}.
           For a notice that should also reach phones, use <Link href="/platform/notifications" className={LINK}>Notify</Link>.

@@ -30,3 +30,11 @@ export function PlanText({ plan }: { plan: BookingPlan }) {
       return <span className="text-gray-500">{plan.endedOn ? `Ended ${day(plan.endedOn)}` : 'None'}</span>;
   }
 }
+
+/** Segment colours for a reps-by-state bar; always shown beside labelled counts. */
+export const REP_STATE_COLOR: Record<RepState, string> = {
+  active: '#059669',
+  awaiting: '#d97706',
+  inactive: '#9ca3af',
+  'on-leave': '#0284c7',
+};

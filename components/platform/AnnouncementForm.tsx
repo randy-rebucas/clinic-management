@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { BellRing, ExternalLink, Inbox, Megaphone, Send, Smartphone } from 'lucide-react';
 import { formatApiError } from '../utils/apiError';
 import { FIELD, FOCUS_RING } from '../appointments/shared';
 
@@ -18,6 +19,9 @@ export default function AnnouncementForm({ clinic }: { clinic?: { id: string; na
   const [actionUrl, setActionUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+
+  // Same rule as POST /api/platform/notifications.
+  const pushed = priority !== 'normal' || audience === 'admins';
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -51,11 +55,17 @@ export default function AnnouncementForm({ clinic }: { clinic?: { id: string; na
   return (
     <form onSubmit={submit} className="space-y-4">
       <div>
-        <label htmlFor="ann-title" className="mb-1.5 block text-sm font-medium text-gray-700">Title</label>
+        <div className="mb-1.5 flex items-baseline justify-between">
+          <label htmlFor="ann-title" className="block text-sm font-medium text-gray-700">Title</label>
+          <span className="text-xs tabular-nums text-gray-400">{title.length}/200</span>
+        </div>
         <input id="ann-title" required maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} className={FIELD} />
       </div>
       <div>
-        <label htmlFor="ann-message" className="mb-1.5 block text-sm font-medium text-gray-700">Message</label>
+        <div className="mb-1.5 flex items-baseline justify-between">
+          <label htmlFor="ann-message" className="block text-sm font-medium text-gray-700">Message</label>
+          <span className="text-xs tabular-nums text-gray-400">{message.length}/2000</span>
+        </div>
         <textarea id="ann-message" required maxLength={2000} rows={4} value={message} onChange={(e) => setMessage(e.target.value)} className={FIELD} />
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
@@ -79,9 +89,42 @@ export default function AnnouncementForm({ clinic }: { clinic?: { id: string; na
           <input id="ann-link" placeholder="/admin/subscription" maxLength={500} value={actionUrl} onChange={(e) => setActionUrl(e.target.value)} className={FIELD} />
         </div>
       </div>
-      <p className="text-xs text-gray-500">
-        It appears in each recipient&rsquo;s notifications as from MyClinicSoft. Important and urgent ones, and anything sent only to admins, also go to their phones and browsers.
-      </p>
+      <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+        <p className="text-xs font-medium text-gray-500">Preview</p>
+        <div className="mt-2 flex gap-3 rounded-md border border-gray-200 bg-white p-3">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-teal-light text-brand-teal-deep">
+            <Megaphone aria-hidden="true" className="size-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold text-gray-900">{title.trim() || 'Your title'}</span>
+              {priority !== 'normal' && (
+                <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${priority === 'urgent' ? 'bg-rose-50 text-rose-800 ring-rose-200' : 'bg-amber-50 text-amber-800 ring-amber-200'}`}>
+                  {priority === 'urgent' ? 'Urgent' : 'Important'}
+                </span>
+              )}
+            </div>
+            <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap text-sm text-gray-600">{message.trim() || 'Your message appears here.'}</p>
+            <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
+              From MyClinicSoft
+              {actionUrl.trim() && (
+                <>
+                  {' · '}
+                  <ExternalLink aria-hidden="true" className="size-3" /> {actionUrl.trim()}
+                </>
+              )}
+            </p>
+          </div>
+        </div>
+        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600">
+          <span className="inline-flex items-center gap-1"><Inbox aria-hidden="true" className="size-3.5" /> In their notifications</span>
+          {pushed ? (
+            <span className="inline-flex items-center gap-1 font-medium text-brand-teal-deep"><Smartphone aria-hidden="true" className="size-3.5" /> Also pushed to phones and browsers</span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-gray-500"><BellRing aria-hidden="true" className="size-3.5" /> No push: normal notes to all staff stay in the app</span>
+          )}
+        </p>
+      </div>
       {notice && (
         <p role={notice.tone === 'error' ? 'alert' : 'status'} className={`text-sm ${notice.tone === 'error' ? 'text-rose-700' : 'text-emerald-700'}`}>
           {notice.text}
@@ -90,8 +133,9 @@ export default function AnnouncementForm({ clinic }: { clinic?: { id: string; na
       <button
         type="submit"
         disabled={busy || !title.trim() || !message.trim()}
-        className={`rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
+        className={`inline-flex items-center gap-2 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white hover:bg-brand-teal-deep disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`}
       >
+        <Send aria-hidden="true" className="size-4" />
         {busy ? 'Sending…' : clinic ? `Send to ${clinic.name}` : 'Send to every clinic'}
       </button>
     </form>

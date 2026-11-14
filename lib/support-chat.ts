@@ -156,6 +156,145 @@ export async function listSupportThreads(opts: { view: SupportChatView; q?: stri
   return { threads, total, waiting, page, pageSize: PAGE_SIZE };
 }
 
+export const CHAT_WEEKS = 12;
+/** Reply times and busiest clinics are measured over this many days. */
+export const CHAT_REPLY_DAYS = 30;
+/** Waiting threads whose wait start is looked up (one indexed query each). */
+const WAIT_LOOKUP_MAX = 100;
+/** Messages read to build the weekly series; past this the series is marked partial. */
+const STATS_MESSAGE_CAP = 20_000;
+const HOUR_MS = 60 * 60 * 1000;
+
+export interface SupportChatStats {
+  asOf: string;
+  waitingThreads: number;
+  unreadMessages: number;
+  /** userId → when the oldest unread message from them arrived. */
+  waitingSince: Record<string, string>;
+  longestWait: { userId: string; name: string; since: string } | null;
+  /** Messages per week (Monday starts), oldest first. */
+  byWeek: Array<{ weekStart: string; fromStaff: number; fromUs: number }>;
+  /** Over the last CHAT_REPLY_DAYS days: how long staff waited for our next message. */
+  reply: { medianHours: number | null; replied: number };
+  busiestClinics: Array<{ id: string; name: string; messages: number }>;
+  partial: boolean;
+}
+
+function mondayUtc(d: Date): Date {
+  const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  x.setUTCDate(x.getUTCDate() - ((x.getUTCDay() + 6) % 7));
+  return x;
+}
+
+/** Inbox health for the chat page. Reads only support threads active in the last CHAT_WEEKS weeks. */
+export async function loadSupportChatStats(): Promise<SupportChatStats> {
+  await connectDB();
+  const now = new Date();
+  const firstWeek = new Date(mondayUtc(now).getTime() - (CHAT_WEEKS - 1) * 7 * 24 * HOUR_MS);
+  const replySince = new Date(now.getTime() - CHAT_REPLY_DAYS * 24 * HOUR_MS);
+
+  const [waiting, active] = await Promise.all([
+    Conversation.find({ kind: 'support', 'support.unread': { $gt: 0 } })
+      .select('tenantId members.user support lastMessageAt')
+      .sort({ lastMessageAt: 1 })
+      .limit(WAIT_LOOKUP_MAX)
+      .lean<any[]>(),
+    // The partial { lastMessageAt } index on support threads serves this.
+    Conversation.find({ kind: 'support', lastMessageAt: { $gte: firstWeek } }).select('_id tenantId').lean<any[]>(),
+  ]);
+
+  // When each waiting thread started waiting: the first staff message after we last read it.
+  const firstUnread = await Promise.all(
+    waiting.map((c) =>
+      Message.findOne({
+        tenantId: c.tenantId,
+        conversation: c._id,
+        fromSupport: { $ne: true },
+        deletedAt: null,
+        createdAt: { $gt: c.support?.lastReadAt ?? new Date(0) },
+      })
+        .sort({ createdAt: 1 })
+        .select('createdAt')
+        .lean<any>()
+    )
+  );
+  const waitingSince: Record<string, string> = {};
+  let longest: { userId: string; since: Date } | null = null;
+  waiting.forEach((c, i) => {
+    const uid = String(c.members?.[0]?.user ?? '');
+    const at = firstUnread[i]?.createdAt ? new Date(firstUnread[i].createdAt) : new Date(c.lastMessageAt);
+    waitingSince[uid] = at.toISOString();
+    if (!longest || at < longest.since) longest = { userId: uid, since: at };
+  });
+  const [unreadAgg, longestUser] = await Promise.all([
+    Conversation.aggregate<{ n: number; threads: number }>([
+      { $match: { kind: 'support', 'support.unread': { $gt: 0 } } },
+      { $group: { _id: null, n: { $sum: '$support.unread' }, threads: { $sum: 1 } } },
+    ]),
+    longest ? User.findById((longest as { userId: string }).userId).select('name email').lean<any>() : null,
+  ]);
+
+  const messages = active.length
+    ? await Message.find({
+        tenantId: { $in: [...new Set(active.map((c) => String(c.tenantId)))] },
+        conversation: { $in: active.map((c) => c._id) },
+        createdAt: { $gte: firstWeek },
+        deletedAt: null,
+      })
+        .select('tenantId conversation fromSupport createdAt')
+        .sort({ createdAt: 1 })
+        .limit(STATS_MESSAGE_CAP)
+        .lean<any[]>()
+    : [];
+
+  const weeks = new Map<string, { fromStaff: number; fromUs: number }>();
+  const byClinic = new Map<string, number>();
+  const waitStart = new Map<string, Date>();
+  const replyHours: number[] = [];
+  for (const m of messages) {
+    const at = new Date(m.createdAt);
+    const ws = mondayUtc(at).toISOString();
+    const w = weeks.get(ws) ?? { fromStaff: 0, fromUs: 0 };
+    if (m.fromSupport) w.fromUs++;
+    else w.fromStaff++;
+    weeks.set(ws, w);
+
+    const conv = String(m.conversation);
+    if (m.fromSupport) {
+      const started = waitStart.get(conv);
+      if (started && started >= replySince) replyHours.push((at.getTime() - started.getTime()) / HOUR_MS);
+      waitStart.delete(conv);
+    } else {
+      if (!waitStart.has(conv)) waitStart.set(conv, at);
+      if (at >= replySince) byClinic.set(String(m.tenantId), (byClinic.get(String(m.tenantId)) ?? 0) + 1);
+    }
+  }
+  replyHours.sort((a, b) => a - b);
+  const mid = replyHours.length >> 1;
+  const medianHours = !replyHours.length ? null : replyHours.length % 2 ? replyHours[mid] : (replyHours[mid - 1] + replyHours[mid]) / 2;
+
+  const top = [...byClinic.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const names = await clinicNames(top.map(([id]) => id));
+  const longestWait = longest as { userId: string; since: Date } | null;
+
+  return {
+    asOf: now.toISOString(),
+    waitingThreads: unreadAgg[0]?.threads ?? 0,
+    unreadMessages: unreadAgg[0]?.n ?? 0,
+    waitingSince,
+    longestWait: longestWait
+      ? { userId: longestWait.userId, name: longestUser?.name || longestUser?.email || 'Former staff member', since: longestWait.since.toISOString() }
+      : null,
+    byWeek: Array.from({ length: CHAT_WEEKS }, (_, i) => {
+      const ws = new Date(firstWeek.getTime() + i * 7 * 24 * HOUR_MS).toISOString();
+      return { weekStart: ws, ...(weeks.get(ws) ?? { fromStaff: 0, fromUs: 0 }) };
+    }),
+    reply: { medianHours, replied: replyHours.length },
+    busiestClinics: top.map(([id, n]) => ({ id, name: names.get(id) ?? 'Unknown clinic', messages: n })),
+    partial: messages.length >= STATS_MESSAGE_CAP,
+  };
+}
+
 /** Threads with messages the platform team hasn't read. */
 export async function supportWaitingCount() {
   await connectDB();

@@ -43,26 +43,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: `One announcement can reach ${MAX_CLINICS} clinics. Choose clinics.` }, { status: 400 });
   }
 
-  let recipients = 0;
-  let clinics = 0;
-  for (const t of tenants) {
-    const r = await notifyStaff({
-      tenantId: String(t._id),
-      audience: b.audience === 'admins' ? { roles: ['admin', 'owner'] } : { allStaff: true },
-      type: 'announcement',
-      title: b.title,
-      message: b.message,
-      priority: b.priority,
-      actionUrl: b.actionUrl,
-      sender: { kind: 'platform', name: 'MyClinicSoft' },
-      // An everyday note to every staff member stays in the app; anything flagged is pushed.
-      push: b.priority !== 'normal' || b.audience === 'admins',
-      metadata: { platformAnnouncement: true },
-    });
-    recipients += r.recipients;
-    if (r.recipients) clinics++;
-  }
-
+  // The record first, so each notification can carry its id (read counts on the Notify page).
   const doc = await PlatformAnnouncement.create({
     title: b.title,
     message: b.message,
@@ -71,9 +52,34 @@ export async function POST(request: NextRequest) {
     tenantIds: b.tenantIds.map((id) => new Types.ObjectId(id)),
     actionUrl: b.actionUrl,
     sentByEmail: admin.email,
-    clinics,
-    recipients,
+    clinics: 0,
+    recipients: 0,
   });
+
+  let recipients = 0;
+  let clinics = 0;
+  try {
+    for (const t of tenants) {
+      const r = await notifyStaff({
+        tenantId: String(t._id),
+        audience: b.audience === 'admins' ? { roles: ['admin', 'owner'] } : { allStaff: true },
+        type: 'announcement',
+        title: b.title,
+        message: b.message,
+        priority: b.priority,
+        actionUrl: b.actionUrl,
+        sender: { kind: 'platform', name: 'MyClinicSoft' },
+        // An everyday note to every staff member stays in the app; anything flagged is pushed.
+        push: b.priority !== 'normal' || b.audience === 'admins',
+        metadata: { platformAnnouncement: true, announcementId: String(doc._id) },
+      });
+      recipients += r.recipients;
+      if (r.recipients) clinics++;
+    }
+  } finally {
+    // Also after a failure part-way, so the record says how far it got.
+    await PlatformAnnouncement.updateOne({ _id: doc._id }, { $set: { clinics, recipients } });
+  }
 
   return NextResponse.json({ success: true, data: { id: String(doc._id), clinics, recipients } }, { status: 201 });
 }

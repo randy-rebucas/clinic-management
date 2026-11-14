@@ -56,19 +56,51 @@ export interface VoucherOverview {
   };
   byClinic: Array<{ tenantId: string; clinicName: string; paidCodes: number; redeemed: number; unredeemed: number; cashReceived: number; outstanding: number }>;
   clinics: Array<{ id: string; name: string }>;
+  /** The last VOUCHER_MONTHS calendar months (UTC), oldest first. */
+  byMonth: Array<{ month: string; cashReceived: number; redeemed: number }>;
+  /** Unpaid batches: how many, and when the oldest was made. */
+  unpaid: { batches: number; oldestAt: string | null };
+  asOf: string;
+}
+
+export const VOUCHER_MONTHS = 12;
+
+/** 'YYYY-MM' keys for the last n months (UTC), oldest first, and the first instant of the first. */
+export function monthKeys(now: Date, n: number): { keys: string[]; from: Date } {
+  const keys: string[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    keys.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+  }
+  return { keys, from: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (n - 1), 1)) };
 }
 
 export async function loadVoucherOverview(now = new Date()): Promise<VoucherOverview> {
   await connectDB();
-  const [batches, counts, activeAccounts, tenants] = await Promise.all([
+  const months = monthKeys(now, VOUCHER_MONTHS);
+  const [batches, codeAgg, activeAccounts, tenants] = await Promise.all([
     VoucherBatch.find({}).sort({ createdAt: -1 }).lean<any[]>(),
-    ActivationCode.aggregate<{ _id: { batchId: Types.ObjectId; status: string }; n: number }>([
-      { $group: { _id: { batchId: '$batchId', status: '$status' }, n: { $sum: 1 } } },
+    // One pass over the codes: per-batch status counts, and redemptions by month.
+    ActivationCode.aggregate<{
+      byBatch: Array<{ _id: { batchId: Types.ObjectId; status: string }; n: number }>;
+      byMonth: Array<{ _id: string; n: number }>;
+    }>([
+      {
+        $facet: {
+          byBatch: [{ $group: { _id: { batchId: '$batchId', status: '$status' }, n: { $sum: 1 } } }],
+          byMonth: [
+            { $match: { status: 'redeemed', redeemedAt: { $gte: months.from } } },
+            { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$redeemedAt' } }, n: { $sum: 1 } } },
+          ],
+        },
+      },
     ]),
     EmcrAccount.countDocuments({ 'activation.expiresAt': { $gt: now } }),
     Tenant.find({ status: 'active' }).select('name displayName').sort({ name: 1 }).lean<any[]>(),
   ]);
 
+  const counts = codeAgg[0]?.byBatch ?? [];
+  const redeemedByMonth = new Map((codeAgg[0]?.byMonth ?? []).map((m) => [m._id, m.n]));
   const count = (batchId: unknown, status: string) =>
     counts.find((c) => String(c._id.batchId) === String(batchId) && c._id.status === status)?.n ?? 0;
 
@@ -132,5 +164,16 @@ export async function loadVoucherOverview(now = new Date()): Promise<VoucherOver
     },
     byClinic: [...byClinicMap.values()].sort((a, b) => a.clinicName.localeCompare(b.clinicName)),
     clinics: tenants.map((t) => ({ id: String(t._id), name: t.displayName || t.name })),
+    byMonth: months.keys.map((month) => ({
+      month,
+      cashReceived: paid.filter((r) => r.paidAt!.slice(0, 7) === month).reduce((s, r) => s + received(r), 0),
+      redeemed: redeemedByMonth.get(month) ?? 0,
+    })),
+    // rows are newest first, so the last unpaid one is the oldest.
+    unpaid: (() => {
+      const open = rows.filter((r) => r.status === 'unpaid');
+      return { batches: open.length, oldestAt: open.at(-1)?.createdAt ?? null };
+    })(),
+    asOf: now.toISOString(),
   };
 }

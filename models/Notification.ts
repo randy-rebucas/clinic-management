@@ -125,6 +125,11 @@ NotificationSchema.index({ tenantId: 1, user: 1, type: 1, read: 1 });
 // Auto-delete expired notifications. TTL must be a single-field index: MongoDB ignores
 // expireAfterSeconds on compound indexes. Deletion lags up to a minute, so reads also filter on it.
 NotificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+// Read counts for the platform's announcements (console Notify page); only those notifications carry the id.
+NotificationSchema.index(
+  { 'metadata.announcementId': 1, read: 1 },
+  { name: 'announcement_reads', partialFilterExpression: { 'metadata.announcementId': { $exists: true } } }
+);
 
 export default mongoose.models.Notification || mongoose.model<INotification>('Notification', NotificationSchema);
 

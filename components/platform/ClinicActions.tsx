@@ -77,7 +77,7 @@ export default function ClinicActions({
         {admins.length ? (
           <div className="mt-2 flex flex-wrap gap-2">
             <label className="sr-only" htmlFor="view-as-user">Admin to view as</label>
-            <select id="view-as-user" value={viewAs} onChange={(e) => setViewAs(e.target.value)} className={`${FIELD} w-auto max-w-full`}>
+            <select id="view-as-user" value={viewAs} onChange={(e) => setViewAs(e.target.value)} className={`${FIELD} w-auto! max-w-full`}>
               {admins.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.email})</option>)}
             </select>
             <button type="button" onClick={openViewAs} disabled={!!busy || suspended} className={PRIMARY}>
@@ -95,7 +95,7 @@ export default function ClinicActions({
         <p className="mt-0.5 text-xs text-gray-600">Adds days to the trial or paid period, from its end or from today if it already ended.</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <label className="sr-only" htmlFor="extend-days">Days</label>
-          <input id="extend-days" type="number" min={1} max={365} value={days} onChange={(e) => setDays(Number(e.target.value))} className={`${FIELD} w-24`} />
+          <input id="extend-days" type="number" min={1} max={365} value={days} onChange={(e) => setDays(Number(e.target.value))} className={`${FIELD} w-24!`} />
           <span className="text-sm text-gray-600">days</span>
           <button type="button" className={OUTLINE} disabled={!!busy || !(days >= 1 && days <= 365)} onClick={() => patch('extend', { extendDays: days }, `Extended by ${days} days.`)}>
             {busy === 'extend' ? 'Saving…' : 'Extend'}

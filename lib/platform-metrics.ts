@@ -100,6 +100,8 @@ export interface PlatformMetrics {
   churn: { churned: number; base: number; rate: number | null };
   trialConversion: { cohort: number; converted: number; rate: number | null };
   signups: { last30: number; previous30: number };
+  /** Clinics created per month, oldest first, same months as `revenue`. */
+  signupsByMonth: Array<{ month: string; count: number }>;
   revenue: MonthRevenue[];
 }
 
@@ -132,6 +134,7 @@ export function computePlatformMetrics(rows: PlatformTenantRow[], now = new Date
     monthKeys.push(monthKey(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1))));
   }
   const revenue = new Map<string, Record<string, number>>(monthKeys.map((k) => [k, {}]));
+  const signupsByMonth = new Map<string, number>(monthKeys.map((k) => [k, 0]));
 
   for (const t of rows) {
     const life = lifecycleOf(t, now);
@@ -150,6 +153,8 @@ export function computePlatformMetrics(rows: PlatformTenantRow[], now = new Date
     if (isPaidPlan(sub?.plan) && expiresAt !== null && expiresAt >= t30 && expiresAt < now.getTime()) churned++;
 
     const created = new Date(t.createdAt).getTime();
+    const signupMonth = monthKey(new Date(t.createdAt));
+    if (signupsByMonth.has(signupMonth)) signupsByMonth.set(signupMonth, signupsByMonth.get(signupMonth)! + 1);
     if (created >= t30) last30++;
     else if (created >= t60) previous30++;
     if (created >= t120 && created < t30) {
@@ -177,6 +182,7 @@ export function computePlatformMetrics(rows: PlatformTenantRow[], now = new Date
     churn: { churned, base, rate: base ? churned / base : null },
     trialConversion: { cohort, converted, rate: cohort ? converted / cohort : null },
     signups: { last30, previous30 },
+    signupsByMonth: monthKeys.map((month) => ({ month, count: signupsByMonth.get(month)! })),
     revenue: monthKeys.map((month) => ({ month, byCurrency: revenue.get(month)! })),
   };
 }

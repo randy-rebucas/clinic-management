@@ -97,6 +97,8 @@ describe('computePlatformMetrics', () => {
     expect(m.churn).toEqual({ churned: 1, base: 5, rate: 0.2 });
     expect(m.trialConversion).toEqual({ cohort: 2, converted: 1, rate: 0.5 });
     expect(m.signups).toEqual({ last30: 1, previous30: 1 });
+    expect(m.signupsByMonth.map((r) => r.month)).toEqual(m.revenue.map((r) => r.month));
+    expect(m.signupsByMonth.reduce((a, r) => a + r.count, 0)).toBeGreaterThanOrEqual(2);
 
     expect(m.revenue).toHaveLength(6);
     expect(m.revenue.at(-1)!.month).toBe('2026-10');

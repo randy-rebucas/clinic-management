@@ -1,5 +1,5 @@
 import { formatApiError } from '../utils/apiError';
-import { FOCUS_RING } from '../appointments/shared';
+import { FOCUS_RING } from './shared';
 
 /** Fetch helper and button styles for the platform console's client components. */
 
