@@ -51,16 +51,13 @@ linking and family suggestions until staff save the record (any save in the pati
 - [ ] **Older records aren't flagged.** Records created from public forms before this change have no
       flag. They can't be told apart reliably; leave as-is unless abuse shows up.
 
-## Before re-enabling rep sign-up (`MEDREP_SELF_SIGNUP_ENABLED`)
+## Rep sign-up
 
-- [ ] On payment or activation, create the rep's `User` and send a set-password invite. Today
-      `lib/paymongo-apply.ts` only flips `isActivated`.
-- [ ] Let clinics link an existing rep instead of failing with "already exists" (prevents email squatting).
-- [ ] Stop the onboard route revealing that an email belongs to a staff account. Return a generic
-      response.
-- [ ] Add a "resume payment" path; today a failed or cancelled checkout can't be retried (re-registering
-      returns 409).
-- [ ] Build PayMongo return URLs from `NEXT_PUBLIC_APP_URL`, not the request's `Origin` header.
+Reps sign up only in the eMedRoute app (`/api/medical-representatives/onboard/app/*`), which verifies
+the email and mobile number and sets the password up front. The old web form, its email-link confirm
+step and the `RepSignup` model were removed on 2026-11-14; `/medical-representatives/onboard` now
+points to Google Play. `MEDREP_SELF_SIGNUP_ENABLED` gates the app sign-up.
+
 - [ ] Update `medical-representatives/onboard/success` copy ("clinics can see your profile").
 
 ## Content / performance
@@ -75,7 +72,7 @@ linking and family suggestions until staff save the record (any save in the pati
 - [x] Rate limits on public booking and registration (per IP, per phone) and a pending-booking cap per phone.
 - [x] Turnstile wired into booking and registration (off until keys are set).
 - [x] `/onboard` clinic picker on the root domain; Back button fixed.
-- [x] Rep self sign-up paused behind `MEDREP_SELF_SIGNUP_ENABLED`.
+- [x] Rep self sign-up paused behind `MEDREP_SELF_SIGNUP_ENABLED`, then moved to the eMedRoute app only.
 - [x] Install reset locked once any clinic exists (`INSTALL_ALLOW_RESET`).
 - [x] Fake testimonials and unsourced usage/uptime stats removed.
 - [x] Terms (no refunds) and privacy policy rewritten.

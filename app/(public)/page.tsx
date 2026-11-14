@@ -111,6 +111,8 @@ const journey = [
   { step: '04', title: 'Get results in eMCR', desc: 'Lab results and prescriptions land in the app.', icon: icons.phone },
 ];
 
+const EMEDROUTE_PLAY_URL = 'https://play.google.com/store/apps/details?id=solutions.myclinicsoft.emedroute';
+
 const audiences = [
   {
     title: 'For patients',
@@ -131,8 +133,8 @@ const audiences = [
   {
     title: 'For medical reps',
     icon: icons.briefcase,
-    points: ['A dedicated rep app is on the way', 'Clinics you work with can add you today', 'Ask us to be notified at launch'],
-    primary: { href: '/medical-representatives/onboard', label: 'eMedRoute: coming soon' },
+    points: ['eMedRoute, the rep app, is on Google Play', 'Book visits with partner clinics', 'Keep visit notes and your product catalog'],
+    primary: { href: EMEDROUTE_PLAY_URL, label: 'Get eMedRoute' },
     secondary: { href: '/contact', label: 'Ask a question' },
     featured: false,
   },
@@ -266,9 +268,14 @@ export default async function HomePage() {
                 </Link>
                 <span className="mx-2 text-gray-300">·</span>
                 Medical rep?{' '}
-                <Link href="/medical-representatives/onboard" className="font-semibold text-brand-blue hover:underline underline-offset-2">
-                  eMedRoute coming soon
-                </Link>
+                <a
+                  href={EMEDROUTE_PLAY_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-brand-blue hover:underline underline-offset-2"
+                >
+                  Get eMedRoute on Google Play
+                </a>
               </p>
 
               <dl
@@ -600,6 +607,58 @@ export default async function HomePage() {
                   />
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* eMedRoute — medical rep app, live on Google Play */}
+      <section className="px-4 sm:px-6 lg:px-8 pb-14 sm:pb-18 lg:pb-20">
+        <div className="container mx-auto max-w-7xl rounded-2xl bg-brand-navy p-6 sm:p-10 lg:px-14">
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-8 items-center">
+            <div className="text-center md:text-left">
+              <div className="flex items-center justify-center md:justify-start gap-3 mb-4">
+                <Image
+                  src="/assets/emedroute-icon.png"
+                  alt="eMedRoute app icon"
+                  width={56}
+                  height={56}
+                  className="rounded-[14px] ring-1 ring-white/20 shadow-lg"
+                />
+                <div className="text-left">
+                  <p className="text-2xl font-extrabold text-white leading-none tracking-tight">eMedRoute</p>
+                  <p className="text-sm text-white/70">For medical representatives</p>
+                </div>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-2">
+                Your clinic visits, planned and logged from the road
+              </h2>
+              <p className="text-white/75 max-w-lg mx-auto md:mx-0 mb-5">
+                Book visits with clinics on MyClinicSoft, keep your notes and product details, and refer new clinics, all from one app.
+              </p>
+              <ul className="flex flex-wrap justify-center md:justify-start gap-2">
+                {['Clinic visits', 'Visit notes', 'Product catalog', 'Refer a clinic'].map((f) => (
+                  <li key={f} className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white">
+                    {f}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="flex flex-col items-center md:items-end gap-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/80">Now on Android</p>
+              <a
+                href={EMEDROUTE_PLAY_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Get eMedRoute on Google Play"
+                className="flex items-center gap-2.5 rounded-xl border border-white/25 bg-black/85 pl-3.5 pr-5 py-2 text-white shadow-lg transition hover:bg-black hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-brand-navy"
+              >
+                {storeBadges[1].icon}
+                <span className="text-left leading-tight">
+                  <span className="block text-[10px]">GET IT ON</span>
+                  <span className="block text-base font-semibold -mt-0.5">Google Play</span>
+                </span>
+              </a>
             </div>
           </div>
         </div>
