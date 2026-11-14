@@ -9,6 +9,7 @@ import { normalizePhone } from '@/lib/phone';
 import { revokeAllPatientAccess } from '@/app/api/patients/auth/shared';
 import { ownAttachments } from '@/lib/patient-attachments';
 import { changedFields, logPatientChange, patientChanges, patientLabel } from '../_lib/patient-audit';
+import { sharedSignInChanges } from '../_lib/shared-record';
 
 /** The record as sent to a clinic: file details only, and only the files that clinic uploaded. */
 function forClinic(patient: InstanceType<typeof Patient>, tenantId: string) {
@@ -94,9 +95,24 @@ export async function PUT(
     // As it was, for the audit entry and the login check below: only the fields sent.
     const sent = Object.keys(parsed.data);
     const before = await Patient.findOne(filter)
-      .select([...new Set([...sent, 'firstName', 'lastName', 'suffix', 'phone', 'dateOfBirth', 'accountId', 'selfRegistered'])].join(' '))
+      .select([...new Set([...sent, 'firstName', 'lastName', 'suffix', 'phone', 'email', 'dateOfBirth', 'accountId', 'selfRegistered', 'tenantIds'])].join(' '))
       .lean<Record<string, any> | null>();
     if (!before) return notFound('Patient');
+
+    // A record shared with other clinics carries the patient's sign-in for all of them: a new phone
+    // or email would let one clinic's staff sign in as the patient and read every clinic's records.
+    const locked = sharedSignInChanges(before, parsed.data, ctx.tenantId);
+    if (locked.length) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'SHARED_RECORD',
+          error: "This patient is also seen at another clinic, so their mobile number, email and birth date can't be changed here. Contact MyClinicSoft support to update them.",
+          fields: locked,
+        },
+        { status: 409 }
+      );
+    }
 
     // The record joined a cross-clinic login on its phone + birth date (linked-records.ts). When
     // either changes it leaves that login, and a new phone also ends the old number's sessions;

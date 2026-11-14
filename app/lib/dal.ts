@@ -637,6 +637,9 @@ export interface PatientSessionPayload {
    */
   av?: number;
   iat?: number;
+  exp?: number;
+  /** Per-token id, so one device can sign out without ending the others (revokePatientToken). */
+  jti?: string;
   /**
    * Set (never signed into a token) when the request acts for a family member: `patientId` is the
    * family member and this is the signed-in record (app/lib/patient-auth.ts).
@@ -687,6 +690,7 @@ export async function issuePatientToken(
     ...(acc ? { av } : {}),
   })
     .setProtectedHeader({ alg: 'HS256' })
+    .setJti(crypto.randomUUID())
     .setIssuedAt()
     .setExpirationTime(`${PATIENT_TOKEN_TTL_SECONDS}s`)
     .sign(encodedKey);
@@ -703,7 +707,8 @@ export function setPatientSessionCookie(response: NextResponse, token: string): 
   });
 }
 
-const patientStateCache = new Map<string, { state: { active: boolean; sessionVersion: number } | null; expires: number }>();
+type PatientSessionState = { active: boolean; sessionVersion: number; revoked: Set<string> };
+const patientStateCache = new Map<string, { state: PatientSessionState | null; expires: number }>();
 
 async function loadPatientSessionState(patientId: string, options: { fresh?: boolean } = {}) {
   const cached = patientStateCache.get(patientId);
@@ -711,10 +716,14 @@ async function loadPatientSessionState(patientId: string, options: { fresh?: boo
   await connectDB();
   const Patient = (await import('@/models/Patient')).default;
   const patient = await Patient.findById(patientId)
-    .select('active sessionVersion')
-    .lean<{ active?: boolean; sessionVersion?: number } | null>();
+    .select('active sessionVersion revokedSessions')
+    .lean<{ active?: boolean; sessionVersion?: number; revokedSessions?: { jti: string }[] } | null>();
   const state = patient
-    ? { active: patient.active !== false, sessionVersion: patient.sessionVersion ?? 0 }
+    ? {
+        active: patient.active !== false,
+        sessionVersion: patient.sessionVersion ?? 0,
+        revoked: new Set((patient.revokedSessions ?? []).map((r) => r.jti)),
+      }
     : null;
   patientStateCache.set(patientId, { state, expires: Date.now() + SESSION_CHECK_TTL_MS });
   if (patientStateCache.size > 5000) {
@@ -787,6 +796,24 @@ export async function revokePatientSessions(patientId: string): Promise<number> 
 }
 
 /**
+ * Sign out one patient token (logout on this device): it stops working, the patient's other
+ * devices don't. Other server instances may accept it for up to SESSION_CHECK_TTL_MS. Tokens issued
+ * before tokens carried a jti can't be singled out; they still expire with the TTL.
+ */
+export async function revokePatientToken(token: string | undefined): Promise<void> {
+  const session = token ? await verifyPatientSession(token) : null;
+  const jti = session?.jti;
+  if (!session || typeof jti !== 'string') return;
+  const exp = typeof session.exp === 'number' ? new Date(session.exp * 1000) : new Date(Date.now() + PATIENT_TOKEN_TTL_SECONDS * 1000);
+  await connectDB();
+  const Patient = (await import('@/models/Patient')).default;
+  // Entries past their token's expiry are dropped as new ones are added.
+  await Patient.updateOne({ _id: session.patientId }, { $pull: { revokedSessions: { exp: { $lt: new Date() } } } });
+  await Patient.updateOne({ _id: session.patientId }, { $push: { revokedSessions: { jti, exp } } });
+  patientStateCache.delete(String(session.patientId));
+}
+
+/**
  * Verify a signed patient JWT (patient_session cookie or mobile Bearer token).
  * Returns the decoded payload or null if missing / invalid / expired / revoked.
  * Staff session tokens and socket tokens are rejected.
@@ -830,6 +857,7 @@ export async function verifyPatientSession(
     }
     if (!state || !state.active) return null;
     if (pv !== state.sessionVersion) return null;
+    if (typeof payload.jti === 'string' && state.revoked.has(payload.jti)) return null;
     if (typeof p.acc === 'string') {
       let account = await loadEmcrAccountState(p.acc);
       if (!account.ok) return null;

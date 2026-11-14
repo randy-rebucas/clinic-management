@@ -314,14 +314,10 @@ export default function PublicOnboardingClient({ subdomain }: { subdomain: strin
       }
 
       if (data.success) {
-        if (data.data && data.data.patientCode) {
-          setSuccess(true);
-          setPatientCode(data.data.patientCode);
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        } else {
-          console.error('API response missing patient data:', data);
-          setError('Registration successful but patient code not received. Please contact support.');
-        }
+        // The patient code is only shown when the phone was confirmed with a code.
+        setSuccess(true);
+        setPatientCode(data.data?.patientCode ?? null);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
         // Handle error response
         const errorMsg = data.error || data.message || 'Unknown error occurred';

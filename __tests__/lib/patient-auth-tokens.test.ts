@@ -15,7 +15,7 @@ import { SignJWT } from 'jose';
 import Patient from '@/models/Patient';
 import RefreshToken from '@/models/RefreshToken';
 import EmcrAccount from '@/models/EmcrAccount';
-import { isFreshOtpSession, issuePatientToken, revokeEmcrAccountSessions, verifyPatientSession } from '@/app/lib/dal';
+import { isFreshOtpSession, issuePatientToken, revokeEmcrAccountSessions, revokePatientToken, verifyPatientSession } from '@/app/lib/dal';
 import { consumeRefreshToken, issueRefreshToken } from '@/app/lib/refresh-tokens';
 import {
   authenticatePatientPassword,
@@ -32,7 +32,7 @@ const TENANT_A = '507f1f77bcf86cd799439011';
 const subject = { _id: PATIENT_ID, patientCode: 'P-1', email: 'p@x.y', sessionVersion: 2 };
 const lean = (value: unknown) => ({ lean: vi.fn().mockResolvedValue(value) });
 
-function patientState(state: { active?: boolean; sessionVersion?: number } | null) {
+function patientState(state: { active?: boolean; sessionVersion?: number; revokedSessions?: { jti: string }[] } | null) {
   vi.mocked(Patient.findById).mockReturnValue({ select: vi.fn().mockReturnValue(lean(state)) } as any);
 }
 
@@ -227,5 +227,25 @@ describe('email + password sign-in', () => {
   it('no candidates → invalid (after a dummy compare)', async () => {
     findReturning([]);
     expect(await authenticatePatientPassword('nobody@x.y', 'whatever')).toEqual({ ok: false, reason: 'invalid' });
+  });
+});
+
+describe('signing out one patient device', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('stops that token working and leaves other tokens alone', async () => {
+    patientState({ active: true, sessionVersion: 2 });
+    const phone = await issuePatientToken(subject, { amr: 'otp' });
+    const laptop = await issuePatientToken(subject, { amr: 'otp' });
+    const signedIn = await verifyPatientSession(phone);
+    expect(typeof signedIn?.jti).toBe('string');
+
+    await revokePatientToken(phone);
+    const pushed = vi.mocked(Patient.updateOne).mock.calls.find((c) => (c[1] as any).$push);
+    expect((pushed?.[1] as any).$push.revokedSessions.jti).toBe(signedIn!.jti);
+
+    patientState({ active: true, sessionVersion: 2, revokedSessions: [{ jti: signedIn!.jti! }] });
+    expect(await verifyPatientSession(phone)).toBeNull();
+    expect(await verifyPatientSession(laptop)).not.toBeNull();
   });
 });
