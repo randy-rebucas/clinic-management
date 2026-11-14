@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { zObjectId } from '@/lib/api/validate';
+import { zObjectId, zRecordKey } from '@/lib/api/validate';
 
 /**
  * Fields staff may set on a visit. tenantId, visitCode, attachments, feedback tokens,
@@ -30,7 +30,7 @@ export const visitFieldsSchema = z.object({
   historyOfPresentIllness: text().optional(),
   admittingImpression: text().optional(),
   vitals: vitalsSchema.optional(),
-  physicalExam: z.record(z.string().max(50), z.string().max(5000).nullable()).optional(),
+  physicalExam: z.record(zRecordKey(50), z.string().max(5000).nullable()).optional(),
   diagnoses: z.array(z.object({
     code: z.string().max(20).optional(),
     description: z.string().max(1000).optional(),

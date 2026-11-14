@@ -304,6 +304,21 @@ export function labWebhookSecret(labCode: string): string | null {
   }
 }
 
+/**
+ * Lab codes that sign with their own secret. A delivery signed with the shared LAB_WEBHOOK_SECRET
+ * can't say which lab sent it, so it must never reach these labs' requests.
+ */
+export function labsWithOwnWebhookSecret(): string[] {
+  if (!process.env.LAB_INTEGRATIONS) return [];
+  try {
+    const entries = JSON.parse(process.env.LAB_INTEGRATIONS);
+    if (!Array.isArray(entries)) return [];
+    return entries.filter((e: any) => e && e.labCode && e.webhookSecret).map((e: any) => String(e.labCode));
+  } catch {
+    return [];
+  }
+}
+
 // Send lab request to third-party lab via API
 export async function sendLabRequestToThirdParty(
   config: LabIntegrationConfig,

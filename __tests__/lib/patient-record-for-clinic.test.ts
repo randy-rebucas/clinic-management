@@ -35,3 +35,20 @@ describe('patientRecordForClinic', () => {
     expect(out).toEqual({ firstName: 'Ana' });
   });
 });
+
+describe('free-form record keys', () => {
+  it('refuses names that shadow built-in object behaviour', async () => {
+    const { isSafeRecordKey } = await import('@/lib/api/validate');
+    for (const bad of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'a.b', '$where', '']) {
+      expect(isSafeRecordKey(bad)).toBe(false);
+    }
+    expect(isSafeRecordKey('heent')).toBe(true);
+  });
+
+  it('rejects a visit whose physical exam uses one', async () => {
+    const { visitFieldsSchema } = await import('@/lib/visit-schema');
+    const exam = visitFieldsSchema.shape.physicalExam;
+    expect(exam.safeParse({ heent: 'normal' }).success).toBe(true);
+    expect(exam.safeParse({ constructor: 'x' }).success).toBe(false);
+  });
+});

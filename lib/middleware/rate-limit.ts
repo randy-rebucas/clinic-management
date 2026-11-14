@@ -227,6 +227,15 @@ export const rateLimiters = {
     identifierOnly: true,
     message: 'This clinic can\'t send more codes today. Please contact the clinic.',
   }),
+  // Rep sign-in codes actually sent (numbers on file only), platform-wide. Its own bucket, and only
+  // counted after the lookup, so random numbers can't use up everyone's daily codes.
+  repLoginCodeGlobal: rateLimit({
+    name: 'rep-login-code-global',
+    windowMs: 24 * 60 * 60 * 1000,
+    maxRequests: 1000,
+    identifierOnly: true,
+    message: 'Text message codes are unavailable right now. Sign in with your email and password.',
+  }),
   publicCodeGlobal: rateLimit({
     name: 'public-code-global',
     windowMs: 24 * 60 * 60 * 1000,
@@ -284,6 +293,23 @@ export const rateLimiters = {
     windowMs: 60 * 60 * 1000,
     maxRequests: 5,
     message: 'Too many requests from this device. Please try again later or contact the clinic.',
+  }),
+
+  // Bookings / registrations without a proven phone, per clinic and platform-wide. Each sends a
+  // paid text and adds a record, so rotating IPs and numbers can't flood a clinic or the budget.
+  publicUnprovenClinic: rateLimit({
+    name: 'public-unproven-clinic',
+    windowMs: 24 * 60 * 60 * 1000,
+    maxRequests: 100,
+    identifierOnly: true,
+    message: "This clinic can't take more online requests today. Please contact the clinic.",
+  }),
+  publicUnprovenGlobal: rateLimit({
+    name: 'public-unproven-global',
+    windowMs: 24 * 60 * 60 * 1000,
+    maxRequests: 1500,
+    identifierOnly: true,
+    message: 'Online requests are unavailable right now. Please contact the clinic.',
   }),
 
   // Same writes per destination phone across all IPs (SMS pumping / slot squatting)

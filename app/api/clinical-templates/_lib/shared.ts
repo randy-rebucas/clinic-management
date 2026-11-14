@@ -1,5 +1,6 @@
 import 'server-only';
 import { z } from 'zod';
+import { zRecordKey } from '@/lib/api/validate';
 import { SHORTCUT_RE, type ClinicalTemplateDTO } from '@/lib/clinical-templates';
 
 const text = (max: number) => z.string().max(max).optional();
@@ -23,7 +24,7 @@ const visit = z.object({
   soapNotes: z
     .object({ subjective: text(4000), objective: text(4000), assessment: text(4000), plan: text(4000) })
     .optional(),
-  physicalExam: z.record(z.string().max(40), z.string().max(1000)).optional(),
+  physicalExam: z.record(zRecordKey(40), z.string().max(1000)).optional(),
   diagnoses: z
     .array(z.object({ code: text(20), description: text(300), primary: z.boolean().optional() }))
     .max(20)

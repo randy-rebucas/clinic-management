@@ -72,6 +72,10 @@ export async function POST(request: NextRequest) {
       if (publicPhoneProofRequired()) return phoneProofRequiredResponse();
       const captchaRejected = await turnstileRejection(request, turnstileToken);
       if (captchaRejected) return captchaRejected;
+      const unprovenLimited =
+        (await applyRateLimit(request, rateLimiters.publicUnprovenClinic, String(tenantObjectId))) ||
+        (await applyRateLimit(request, rateLimiters.publicUnprovenGlobal, 'all'));
+      if (unprovenLimited) return unprovenLimited;
     }
 
     // Each registration sends a welcome SMS to the submitted number.
