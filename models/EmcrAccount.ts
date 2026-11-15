@@ -65,6 +65,11 @@ export interface IEmcrAccount extends Document {
    * (the local part only; the domain is lib/emcr/login-id.ts LOGIN_ID_DOMAIN). Not a mailbox.
    */
   loginId?: string;
+  /**
+   * First time the holder agreed to the Terms of Use and Privacy Policy in the app (the consent
+   * line on the sign-in code and invite steps). Never moved later. Missing on older accounts.
+   */
+  termsAcceptedAt?: Date;
   activation?: {
     plan: EmcrPlan;
     activatedAt: Date;
@@ -132,6 +137,7 @@ const EmcrAccountSchema = new Schema<IEmcrAccount>(
     },
     activationHistory: { type: [ActivationEntrySchema], default: [] },
     disabled: { type: Boolean },
+    termsAcceptedAt: { type: Date },
     sessionVersion: { type: Number, default: 0 },
   },
   { timestamps: true }

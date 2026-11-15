@@ -29,6 +29,8 @@ export interface IEmcrAccessRequest extends Document {
   decidedBy?: Types.ObjectId;
   decidedAt?: Date;
   note?: string;
+  /** The requester agreed to the Terms of Use and Privacy Policy on the request form. */
+  termsAcceptedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -49,6 +51,7 @@ const EmcrAccessRequestSchema = new Schema<IEmcrAccessRequest>(
     decidedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     decidedAt: { type: Date },
     note: { type: String, trim: true },
+    termsAcceptedAt: { type: Date },
   },
   { timestamps: true }
 );

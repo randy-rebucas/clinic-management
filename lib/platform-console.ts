@@ -350,7 +350,7 @@ export interface SupportQueueRow {
   status: SupportStatus;
   email: string;
   clinic: { id: string; name: string } | null;
-  source: 'clinic' | 'medical-rep';
+  source: 'clinic' | 'medical-rep' | 'patient';
   replies: number;
   lastReplyBy: SupportReplyAuthor;
   lastActivityAt: string;
@@ -374,7 +374,8 @@ function toQueueRow(s: any, names: Map<string, string>): SupportQueueRow {
     subject: s.subject,
     category: s.category,
     status: s.status,
-    email: s.email,
+    // Patient requests from phone-only accounts carry a phone instead of an email.
+    email: s.email ?? s.phone ?? '',
     clinic: tid ? { id: tid, name: names.get(tid) ?? 'Unknown clinic' } : null,
     source: s.source ?? 'medical-rep',
     replies: s.replies?.length ?? 0,
@@ -408,7 +409,7 @@ export interface SupportQueueStats {
   waitAges: number[];
   oldestWaiting: { id: string; subject: string; since: string } | null;
   openByCategory: Array<{ category: SupportCategory; count: number }>;
-  openBySource: { clinic: number; rep: number };
+  openBySource: { clinic: number; rep: number; patient: number };
   /** Requests opened per week (Monday starts), oldest first. */
   openedByWeek: Array<{ weekStart: string; count: number }>;
   /** Over requests opened in the last FIRST_REPLY_DAYS days. */
@@ -450,10 +451,11 @@ async function loadSupportStats(now: Date): Promise<SupportQueueStats> {
   const waitAges = WAIT_BUCKETS.map(() => 0);
   let oldest: any = null;
   const cats = new Map<SupportCategory, number>();
-  const openBySource = { clinic: 0, rep: 0 };
+  const openBySource = { clinic: 0, rep: 0, patient: 0 };
   for (const d of openDocs) {
     cats.set(d.category, (cats.get(d.category) ?? 0) + 1);
     if (d.source === 'clinic') openBySource.clinic++;
+    else if (d.source === 'patient') openBySource.patient++;
     else openBySource.rep++;
     if (d.lastReplyBy === 'platform') continue;
     const at = new Date(d.lastActivityAt ?? d.createdAt);
@@ -549,7 +551,7 @@ export async function loadSupportTicket(id: string, tenantId?: string): Promise<
   return {
     ...toQueueRow(s, names),
     thread: [
-      { id: `${s._id}-0`, authorType: 'requester', authorEmail: s.email, message: s.message, createdAt: iso(s.createdAt)! },
+      { id: `${s._id}-0`, authorType: 'requester', authorEmail: s.email ?? s.phone ?? '', message: s.message, createdAt: iso(s.createdAt)! },
       ...(s.replies ?? []).map((r: any) => ({
         id: String(r._id),
         authorType: r.authorType,

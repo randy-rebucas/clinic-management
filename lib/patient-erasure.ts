@@ -72,13 +72,15 @@ export const PATIENT_MENTIONS: (Link & { array?: boolean; alsoUnset?: string[] }
  * Patient references left alone on purpose: the audit trail is the record of processing the DPA
  * requires the clinic to keep, and the eMCR account is the patient's own, not the clinic's. So are
  * health-summary share links; they render the summary when opened, so an erased clinic's records
- * drop out of them.
+ * drop out of them. Support requests from the eMCR app (including account-deletion requests) are
+ * the platform's, with no clinic: they are the record of the patient's request itself.
  */
 export const PATIENT_REFS_KEPT = [
   'AuditLog.dataSubject',
   'EmcrAccount.selfPatientId',
   'HealthSummaryShareLink.patient',
   'HealthSummaryShareLink.sharedBy',
+  'SupportRequest.patientId',
 ];
 
 /**

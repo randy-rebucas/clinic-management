@@ -4,7 +4,7 @@ import EmcrAccount from '@/models/EmcrAccount';
 import logger from '@/lib/logger';
 import { applyAuthRateLimits } from '@/lib/middleware/rate-limit';
 import { phoneRateKey } from '@/app/api/patients/auth/shared';
-import { accountSessionFields, accountView, consumeAccountOtp, otpFailure } from '@/lib/emcr/session';
+import { accountSessionFields, accountView, consumeAccountOtp, otpFailure, recordTermsAccepted } from '@/lib/emcr/session';
 import { redeemInvite } from '@/lib/emcr/invite';
 import type { EmcrAccountLean } from '@/lib/emcr/account';
 import { inviteFailure, readInvite } from '../_shared';
@@ -16,7 +16,7 @@ const MESSAGES = {
 
 /**
  * POST /api/emcr/invite/redeem
- * Body: { code, otp }
+ * Body: { code, otp, termsAccepted? } (termsAccepted: the app showed the consent line)
  *
  * Prove the invite's phone with the SMS code from send-code, then link everything the invite
  * names and sign in. No name or birth-date questions: the clinic vouched for the person.
@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, code: result.reason.toUpperCase(), error: MESSAGES[result.reason] }, { status: 409 });
     }
 
+    await recordTermsAccepted(result.accountId, body.termsAccepted);
     await connectDB();
     const account = await EmcrAccount.findById(result.accountId).lean<EmcrAccountLean | null>();
     if (!account) return NextResponse.json({ success: false, error: 'Please try again.' }, { status: 500 });

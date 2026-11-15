@@ -5,12 +5,12 @@ import { normalizePhone } from '@/lib/phone';
 import { phoneRateKey } from '@/app/api/patients/auth/shared';
 import { linkRecordsByVerifiedPhone } from '@/app/api/patients/me/_lib/linked-records';
 import { countPeopleOnPhone, issueClaimToken } from '@/lib/emcr/claim';
-import { accountSessionFields, accountView, consumeAccountOtp, otpFailure } from '@/lib/emcr/session';
+import { accountSessionFields, accountView, consumeAccountOtp, otpFailure, recordTermsAccepted } from '@/lib/emcr/session';
 import { jsonObject } from '@/lib/api/validate';
 
 /**
  * POST /api/emcr/auth/otp/verify
- * Body: { phone, otp }
+ * Body: { phone, otp, termsAccepted? } (termsAccepted: the app showed the consent line)
  *
  * Prove the phone. Always returns a `claimToken` (15 minutes) for POST /api/emcr/auth/claim,
  * the "Is this your record?" step, and `peopleOnNumber` (how many people the clinics have on this
@@ -21,7 +21,7 @@ import { jsonObject } from '@/lib/api/validate';
  * `session` is null and the app asks the questions.
  */
 export async function POST(request: NextRequest) {
-  let body: { phone?: unknown; otp?: unknown };
+  let body: { phone?: unknown; otp?: unknown; termsAccepted?: unknown };
   try {
     body = jsonObject(await request.json());
   } catch {
@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
     const result = await consumeAccountOtp(phone, otp);
     if (!result.ok) return otpFailure(result.reason);
     const { account } = result;
+    await recordTermsAccepted(account._id, body.termsAccepted);
 
     if (account.selfPatientId) {
       // New clinic records of the holder may have appeared since the last sign-in.

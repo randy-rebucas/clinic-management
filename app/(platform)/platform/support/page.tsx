@@ -9,6 +9,7 @@ import {
   Inbox,
   MessageSquare,
   Search,
+  Smartphone,
   Timer,
   Users,
   X,
@@ -42,6 +43,13 @@ const VIEWS: { key: QueueView; label: string }[] = [
   { key: 'resolved', label: 'Resolved' },
   { key: 'all', label: 'Everything' },
 ];
+
+/** Who opened a request, for the row icon's title and screen readers. */
+const SOURCE_WHO: Record<SupportQueueRow['source'], { title: string; sr: string }> = {
+  clinic: { title: 'Clinic staff', sr: 'From clinic staff' },
+  'medical-rep': { title: 'Medical rep', sr: 'From a medical rep' },
+  patient: { title: 'eMCR patient', sr: 'From an eMCR patient' },
+};
 
 const CATEGORY_LABEL: Record<string, string> = {
   general: 'General',
@@ -173,6 +181,7 @@ export default async function PlatformSupportPage({
           <span className="flex items-baseline gap-4">
             <span>{stats.openBySource.clinic}<span className="ml-1 text-sm font-normal text-gray-500">clinics</span></span>
             <span>{stats.openBySource.rep}<span className="ml-1 text-sm font-normal text-gray-500">reps</span></span>
+            <span>{stats.openBySource.patient}<span className="ml-1 text-sm font-normal text-gray-500">patients</span></span>
           </span>
         } />
       </div>
@@ -249,15 +258,16 @@ export default async function PlatformSupportPage({
         <ul className="divide-y divide-gray-100">
           {data.rows.map((r) => {
             const waiting = waitingHours(r, stats.asOf);
-            const Src = r.source === 'clinic' ? Building2 : BriefcaseMedical;
+            const Src = r.source === 'clinic' ? Building2 : r.source === 'patient' ? Smartphone : BriefcaseMedical;
+            const who = SOURCE_WHO[r.source];
             return (
               <li key={r.id} className="flex gap-3 px-4 py-3 hover:bg-gray-50">
                 <span
                   className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-teal-light text-brand-teal-deep"
-                  title={r.source === 'clinic' ? 'Clinic staff' : 'Medical rep'}
+                  title={who.title}
                 >
                   <Src aria-hidden="true" className="size-4" />
-                  <span className="sr-only">{r.source === 'clinic' ? 'From clinic staff' : 'From a medical rep'}</span>
+                  <span className="sr-only">{who.sr}</span>
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -269,7 +279,7 @@ export default async function PlatformSupportPage({
                     {' · '}
                     {r.clinic ? (
                       <Link href={`/platform/clinics/${r.clinic.id}`} className="hover:text-gray-800 hover:underline">{r.clinic.name}</Link>
-                    ) : r.source === 'clinic' ? 'No clinic' : 'Medical rep'}
+                    ) : r.source === 'clinic' ? 'No clinic' : who.title}
                     {' · '}
                     {r.email} · {CATEGORY_LABEL[r.category] ?? r.category}
                   </p>

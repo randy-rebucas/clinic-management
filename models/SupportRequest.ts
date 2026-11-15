@@ -24,13 +24,20 @@ export interface ISupportReply {
 export interface ISupportRequest extends Document {
   tenantId?: Types.ObjectId;
   userId?: Types.ObjectId;
-  email: string;
+  /** Reply-to email. Patient requests may have none (phone-only accounts): then `phone` is set. */
+  email?: string;
+  /** Patient requests: the account holder's mobile number, for a reply by text or call. */
+  phone?: string;
+  /** Patient requests (eMCR app): the signed-in patient record. */
+  patientId?: Types.ObjectId;
+  /** What the request is for beyond its category: an eMCR account-deletion request. */
+  kind?: 'account-deletion';
   subject: string;
   category: SupportCategory;
   message: string;
   status: SupportStatus;
-  /** Where the request came from: the clinic web app or the medical-rep app. */
-  source?: 'clinic' | 'medical-rep';
+  /** Where the request came from: the clinic web app, the medical-rep app, or the eMCR patient app. */
+  source?: 'clinic' | 'medical-rep' | 'patient';
   replies: ISupportReply[];
   /** Last message from either side; the platform queue sorts on it. */
   lastActivityAt?: Date;
@@ -61,7 +68,17 @@ const SupportRequestSchema: Schema = new Schema(
       ref: 'User',
       index: true,
     },
-    email: { type: String, required: true, index: true },
+    // Required except for patient requests, which carry `phone` when the account has no email.
+    email: {
+      type: String,
+      required: function (this: { source?: string }) {
+        return this.source !== 'patient';
+      },
+      index: true,
+    },
+    phone: { type: String },
+    patientId: { type: Schema.Types.ObjectId, ref: 'Patient' },
+    kind: { type: String, enum: ['account-deletion'] },
     subject: { type: String, required: true },
     category: {
       type: String,
@@ -75,7 +92,7 @@ const SupportRequestSchema: Schema = new Schema(
       enum: ['open', 'in-progress', 'resolved', 'closed'],
       default: 'open',
     },
-    source: { type: String, enum: ['clinic', 'medical-rep'] },
+    source: { type: String, enum: ['clinic', 'medical-rep', 'patient'] },
     replies: { type: [SupportReplySchema], default: [] },
     lastActivityAt: { type: Date },
     lastReplyBy: { type: String, enum: ['platform', 'requester'] },
@@ -86,6 +103,8 @@ const SupportRequestSchema: Schema = new Schema(
 SupportRequestSchema.index({ status: 1, lastActivityAt: -1 });
 SupportRequestSchema.index({ tenantId: 1, status: 1, createdAt: -1 });
 SupportRequestSchema.index({ tenantId: 1, email: 1, createdAt: -1 });
+// A patient's own requests, and their open account-deletion request (GET/POST deletion-request).
+SupportRequestSchema.index({ patientId: 1, kind: 1, createdAt: -1 }, { partialFilterExpression: { patientId: { $exists: true } } });
 
 export default mongoose.models.SupportRequest ||
   mongoose.model<ISupportRequest>('SupportRequest', SupportRequestSchema);

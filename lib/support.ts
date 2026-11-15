@@ -78,6 +78,7 @@ async function notifyRequester(to: string, id: string, subject: string, message:
 
 /** A request a medical representative raised from the rep app (older ones carry no source, and no clinic). */
 function isRepRequest(ticket: { tenantId?: unknown; source?: unknown }): boolean {
+  if (ticket.source === 'patient') return false;
   return ticket.source === 'medical-rep' || !ticket.tenantId;
 }
 
@@ -179,7 +180,8 @@ export async function addSupportReply(opts: {
   });
 
   if (opts.authorType === 'platform') {
-    after(() => notifyRequester(ticket.email, opts.id, ticket.subject, opts.message, status));
+    // Patient requests from phone-only accounts have no email: the team replies by text or call.
+    if (ticket.email) after(() => notifyRequester(ticket.email, opts.id, ticket.subject, opts.message, status));
     await notifyRequesterInApp(ticket, opts.id, `Support replied: ${ticket.subject}`, opts.message);
   } else {
     after(() => notifyPlatformTeam(opts.id, ticket.subject, opts.clinicName ?? 'a clinic', opts.authorEmail, opts.message, false));

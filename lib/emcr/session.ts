@@ -14,6 +14,20 @@ import { cancelClinicPassword } from '@/lib/emcr/password';
 export const EMCR_OTP_EXPIRY_MINUTES = OTP_EXPIRY_MINUTES;
 
 /**
+ * The app showed the Terms and Privacy consent line on the step that proved the phone (eMCR
+ * 1.1.6+ sends `termsAccepted: true`): keep the first time the holder agreed. Never throws.
+ */
+export async function recordTermsAccepted(accountId: unknown, accepted: unknown): Promise<void> {
+  if (accepted !== true) return;
+  try {
+    await connectDB();
+    await EmcrAccount.updateOne({ _id: accountId, termsAcceptedAt: { $exists: false } }, { $set: { termsAcceptedAt: new Date() } });
+  } catch (error) {
+    console.error('[emcr] recording terms acceptance failed:', error);
+  }
+}
+
+/**
  * Text a sign-in code to `phone`. The caller decides whether this number may get a code (on file
  * at a clinic, or named on an invite). The account is created only once the code is proven.
  */

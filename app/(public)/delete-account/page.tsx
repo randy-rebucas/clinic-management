@@ -22,6 +22,10 @@ const sections: LegalSection[] = [
           provided by DevCom Digital. Fill in the form to email a deletion request to our Data Protection Officer from
           your own email address. You don&apos;t need to be signed in.
         </P>
+        <P>
+          In the eMCR app you can also ask from inside the app: open <strong>More</strong>, then{' '}
+          <strong>Delete account</strong>. The request goes to the same team.
+        </P>
         <DeletionRequestForm />
         <P>
           You can also write to <a href={`mailto:${PRIVACY_EMAIL}`} className="font-semibold text-brand-teal-dark hover:underline underline-offset-2">{PRIVACY_EMAIL}</a>{' '}

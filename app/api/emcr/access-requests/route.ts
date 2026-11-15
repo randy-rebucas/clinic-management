@@ -19,12 +19,14 @@ const RequestSchema = z
     dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     contactPhone: z.string().trim().max(30).optional(),
     contactEmail: z.string().trim().email().max(200).optional(),
+    /** The app shows the Terms and Privacy consent line above Send (eMCR 1.1.6+). */
+    termsAccepted: z.literal(true).optional(),
   })
   .strict();
 
 /**
  * POST /api/emcr/access-requests (no sign-in)
- * Body: { tenantId, firstName, lastName, dateOfBirth: 'YYYY-MM-DD', contactPhone?, contactEmail? }
+ * Body: { tenantId, firstName, lastName, dateOfBirth: 'YYYY-MM-DD', contactPhone?, contactEmail?, termsAccepted? }
  *
  * "Request access" for someone who can't sign in with their phone. When the clinic has a record
  * with that name and birth date, sign-in instructions go to the phone/email **on that record**,
@@ -136,6 +138,7 @@ async function handleAccessRequest(body: AccessRequestBody, contactPhone: string
         dateOfBirth: dayStart,
         ...(contactPhone ? { contactPhone } : {}),
         ...(body.contactEmail ? { contactEmail: body.contactEmail.toLowerCase() } : {}),
+        ...(body.termsAccepted ? { termsAcceptedAt: new Date() } : {}),
       },
       ...(match ? { $set: { patientId: match._id } } : {}),
     },

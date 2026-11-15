@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { ComponentType, ReactNode } from 'react';
-import { ArrowLeft, BriefcaseMedical, Building2, CalendarDays, Clock, Mail, MessageSquare, Tag, Timer } from 'lucide-react';
+import { ArrowLeft, BriefcaseMedical, Building2, CalendarDays, Clock, Mail, MessageSquare, Phone, Smartphone, Tag, Timer } from 'lucide-react';
 import { requirePlatformPage } from '@/lib/platform-auth';
 import { loadSupportTicket } from '@/lib/platform-console';
 import SupportThread from '@/components/platform/SupportThread';
@@ -46,6 +46,9 @@ export default async function PlatformTicketPage({ params }: { params: Promise<{
   const open = t.status === 'open' || t.status === 'in-progress';
   const waitingOnUs = open && t.lastReplyBy !== 'platform';
   const fromClinic = t.source === 'clinic';
+  const fromPatient = t.source === 'patient';
+  // Patient requests from phone-only accounts carry a mobile number instead of an email.
+  const byEmail = t.email.includes('@');
 
   return (
     <div className="space-y-5">
@@ -77,14 +80,25 @@ export default async function PlatformTicketPage({ params }: { params: Promise<{
         <aside className={`${CARD} p-4 lg:sticky lg:top-6`} aria-labelledby="request-facts">
           <h2 id="request-facts" className={H2}>Request</h2>
           <dl className="mt-4 space-y-4">
-            <Fact icon={fromClinic ? Building2 : BriefcaseMedical} label={fromClinic ? 'Clinic' : 'From'}>
+            <Fact icon={fromClinic ? Building2 : fromPatient ? Smartphone : BriefcaseMedical} label={fromClinic ? 'Clinic' : 'From'}>
               {t.clinic ? (
                 <Link href={`/platform/clinics/${t.clinic.id}`} className={LINK}>{t.clinic.name}</Link>
-              ) : fromClinic ? 'No clinic on record' : 'Medical rep'}
+              ) : fromClinic ? 'No clinic on record' : fromPatient ? 'eMCR patient app' : 'Medical rep'}
               {t.clinic && !fromClinic && <span className="text-gray-500"> · medical rep</span>}
             </Fact>
-            <Fact icon={Mail} label="Requester">
-              <a href={`mailto:${t.email}?subject=${encodeURIComponent(`Re: ${t.subject} [${t.reference}]`)}`} className={LINK}>{t.email}</a>
+            <Fact icon={byEmail ? Mail : Phone} label="Requester">
+              {byEmail ? (
+                <a href={`mailto:${t.email}?subject=${encodeURIComponent(`Re: ${t.subject} [${t.reference}]`)}`} className={LINK}>{t.email}</a>
+              ) : t.email ? (
+                <a href={`tel:${t.email}`} className={LINK}>{t.email}</a>
+              ) : (
+                'No contact on record'
+              )}
+              {fromPatient && (
+                <span className="mt-1 block text-xs text-gray-500">
+                  {byEmail ? 'Replies here are emailed.' : 'No email: replies here aren’t sent. Text or call the patient.'} The app doesn’t show replies.
+                </span>
+              )}
             </Fact>
             <Fact icon={Tag} label="Topic">{CATEGORY_LABEL[t.category] ?? t.category}</Fact>
             <Fact icon={CalendarDays} label="Opened">{day(t.createdAt)}</Fact>
