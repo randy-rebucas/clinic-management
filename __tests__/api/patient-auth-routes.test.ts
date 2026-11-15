@@ -38,6 +38,7 @@ vi.mock('@/app/lib/dal', async (importOriginal) => {
     ...actual,
     issuePatientToken: vi.fn().mockResolvedValue('new-access'),
     emcrAccountSessionVersion: vi.fn().mockResolvedValue(0),
+    emcrAccountPasswordChange: vi.fn(),
     revokeEmcrAccountSessions: vi.fn(),
   };
 });
@@ -59,7 +60,7 @@ import bcrypt from 'bcryptjs';
 import Patient from '@/models/Patient';
 import { verifyPatientAuth } from '@/app/lib/patient-auth';
 import { applyPatientPasswordChange } from '@/lib/emcr/password';
-import { emcrAccountSessionVersion, issuePatientToken, revokeEmcrAccountSessions } from '@/app/lib/dal';
+import { emcrAccountPasswordChange, emcrAccountSessionVersion, issuePatientToken, revokeEmcrAccountSessions } from '@/app/lib/dal';
 import {
   consumeRefreshToken,
   findRefreshTokenSubject,
@@ -126,6 +127,56 @@ describe('POST /api/patients/auth/refresh', () => {
   });
 
   const ACC = '507f1f77bcf86cd799439044';
+
+  describe('pending password change (pwc)', () => {
+    const pwcChain = () =>
+      vi.mocked(consumeRefreshToken).mockResolvedValue({
+        ok: true,
+        value: { subjectId: PATIENT_ID, sessionVersion: 3, family: 'fam', acc: ACC, av: 0, pwc: true },
+      });
+
+    it('carries the claim forward while the temporary password is still in place', async () => {
+      pwcChain();
+      vi.mocked(emcrAccountPasswordChange).mockResolvedValueOnce('pending');
+      patientDoc();
+      const res = await refresh(post('/api/patients/auth/refresh', { refreshToken: 'x' }));
+      expect(res.status).toBe(200);
+      expect((await res.json()).passwordChangeRequired).toBe(true);
+      expect(vi.mocked(issuePatientToken).mock.calls[0][1]).toMatchObject({ acc: ACC, pwc: true });
+      expect(vi.mocked(issueRefreshToken).mock.calls[0][4]).toMatchObject({ acc: ACC, pwc: true });
+    });
+
+    it('drops the claim once the holder has chosen their own password', async () => {
+      pwcChain();
+      vi.mocked(emcrAccountPasswordChange).mockResolvedValueOnce('done');
+      patientDoc();
+      const res = await refresh(post('/api/patients/auth/refresh', { refreshToken: 'x' }));
+      expect(res.status).toBe(200);
+      expect((await res.json()).passwordChangeRequired).toBe(false);
+      expect(vi.mocked(issuePatientToken).mock.calls[0][1]?.pwc).toBeUndefined();
+      expect(vi.mocked(issueRefreshToken).mock.calls[0][4]?.pwc).toBeUndefined();
+    });
+
+    it('ends the chain when the temporary password was cancelled by a phone sign-in', async () => {
+      pwcChain();
+      vi.mocked(emcrAccountPasswordChange).mockResolvedValueOnce('gone');
+      patientDoc();
+      const res = await refresh(post('/api/patients/auth/refresh', { refreshToken: 'x' }));
+      expect(res.status).toBe(401);
+      expect(await res.json()).toMatchObject({ code: 'REFRESH_INVALID' });
+      expect(issuePatientToken).not.toHaveBeenCalled();
+    });
+
+    it('never checks the account for a chain without the claim', async () => {
+      vi.mocked(consumeRefreshToken).mockResolvedValue({
+        ok: true,
+        value: { subjectId: PATIENT_ID, sessionVersion: 3, family: 'fam', acc: ACC, av: 0 },
+      });
+      patientDoc();
+      expect((await refresh(post('/api/patients/auth/refresh', { refreshToken: 'x' }))).status).toBe(200);
+      expect(emcrAccountPasswordChange).not.toHaveBeenCalled();
+    });
+  });
   it("401 REFRESH_INVALID for a guardian chain after its account's session version moved on", async () => {
     vi.mocked(consumeRefreshToken).mockResolvedValue({
       ok: true,

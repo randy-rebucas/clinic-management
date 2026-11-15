@@ -52,6 +52,32 @@ const PATIENT_PROFILE_FIELDS =
   'patientCode firstName middleName lastName suffix dateOfBirth sex email phone ' +
   'contacts address emergencyContact allergies preExistingConditions';
 
+const FIELD_LABELS: Record<string, string> = {
+  'contacts.email': 'Email',
+  'contacts.address': 'Address',
+  'address.street': 'Street',
+  'address.city': 'City',
+  'address.state': 'Province',
+  'address.zipCode': 'ZIP code',
+  'emergencyContact.name': 'Emergency contact name',
+  'emergencyContact.phone': 'Emergency contact phone',
+  'emergencyContact.relationship': 'Emergency contact relationship',
+  'emergencyContact.relation': 'Emergency contact relationship',
+};
+
+/** One line for the app: "Emergency contact phone: Invalid phone number". */
+function validationMessage(issue: { code: string; path: PropertyKey[]; message: string; keys?: string[] } | undefined): string {
+  if (!issue) return 'Validation failed';
+  const path = issue.path.map(String).join('.');
+  if (issue.code === 'unrecognized_keys') {
+    const keys = issue.keys ?? [];
+    const where = path ? `${FIELD_LABELS[path] ?? path}: ` : '';
+    return `${where}${keys.length ? keys.join(', ') : 'This field'} can’t be changed here.`;
+  }
+  const label = FIELD_LABELS[path] ?? (path || 'Request');
+  return `${label}: ${issue.message}`;
+}
+
 /** Flatten parsed input into dotted $set paths so untouched sub-fields are preserved. */
 function toSetPaths(input: Record<string, Record<string, string | undefined> | undefined>) {
   const set: Record<string, string> = {};
@@ -65,22 +91,30 @@ function toSetPaths(input: Record<string, Record<string, string | undefined> | u
 }
 
 /**
- * GET /api/patients/me
- * Returns the authenticated patient's own profile
+ * GET /api/patients/me[?include=photo]
+ * Returns the authenticated patient's own profile.
+ * `hasProfileImage` is always sent. The picture itself (`profileImage`: a data URI up to ~400 KB,
+ * or null) only with `?include=photo`; otherwise the field is left out.
  */
 export async function GET(request: NextRequest) {
   const session = await verifyPatientAuth(request);
 
   if (!session) return patientAuthError(request);
 
+  const withPhoto = (request.nextUrl.searchParams.get('include') ?? '').split(',').map((v) => v.trim()).includes('photo');
+
   try {
     await connectDB();
 
     // Profile fields plus what this handler needs internally (never sent): active, tenantIds
     // for the refusal audit, and the password hash only to derive `hasPassword`.
-    const patientWithPw = await Patient.findById(session.patientId)
-      .select(`${PATIENT_PROFILE_FIELDS} active tenantIds +password`)
-      .lean();
+    const [patientWithPw, photoOnFile] = await Promise.all([
+      Patient.findById(session.patientId)
+        .select(`${PATIENT_PROFILE_FIELDS} active tenantIds +password${withPhoto ? ' +profileImage' : ''}`)
+        .lean(),
+      // Without the picture, only whether there is one (the document is not sent back).
+      withPhoto ? null : Patient.exists({ _id: session.patientId, profileImage: { $exists: true, $nin: [null, ''] } }),
+    ]);
 
     if (!patientWithPw) {
       return NextResponse.json(
@@ -98,12 +132,21 @@ export async function GET(request: NextRequest) {
     }
 
     // Strip the internals before sending — only a boolean flag for the password
-    const { password: _pw, active: _active, tenantIds: _tenantIds, ...safePatient } = patientWithPw as any;
+    const {
+      password: _pw,
+      active: _active,
+      tenantIds: _tenantIds,
+      profileImage: _profileImage,
+      ...safePatient
+    } = patientWithPw as any;
 
     return NextResponse.json({
       success: true,
       data: {
         ...safePatient,
+        // Always present, so the app can tell "no picture" from an older server (field missing).
+        hasProfileImage: withPhoto ? !!_profileImage : !!photoOnFile,
+        ...(withPhoto ? { profileImage: _profileImage || null } : {}),
         hasPassword: !!_pw,
       },
     });
@@ -150,7 +193,8 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Validation failed',
+          // The app shows `error`: the first problem, naming its field ("emergencyContact.phone: Invalid phone number").
+          error: validationMessage(parsed.error.issues[0]),
           issues: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
         },
         { status: 400 }

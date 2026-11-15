@@ -224,10 +224,22 @@ export async function attachSelf(accountId: Types.ObjectId, selfPatientId: Types
  * The account's own dependents (guardian-only accounts), in the shape of the family list
  * (`FamilyMember`), so the app shows them the same way as `Patient.guardians` links.
  */
-export async function listAccountDependents(account: Pick<EmcrAccountLean, 'dependents'>, now = new Date()): Promise<FamilyMember[]> {
-  const active = await activeAccountDependents(account, now);
+export async function listAccountDependents(
+  account: Pick<EmcrAccountLean, 'dependents'>,
+  now = new Date(),
+  scope: { tenantId?: string } = {}
+): Promise<FamilyMember[]> {
+  const tenant = scope.tenantId && Types.ObjectId.isValid(scope.tenantId) ? new Types.ObjectId(scope.tenantId) : undefined;
+  // A clinic-scoped session sees only links and records of its clinic.
+  const active = (await activeAccountDependents(account, now)).filter(
+    (d) => !tenant || !d.link.tenantId || String(d.link.tenantId) === String(tenant)
+  );
   if (!active.length) return [];
-  const records = await Patient.find({ _id: { $in: active.flatMap((d) => d.recordIds) }, active: { $ne: false } })
+  const records = await Patient.find({
+    _id: { $in: active.flatMap((d) => d.recordIds) },
+    active: { $ne: false },
+    ...(tenant ? { tenantIds: tenant } : {}),
+  })
     .select('firstName lastName dateOfBirth sex tenantIds')
     .lean<{ _id: Types.ObjectId; firstName: string; lastName: string; dateOfBirth?: Date; sex?: string; tenantIds?: unknown[] }[]>();
   const tenantIds = [...new Set(records.flatMap((r) => (r.tenantIds ?? []).map(String)))].filter((id) => Types.ObjectId.isValid(id));

@@ -47,10 +47,13 @@ import { jsonObject } from '@/lib/api/validate';
  * record's own people.
  * Any password set ends every guardian session of the account (EmcrAccount.sessionVersion), the
  * caller's included; a guardian caller sending `rotate: true` gets a fresh guardian token pair.
+ * A session signed in with the clinic's temporary password (`pwc`, 403 PASSWORD_CHANGE_REQUIRED
+ * elsewhere) may call this; the pair `rotate: true` returns carries no such claim. Without
+ * `rotate`, the next token refresh drops it.
  * → { account, token?, expiresIn?, refreshToken?, refreshExpiresIn? }
  */
 export async function POST(request: NextRequest) {
-  const session = await verifyPatientAuth(request, { profile: 'ignore' });
+  const session = await verifyPatientAuth(request, { profile: 'ignore', allowPendingPasswordChange: true });
   if (!session) return patientAuthError(request);
 
   let body: { newPassword?: unknown; currentPassword?: unknown; rotate?: unknown; deviceId?: unknown };

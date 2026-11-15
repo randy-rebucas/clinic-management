@@ -45,7 +45,9 @@ export async function GET(request: NextRequest) {
 
     // eMCR accounts may also hold dependents themselves (a parent with no record of their own).
     const account = session.acc ? await findAccountForSession(session) : null;
-    const accountMembers = account ? await listAccountDependents(account) : [];
+    // A clinic-scoped session (`tid`) sees that clinic's family links and records only.
+    const scope = { tenantId: session.tid };
+    const accountMembers = account ? await listAccountDependents(account, undefined, scope) : [];
 
     if (session.rel === 'guardian') {
       // Signed in on a record the holder manages: there is no "self" profile.
@@ -53,7 +55,10 @@ export async function GET(request: NextRequest) {
     }
 
     const ids = await personRecordIds(session.patientId);
-    const [linkedMembers, suggestions] = await Promise.all([listDependents(ids), findFamilySuggestions(session.patientId)]);
+    const [linkedMembers, suggestions] = await Promise.all([
+      listDependents(ids, undefined, scope),
+      findFamilySuggestions(session.patientId, undefined, scope),
+    ]);
     const seen = new Set(linkedMembers.map((m) => m.id));
     const members = [...linkedMembers, ...accountMembers.filter((m) => !seen.has(m.id))];
 
@@ -117,7 +122,9 @@ export async function POST(request: NextRequest) {
     if (!proof.ok) return otpFailureResponse(proof.reason);
     if (!proof.proven) return otpRequiredResponse();
 
-    const dependentId = await addPhoneDependent(session.patientId, parsed.data.key, parsed.data.relationship);
+    const dependentId = await addPhoneDependent(session.patientId, parsed.data.key, parsed.data.relationship, undefined, {
+      tenantId: session.tid,
+    });
     if (!dependentId) {
       return NextResponse.json(
         { success: false, error: 'We couldn’t find that family member any more. Pull to refresh and try again.' },
@@ -139,7 +146,7 @@ export async function POST(request: NextRequest) {
       metadata: { guardianPatientId: session.patientId, relationship: parsed.data.relationship ?? 'child' },
     });
 
-    const members = await listDependents(await personRecordIds(session.patientId));
+    const members = await listDependents(await personRecordIds(session.patientId), undefined, { tenantId: session.tid });
     return NextResponse.json({ success: true, data: { members, addedId: dependentId } }, { status: 201 });
   } catch (error) {
     logger.error('Error adding family member', error as Error);

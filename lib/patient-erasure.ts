@@ -96,12 +96,14 @@ const NON_CLINICAL: Model<any>[] = [DocumentModel, PatientMessage, MobileDevice,
 const ANONYMIZED = '[ANONYMIZED]';
 
 /** Everything on a Patient record that identifies or reaches the person; the medical history stays. */
-const IDENTIFYING_FIELDS = [
+export const IDENTIFYING_FIELDS = [
   'patientCode', 'middleName', 'suffix', 'email', 'contacts', 'emergencyContact', 'identifiers', 'civilStatus',
   'nationality', 'occupation', 'socialHistory', 'discountEligibility', 'password', 'otp', 'otpExpiry', 'otpAttempts',
   'loginQrTokenHash', 'loginQrTokenExpiry', 'loginQrTenantId', 'passwordTenantId', 'accountId', 'selfRegistered',
   'guardians', 'attachments', 'readNotificationIds', 'tags', 'segmentFlags', 'lastBirthdayGreetingAt',
   'lastHealthReminderAt', 'reengagementSentAt',
+  // The picture the patient set in eMCR (an inline data URI: no stored file to remove).
+  'profileImage',
 ];
 
 /** Kept on an anonymized record so the clinical history still reads correctly. */

@@ -15,7 +15,9 @@ import { Types } from 'mongoose';
 import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { PATIENT_VISIT_EXCLUDE, PATIENT_VISIT_VISIBLE } from '../me/_lib/visit-fields';
-import { PATIENT_LAB_RESULT_HIDDEN, PATIENT_LAB_RESULT_VISIBLE } from '../me/_lib/lab-result-fields';
+import { PATIENT_LAB_RESULT_HIDDEN, PATIENT_LAB_RESULT_VISIBLE, toPatientLabResult } from '../me/_lib/lab-result-fields';
+import { PATIENT_PRESCRIPTION_SELECT } from '../me/_lib/prescription-fields';
+import { PATIENT_INVOICE_SELECT } from '../me/_lib/invoice-fields';
 import { PATIENT_REFERRAL_FILTER, PATIENT_REFERRAL_SELECT } from '../me/referrals/_lib/referral-view';
 import {
   findRefreshTokenSubject,
@@ -163,6 +165,7 @@ export async function GET(request: NextRequest) {
       }
       
       const prescriptions = await Prescription.find(prescriptionQuery)
+        .select(PATIENT_PRESCRIPTION_SELECT)
         .populate(prescribedByPopulateOptions)
         .sort({ issuedAt: -1 })
         .limit(10)
@@ -183,7 +186,7 @@ export async function GET(request: NextRequest) {
         .sort({ orderDate: -1 })
         .limit(10)
         .lean();
-      responseData.labResults = labResults;
+      responseData.labResults = labResults.map((r) => toPatientLabResult(r as Record<string, unknown>));
     }
 
     if (include.includes('invoices') || include.includes('all')) {
@@ -195,6 +198,7 @@ export async function GET(request: NextRequest) {
       }
       
       const invoices = await Invoice.find(invoiceQuery)
+        .select(PATIENT_INVOICE_SELECT)
         .sort({ createdAt: -1 })
         .limit(10)
         .lean();
@@ -294,7 +298,7 @@ export async function DELETE(request: NextRequest) {
   // The caller's eMCR account: "everywhere" also ends its guardian sessions on records it manages.
   let accountId: string | undefined;
   if (all || deviceId) {
-    const session = await verifyPatientAuth(request, { profile: 'ignore' });
+    const session = await verifyPatientAuth(request, { profile: 'ignore', allowPendingPasswordChange: true });
     if (session) {
       patientId = session.patientId;
       guardian = session.rel === 'guardian';

@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document, Types } from 'mongoose';
+﻿import mongoose, { Schema, Document, Types } from 'mongoose';
 
 /**
  * A link a patient made to share their health summary PDF with someone outside the app (another
@@ -49,6 +49,9 @@ const HealthSummaryShareLinkSchema = new Schema<IHealthSummaryShareLink>(
 
 HealthSummaryShareLinkSchema.index({ tokenHash: 1 }, { unique: true });
 HealthSummaryShareLinkSchema.index({ patient: 1, expiresAt: -1 });
+// Revoking a record's links on "sign out everywhere" also ends those it made for family members.
+HealthSummaryShareLinkSchema.index({ sharedBy: 1 }, { sparse: true });
+HealthSummaryShareLinkSchema.index({ account: 1 }, { sparse: true });
 
 export default mongoose.models.HealthSummaryShareLink ||
   mongoose.model<IHealthSummaryShareLink>('HealthSummaryShareLink', HealthSummaryShareLinkSchema);

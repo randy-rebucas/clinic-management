@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import LabResult from '@/models/LabResult';
 import logger from '@/lib/logger';
 import { ownedRecordContext, isOwnedRecordError, recordNotFound } from '../../_lib/owned-record';
-import { PATIENT_LAB_RESULT_HIDDEN, PATIENT_LAB_RESULT_VISIBLE } from '../../_lib/lab-result-fields';
+import { PATIENT_LAB_RESULT_HIDDEN, PATIENT_LAB_RESULT_VISIBLE, toPatientLabResult } from '../../_lib/lab-result-fields';
 
 /**
  * GET /api/patients/me/lab-results/[id]
@@ -20,7 +20,7 @@ export async function GET(
     const labResult = await LabResult.findOne({ ...ctx.filter, ...PATIENT_LAB_RESULT_VISIBLE }).select(PATIENT_LAB_RESULT_HIDDEN).lean();
     if (!labResult) return recordNotFound('Lab result');
 
-    return NextResponse.json({ success: true, data: labResult });
+    return NextResponse.json({ success: true, data: toPatientLabResult(labResult as Record<string, unknown>) });
   } catch (error) {
     logger.error('Error fetching patient lab result detail', error as Error);
     return NextResponse.json({ success: false, error: 'Failed to fetch lab result' }, { status: 500 });

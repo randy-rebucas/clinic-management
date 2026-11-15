@@ -6,6 +6,7 @@ import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import MobileDevice from '@/models/MobileDevice';
+import HealthSummaryShareLink from '@/models/HealthSummaryShareLink';
 import { normalizePhone } from '@/lib/phone';
 export { maskPhone } from '@/lib/phone';
 import { consumeOtp, startOtp } from '@/lib/otp';
@@ -238,9 +239,12 @@ export async function revokePatientLoginQr(patientId: string | Types.ObjectId): 
 
 /**
  * Revoke everything that lets a device act as this patient: every access/refresh token
- * (session version bump), the login QR, and push registrations (a signed-out phone must stop
- * receiving notifications). `keepDeviceId` keeps the caller's own push registration when the
- * caller immediately gets a fresh token (password change).
+ * (session version bump), the login QR, push registrations (a signed-out phone must stop
+ * receiving notifications), and live health-summary share links (made for this record, or by it
+ * for a family member): "sign out everywhere" and password resets are what someone does after
+ * losing a phone, and a link made from that phone must not outlive the sessions.
+ * `keepDeviceId` keeps the caller's own push registration when the caller immediately gets a
+ * fresh token (password change).
  */
 export async function revokeAllPatientAccess(
   patientId: string,
@@ -248,9 +252,15 @@ export async function revokeAllPatientAccess(
 ): Promise<void> {
   await revokePatientSessions(patientId);
   await revokePatientLoginQr(patientId);
-  const filter: Record<string, unknown> = { patientId: new Types.ObjectId(patientId), revokedAt: null };
+  const id = new Types.ObjectId(patientId);
+  const now = new Date();
+  const filter: Record<string, unknown> = { patientId: id, revokedAt: null };
   if (options.keepDeviceId) filter.deviceId = { $ne: options.keepDeviceId };
-  await MobileDevice.updateMany(filter, { $set: { revokedAt: new Date(), pushToken: null } });
+  await MobileDevice.updateMany(filter, { $set: { revokedAt: now, pushToken: null } });
+  await HealthSummaryShareLink.updateMany(
+    { $or: [{ patient: id }, { sharedBy: id }], revokedAt: null, expiresAt: { $gt: now } },
+    { $set: { revokedAt: now } }
+  );
 }
 
 export type PasswordAuthResult =

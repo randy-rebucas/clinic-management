@@ -104,6 +104,12 @@ export interface IPatient extends Document {
     };
   };
   
+  /**
+   * Picture the patient set in eMCR: a small JPEG/PNG/WebP data URI (≤ 300 KB, the app sends
+   * ~30–60 KB). Inline until Cloudinary is set up; select: false so patient lists never load it.
+   */
+  profileImage?: string;
+
   // Auth fields (for email/password and OTP login)
   password?: string;      // bcrypt hash — not returned in queries (select: false)
   otp?: string;           // bcrypt-hashed OTP — not returned in queries (select: false)
@@ -358,6 +364,10 @@ const PatientSchema: Schema = new Schema(
         expiryDate: Date,
         discountPercentage: Number,
       },
+    },
+    profileImage: {
+      type: String,
+      select: false,
     },
     // Auth fields (for email/password and OTP login)
     password: {

@@ -178,19 +178,38 @@ async function clinicNames(tenantIds: unknown[]): Promise<Map<string, string>> {
 
 type DependentRecord = PersonRecord & { firstName: string; lastName: string; sex?: string };
 
+/** A clinic-scoped session's clinic (`tid`), as the filter value; undefined when unscoped. */
+export type FamilyScope = { tenantId?: string };
+
+function scopeTenant(scope: FamilyScope): Types.ObjectId | undefined {
+  return scope.tenantId && Types.ObjectId.isValid(scope.tenantId) ? new Types.ObjectId(scope.tenantId) : undefined;
+}
+
+/** A link made at another clinic than the session's scope doesn't show there. */
+function linkInScope(entry: Pick<GuardianEntry, 'tenantId'>, tenant: Types.ObjectId | undefined): boolean {
+  return !tenant || !entry.tenantId || String(entry.tenantId) === String(tenant);
+}
+
 /**
  * The people this guardian manages, one entry per person (records of one person at several
- * clinics are folded together). Lapsed phone links are left out.
+ * clinics are folded together). Lapsed phone links are left out. With `scope.tenantId` (a
+ * clinic-scoped session) only that clinic's records and links count.
  */
-export async function listDependents(guardianIds: Types.ObjectId[], now = new Date()): Promise<FamilyMember[]> {
+export async function listDependents(
+  guardianIds: Types.ObjectId[],
+  now = new Date(),
+  scope: FamilyScope = {}
+): Promise<FamilyMember[]> {
   if (!guardianIds.length) return [];
   await connectDB();
   const guardianKeys = new Set(guardianIds.map(String));
+  const tenant = scopeTenant(scope);
 
   const records = await Patient.find({
     'guardians.patient': { $in: guardianIds },
     _id: { $nin: guardianIds },
     active: { $ne: false },
+    ...(tenant ? { tenantIds: tenant } : {}),
   })
     .select('firstName lastName dateOfBirth sex accountId tenantIds guardians')
     .limit(MAX_DEPENDENTS * 3)
@@ -199,7 +218,7 @@ export async function listDependents(guardianIds: Types.ObjectId[], now = new Da
   const people = new Map<string, { record: DependentRecord; entry: GuardianEntry; tenantIds: unknown[] }>();
   for (const record of records) {
     const entry = (record.guardians ?? []).find(
-      (g) => guardianKeys.has(String(g.patient)) && guardianshipActive(g, record.dateOfBirth, now)
+      (g) => guardianKeys.has(String(g.patient)) && guardianshipActive(g, record.dateOfBirth, now) && linkInScope(g, tenant)
     );
     if (!entry) continue;
     const personKey = String(record.accountId ?? record._id);
@@ -246,10 +265,11 @@ type GuardianSelf = { _id: Types.ObjectId; phone?: string; dateOfBirth?: Date };
  * Records of one child at several clinics (same first name and birth date) come back as one
  * suggestion. Only first name, last initial and birth year are shown before the guardian adds them.
  */
-async function phoneMinorRecords(guardian: GuardianSelf, guardianIds: Types.ObjectId[], now: Date) {
+async function phoneMinorRecords(guardian: GuardianSelf, guardianIds: Types.ObjectId[], now: Date, tenant?: Types.ObjectId) {
   if (!guardian.phone || !normalizePhone(guardian.phone)) return [];
   const candidates = await Patient.find({
     _id: { $nin: guardianIds },
+    ...(tenant ? { tenantIds: tenant } : {}),
     phone: { $in: phoneVariants(guardian.phone) },
     active: { $ne: false },
     selfRegistered: { $ne: true },
@@ -260,7 +280,12 @@ async function phoneMinorRecords(guardian: GuardianSelf, guardianIds: Types.Obje
   return candidates.filter((c) => isMinor(c.dateOfBirth, now));
 }
 
-export async function findFamilySuggestions(guardianId: string, now = new Date()): Promise<FamilySuggestion[]> {
+/** Suggestions for this guardian; with `scope.tenantId` only minors registered at that clinic. */
+export async function findFamilySuggestions(
+  guardianId: string,
+  now = new Date(),
+  scope: FamilyScope = {}
+): Promise<FamilySuggestion[]> {
   await connectDB();
   const guardian = await Patient.findById(guardianId).select('phone dateOfBirth accountId tenantIds').lean<GuardianSelf & PersonRecord | null>();
   if (!guardian) return [];
@@ -268,7 +293,7 @@ export async function findFamilySuggestions(guardianId: string, now = new Date()
   const guardianKeys = new Set(guardianIds.map(String));
 
   const groups = new Map<string, { record: DependentRecord; tenantIds: unknown[]; linked: boolean }>();
-  for (const record of await phoneMinorRecords(guardian, guardianIds, now)) {
+  for (const record of await phoneMinorRecords(guardian, guardianIds, now, scopeTenant(scope))) {
     const key = suggestionKey(record);
     if (!key) continue;
     const linked = (record.guardians ?? []).some((g) => guardianKeys.has(String(g.patient)));
@@ -302,7 +327,8 @@ export async function addPhoneDependent(
   guardianId: string,
   key: string,
   relationship: string | undefined,
-  now = new Date()
+  now = new Date(),
+  scope: FamilyScope = {}
 ): Promise<string | null> {
   await connectDB();
   const guardian = await Patient.findById(guardianId).select('phone dateOfBirth accountId tenantIds').lean<GuardianSelf & PersonRecord | null>();
@@ -310,7 +336,7 @@ export async function addPhoneDependent(
   const guardianIds = (await linkedRecords(guardian)).patientIds;
   const guardianKeys = new Set(guardianIds.map(String));
 
-  const members = (await phoneMinorRecords(guardian, guardianIds, now)).filter((r) => suggestionKey(r) === key);
+  const members = (await phoneMinorRecords(guardian, guardianIds, now, scopeTenant(scope))).filter((r) => suggestionKey(r) === key);
   if (!members.length) return null;
 
   const memberIds = members.map((m) => m._id);

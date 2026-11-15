@@ -2,6 +2,13 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 vi.mock('server-only', () => ({}));
+const afterTasks = vi.hoisted(() => [] as Promise<unknown>[]);
+vi.mock('next/server', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('next/server')>()),
+  after: (fn: () => unknown) => {
+    afterTasks.push(Promise.resolve().then(fn));
+  },
+}));
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn() }));
 vi.mock('@/models/Patient', () => ({ default: { findById: vi.fn(), find: vi.fn() } }));
 vi.mock('@/models/Tenant', () => ({ default: { findOne: vi.fn(), find: vi.fn() } }));
@@ -131,8 +138,15 @@ describe('POST /api/emcr/access-requests', () => {
     dateOfBirth: '1990-03-04',
     contactPhone: '09998887777',
   };
-  const call = () =>
-    requestAccess(new NextRequest('http://localhost/api/emcr/access-requests', { method: 'POST', body: JSON.stringify(body) }));
+  /** The response, then the work scheduled with after() (lookup, texting, queueing). */
+  const call = async (overrides: Record<string, unknown> = {}) => {
+    afterTasks.length = 0;
+    const response = await requestAccess(
+      new NextRequest('http://localhost/api/emcr/access-requests', { method: 'POST', body: JSON.stringify({ ...body, ...overrides }) })
+    );
+    await Promise.all(afterTasks);
+    return response;
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -159,6 +173,36 @@ describe('POST /api/emcr/access-requests', () => {
     expect(response.status).toBe(200);
     expect(sendSignInInstructions).not.toHaveBeenCalled();
     expect(EmcrAccessRequest.updateOne).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers before any lookup, with the same body whether or not the clinic has the person', async () => {
+    let lookedUp = false;
+    vi.mocked(Patient.find).mockImplementation((() => {
+      lookedUp = true;
+      return { select: () => ({ limit: () => ({ lean: async () => [] }) }) };
+    }) as any);
+    afterTasks.length = 0;
+    const response = await requestAccess(
+      new NextRequest('http://localhost/api/emcr/access-requests', { method: 'POST', body: JSON.stringify(body) })
+    );
+    expect(lookedUp).toBe(false);
+    const noMatch = await response.json();
+    await Promise.all(afterTasks);
+    expect(lookedUp).toBe(true);
+
+    records([{ _id: new Types.ObjectId(CHILD), firstName: 'Maria', lastName: 'Santos', dateOfBirth: new Date('1990-03-04T00:00:00Z'), phone: '09171234567' }]);
+    vi.mocked(sendSignInInstructions).mockResolvedValue({ sms: true, email: false });
+    const matched = await (await call()).json();
+    expect(matched).toEqual(noMatch);
+  });
+
+  it('never lets a repeat request replace the callback contact', async () => {
+    records([]);
+    await call({ contactPhone: '09170000001', contactEmail: 'attacker@example.com' });
+    const [, update] = vi.mocked(EmcrAccessRequest.updateOne).mock.calls[0] as any[];
+    expect(update.$setOnInsert).toMatchObject({ contactPhone: expect.stringContaining('9170000001'), contactEmail: 'attacker@example.com' });
+    expect(update.$set?.contactPhone).toBeUndefined();
+    expect(update.$set?.contactEmail).toBeUndefined();
   });
 
   it('queues a request when the record has no phone or email to reach', async () => {

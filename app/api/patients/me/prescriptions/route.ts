@@ -6,6 +6,7 @@ import Prescription from '@/models/Prescription';
 import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { PRESCRIBER_POPULATE, prescriptionVisitPopulate } from '../_lib/prescription-visit';
+import { PATIENT_PRESCRIPTION_SELECT } from '../_lib/prescription-fields';
 import { parsePagination, resolveTenantFilter } from '../_lib/patient-scope';
 import { linkedRecords } from '../_lib/linked-records';
 
@@ -43,6 +44,7 @@ export async function GET(request: NextRequest) {
 
     const [prescriptions, total] = await Promise.all([
       Prescription.find(query)
+        .select(PATIENT_PRESCRIPTION_SELECT)
         .populate(PRESCRIBER_POPULATE)
         .populate(prescriptionVisitPopulate(linked.patientIds, tenant.filter))
         .sort({ issuedAt: -1 })

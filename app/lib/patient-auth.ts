@@ -35,10 +35,23 @@ export type ProfileMode = 'allow' | 'ignore' | 'refuse';
  */
 export async function verifyPatientAuth(
   request: NextRequest,
-  options: { profile?: ProfileMode } = {}
+  options: {
+    profile?: ProfileMode;
+    /**
+     * Let a session that still owes a password change through (`pwc`: signed in with a clinic's
+     * temporary eMCR password). Only for what completing the change needs: the account read,
+     * the password change itself, sign-out and push register/unregister. Everything else answers
+     * 403 PASSWORD_CHANGE_REQUIRED.
+     */
+    allowPendingPasswordChange?: boolean;
+  } = {}
 ): Promise<PatientSessionPayload | null> {
   const session = await signedInSession(request);
   if (!session) return null;
+  if (session.pwc && !options.allowPendingPasswordChange) {
+    profileFailures.set(request, 'password-change');
+    return null;
+  }
 
   const mode = options.profile ?? 'allow';
   // A guardian-only eMCR session signs in on a record its holder manages: never let it act on
@@ -94,16 +107,23 @@ function scopeWithin(sessionTid: string | undefined, access: FamilyAccess): stri
   return access.tid;
 }
 
-/** Why verifyPatientAuth refused a signed-in caller because of their family-profile header. */
-const profileFailures = new WeakMap<NextRequest, 'refused' | 'forbidden'>();
+/** Why verifyPatientAuth refused a signed-in caller (family-profile header, or a pending password change). */
+const profileFailures = new WeakMap<NextRequest, 'refused' | 'forbidden' | 'password-change'>();
 
 /**
  * The response for a null verifyPatientAuth: 401 when the caller isn't signed in (the app
  * refreshes or signs in again), 403 when only the family profile was the problem (the app keeps
- * the session and switches back to the signed-in person).
+ * the session and switches back to the signed-in person). 403 `PASSWORD_CHANGE_REQUIRED` when
+ * the session was started with a clinic's temporary password that hasn't been replaced yet.
  */
 export function patientAuthError(request: NextRequest): NextResponse {
   const failure = profileFailures.get(request);
+  if (failure === 'password-change') {
+    return NextResponse.json(
+      { success: false, code: 'PASSWORD_CHANGE_REQUIRED', error: 'Choose a new password to replace the one from your clinic.' },
+      { status: 403 }
+    );
+  }
   if (failure === 'refused') {
     return NextResponse.json(
       { success: false, code: 'NOT_FOR_FAMILY_PROFILE', error: 'Switch back to your own profile to do this.' },
