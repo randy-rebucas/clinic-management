@@ -47,6 +47,26 @@ export function mainSiteHost(requestHost: string): string {
 }
 
 /**
+ * Staff pages are served only on the signed-in user's clinic subdomain. Returns the address the
+ * request must go to instead, or null when it is already on the right host (or on a Vercel
+ * preview, which must not bounce to production). `path` must be a local path; anything else
+ * falls back to /dashboard so the result can never point off-site.
+ */
+export function clinicHostRedirect(
+  requestHost: string,
+  proto: string,
+  clinicSubdomain: string,
+  path: string,
+): string | null {
+  const host = requestHost.toLowerCase();
+  if (!host || host.split(':')[0].endsWith('.vercel.app')) return null;
+  const target = `${clinicSubdomain.toLowerCase()}.${mainSiteHost(host)}`;
+  if (target === host) return null;
+  const safePath = path.startsWith('/') && !path.startsWith('//') && !path.startsWith('/\\') ? path : '/dashboard';
+  return `${proto}://${target}${safePath}`;
+}
+
+/**
  * MyClinicSoft's own pages (product marketing, rep onboarding). On a clinic subdomain
  * they'd sit under the clinic's name, so the proxy sends them to the main site instead.
  */
