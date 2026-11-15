@@ -31,7 +31,7 @@ export async function issueRefreshToken(
   subjectId: string | Types.ObjectId,
   sessionVersion: number,
   family: string = randomUUID(),
-  scope: { tid?: string | null; acc?: string | null; rel?: 'guardian' | null; av?: number } = {}
+  scope: { tid?: string | null; acc?: string | null; rel?: 'guardian' | null; av?: number; pwc?: boolean } = {}
 ): Promise<string> {
   await connectDB();
   const token = randomBytes(32).toString('base64url');
@@ -45,6 +45,7 @@ export async function issueRefreshToken(
     ...(scope.acc ? { scopeAccountId: new Types.ObjectId(String(scope.acc)) } : {}),
     ...(scope.acc && scope.rel === 'guardian' ? { scopeRel: 'guardian' } : {}),
     ...(scope.acc && typeof scope.av === 'number' ? { scopeAccountVersion: scope.av } : {}),
+    ...(scope.acc && scope.pwc ? { scopePasswordChange: true } : {}),
     expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000),
   });
   return token;
@@ -61,6 +62,8 @@ export type ConsumedRefreshToken = {
   rel?: 'guardian';
   /** EmcrAccount.sessionVersion the chain was issued with (chains with `acc`; 0 when not recorded). */
   av?: number;
+  /** The chain began with a clinic's temporary password: its tokens owe a password change. */
+  pwc?: true;
 };
 
 export type ConsumeResult =
@@ -93,7 +96,7 @@ export async function consumeRefreshToken(
   if (row) return { ok: true, value: consumedValue(row) };
 
   const spent = await RefreshToken.findOne({ tokenHash, subjectType, usedAt: { $ne: null } })
-    .select('family usedAt revokedAt expiresAt subjectId sessionVersion scopeTenantId scopeAccountId scopeRel scopeAccountVersion')
+    .select('family usedAt revokedAt expiresAt subjectId sessionVersion scopeTenantId scopeAccountId scopeRel scopeAccountVersion scopePasswordChange')
     .lean<(RefreshTokenRow & { usedAt?: Date; revokedAt?: Date; expiresAt?: Date }) | null>();
   if (spent) {
     // The app lost the reply to its last refresh (dropped connection, app killed before it
@@ -123,6 +126,7 @@ type RefreshTokenRow = {
   scopeAccountId?: Types.ObjectId;
   scopeRel?: 'guardian';
   scopeAccountVersion?: number;
+  scopePasswordChange?: boolean;
 };
 
 function consumedValue(row: RefreshTokenRow): ConsumedRefreshToken {
@@ -133,6 +137,7 @@ function consumedValue(row: RefreshTokenRow): ConsumedRefreshToken {
     ...(row.scopeTenantId ? { tid: row.scopeTenantId.toString() } : {}),
     ...(row.scopeAccountId ? { acc: row.scopeAccountId.toString(), av: row.scopeAccountVersion ?? 0 } : {}),
     ...(row.scopeAccountId && row.scopeRel === 'guardian' ? { rel: 'guardian' as const } : {}),
+    ...(row.scopeAccountId && row.scopePasswordChange ? { pwc: true as const } : {}),
   };
 }
 

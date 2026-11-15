@@ -3,9 +3,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn() }));
 vi.mock('@/models/Patient', () => ({
-  default: { findById: vi.fn(), findOneAndUpdate: vi.fn(), updateOne: vi.fn(), find: vi.fn(), exists: vi.fn() },
+  default: { findById: vi.fn(), findByIdAndUpdate: vi.fn(), findOneAndUpdate: vi.fn(), updateOne: vi.fn(), find: vi.fn(), exists: vi.fn() },
 }));
 vi.mock('@/models/MobileDevice', () => ({ default: { updateMany: vi.fn() } }));
+vi.mock('@/models/HealthSummaryShareLink', () => ({ default: { updateMany: vi.fn() } }));
 vi.mock('@/models/EmcrAccount', () => ({ default: { findById: vi.fn(), findByIdAndUpdate: vi.fn() } }));
 vi.mock('@/models/RefreshToken', () => ({
   default: { create: vi.fn(), findOneAndUpdate: vi.fn(), findOne: vi.fn(), updateMany: vi.fn() },
@@ -14,6 +15,7 @@ vi.mock('@/models/RefreshToken', () => ({
 import { SignJWT } from 'jose';
 import Patient from '@/models/Patient';
 import RefreshToken from '@/models/RefreshToken';
+import HealthSummaryShareLink from '@/models/HealthSummaryShareLink';
 import EmcrAccount from '@/models/EmcrAccount';
 import { isFreshOtpSession, issuePatientToken, revokeEmcrAccountSessions, revokePatientToken, verifyPatientSession } from '@/app/lib/dal';
 import { consumeRefreshToken, issueRefreshToken } from '@/app/lib/refresh-tokens';
@@ -25,6 +27,7 @@ import {
   phoneRateKey,
   phoneVariants,
   redeemPatientLoginQr,
+  revokeAllPatientAccess,
 } from '@/app/api/patients/auth/shared';
 
 const PATIENT_ID = '507f1f77bcf86cd799439033';
@@ -98,7 +101,13 @@ describe('guardian sessions follow the eMCR account session version (av)', () =>
     expect(await verifyPatientSession(legacy)).not.toBeNull();
 
     vi.mocked(EmcrAccount.findByIdAndUpdate).mockReturnValue(lean({ sessionVersion: 1 }) as any);
+    vi.mocked(HealthSummaryShareLink.updateMany).mockClear();
     await revokeEmcrAccountSessions(ACC);
+    // Share links made through the account (a family member's summary) end with its sessions.
+    const [shareFilter, shareUpdate] = vi.mocked(HealthSummaryShareLink.updateMany).mock.calls[0] as any[];
+    expect(String(shareFilter.account)).toBe(ACC);
+    expect(shareFilter).toMatchObject({ revokedAt: null, expiresAt: { $gt: expect.any(Date) } });
+    expect(shareUpdate).toEqual({ $set: { revokedAt: expect.any(Date) } });
     accountVersion(1);
     expect(await verifyPatientSession(guardian)).toBeNull();
     expect(await verifyPatientSession(legacy)).toBeNull();
@@ -247,5 +256,21 @@ describe('signing out one patient device', () => {
     patientState({ active: true, sessionVersion: 2, revokedSessions: [{ jti: signedIn!.jti! }] });
     expect(await verifyPatientSession(phone)).toBeNull();
     expect(await verifyPatientSession(laptop)).not.toBeNull();
+  });
+});
+
+describe('revokeAllPatientAccess', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("also revokes the patient's live health-summary share links (theirs and those made for family)", async () => {
+    vi.mocked(Patient.findByIdAndUpdate).mockReturnValue(lean({ sessionVersion: 3 }) as any);
+    await revokeAllPatientAccess(PATIENT_ID);
+    const [filter, update] = vi.mocked(HealthSummaryShareLink.updateMany).mock.calls[0] as any[];
+    expect(filter.$or.map((c: Record<string, unknown>) => String(Object.values(c)[0]))).toEqual([PATIENT_ID, PATIENT_ID]);
+    expect(Object.keys(filter.$or[0])).toEqual(['patient']);
+    expect(Object.keys(filter.$or[1])).toEqual(['sharedBy']);
+    expect(filter.revokedAt).toBeNull();
+    expect(filter.expiresAt).toEqual({ $gt: expect.any(Date) });
+    expect(update).toEqual({ $set: { revokedAt: expect.any(Date) } });
   });
 });

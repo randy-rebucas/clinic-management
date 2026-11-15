@@ -16,7 +16,11 @@ import { jsonObject } from '@/lib/api/validate';
  * (`qc01.jdc.19900425@myclinicsoft.solutions`). → { account, session } (as otp/verify).
  * `account.mustChangePassword`: a temporary password from the clinic; the app must have the
  * holder choose their own (POST /api/emcr/account/password with it as `currentPassword`) before
- * going on. Wrong login or password: 401, the same either way.
+ * going on. The server enforces it: such a session (`session.passwordChangeRequired: true`) gets
+ * 403 `PASSWORD_CHANGE_REQUIRED` everywhere except GET /api/emcr/account, the password change,
+ * token refresh, sign-out and push device register/unregister. The password change (with
+ * `rotate: true`) returns a fresh token pair without it. Wrong login or password: 401, the same
+ * either way.
  */
 export async function POST(request: NextRequest) {
   let body: { login?: unknown; phone?: unknown; password?: unknown };

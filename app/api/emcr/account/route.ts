@@ -12,7 +12,7 @@ import { accountView } from '@/lib/emcr/session';
  * A sign-in without an account yet (password / QR, never redeemed) gets an inactive view.
  */
 export async function GET(request: NextRequest) {
-  const session = await verifyPatientAuth(request, { profile: 'ignore' });
+  const session = await verifyPatientAuth(request, { profile: 'ignore', allowPendingPasswordChange: true });
   if (!session) return patientAuthError(request);
   try {
     const account = await findAccountForSession(session);

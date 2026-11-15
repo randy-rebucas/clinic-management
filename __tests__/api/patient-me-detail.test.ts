@@ -77,8 +77,11 @@ describe('patient /me detail routes', () => {
     const q = labQuery({ _id: RECORD_ID });
     vi.mocked(LabResult.findOne).mockReturnValue(q);
     const res = await call(getLabResult, RECORD_ID);
-    // Integration internals and inline file contents are never sent to the patient.
-    expect(q.select).toHaveBeenCalledWith('-thirdPartyLab -attachments.url');
+    // Integration internals, file contents/locations and staff bookkeeping are never sent to the patient.
+    const projection: string = q.select.mock.calls[0][0];
+    for (const hidden of ['-thirdPartyLab', '-attachments.url', '-attachments.gridFsId', '-reviewedBy', '-notificationSent']) {
+      expect(projection.split(' ')).toContain(hidden);
+    }
     expect(res.status).toBe(200);
     expect(vi.mocked(LabResult.findOne).mock.calls[0][0]).toEqual({
       _id: RECORD_ID,

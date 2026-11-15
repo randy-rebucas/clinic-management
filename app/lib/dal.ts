@@ -1,9 +1,10 @@
-import 'server-only';
+﻿import 'server-only';
 import { cache } from 'react';
 import { createHmac } from 'crypto';
 import { SignJWT, jwtVerify, JWTPayload } from 'jose';
 import { cookies } from 'next/headers';
 import type { NextResponse } from 'next/server';
+import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import { redisPipeline } from '@/lib/redis';
@@ -14,7 +15,7 @@ const secretKey = process.env.SESSION_SECRET;
 // We'll validate at runtime when functions are called instead of at module load
 if (!secretKey && process.env.NODE_ENV !== 'production') {
   console.warn(
-    '[dal] SESSION_SECRET is not set. Using an insecure fallback key — ' +
+    '[dal] SESSION_SECRET is not set. Using an insecure fallback key â€” ' +
     'tokens issued now will be invalid once a real secret is set.'
   );
 }
@@ -116,7 +117,7 @@ function expiresAtToDate(value: unknown): Date | null {
 }
 
 /**
- * Verify a staff session JWT (signature, type and expiry only — no DB check).
+ * Verify a staff session JWT (signature, type and expiry only â€” no DB check).
  * Use verifySessionToken() when the caller needs revocation/status checks.
  */
 export async function decrypt(session: string | undefined = ''): Promise<SessionPayload | null> {
@@ -153,7 +154,7 @@ export async function decrypt(session: string | undefined = ''): Promise<Session
   }
 }
 
-// ── Server-side session state (revocation, status, fresh role/tenant) ──────────
+// â”€â”€ Server-side session state (revocation, status, fresh role/tenant) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface UserSessionState {
   active: boolean;
@@ -540,7 +541,7 @@ export async function getCurrentUserId(): Promise<string | null> {
   return session?.userId || null;
 }
 
-// ── Pending second factor ──────────────────────────────────────────────────────
+// â”€â”€ Pending second factor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const PENDING_2FA_COOKIE = 'pending_2fa';
 const PENDING_2FA_TTL_MS = 5 * 60 * 1000;
@@ -603,7 +604,7 @@ export async function clearPending2fa(): Promise<void> {
   }
 }
 
-// ── Patient tokens ─────────────────────────────────────────────────────────────
+// â”€â”€ Patient tokens â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const PATIENT_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
 
@@ -636,6 +637,13 @@ export interface PatientSessionPayload {
    * which no Patient.sessionVersion bump reaches; a token without it counts as version 0.
    */
   av?: number;
+  /**
+   * Password change pending: signed in with a clinic's temporary eMCR password
+   * (EmcrAccount.mustChangePassword). verifyPatientAuth answers 403 PASSWORD_CHANGE_REQUIRED on
+   * every route except the few that complete the change. Refresh keeps it until the holder has
+   * chosen their own password. Only with `acc`.
+   */
+  pwc?: true;
   iat?: number;
   exp?: number;
   /** Per-token id, so one device can sign out without ending the others (revokePatientToken). */
@@ -654,6 +662,8 @@ export interface PatientTokenClaims {
   rel?: 'guardian' | null;
   /** EmcrAccount.sessionVersion to embed; read from the account when omitted (and `acc` is set). */
   av?: number;
+  /** Mark the token as owing a password change (`pwc`); needs `acc`. */
+  pwc?: boolean;
 }
 
 interface PatientTokenSubject {
@@ -688,6 +698,7 @@ export async function issuePatientToken(
     ...(acc ? { acc } : {}),
     ...(acc && claims.rel === 'guardian' ? { rel: 'guardian' } : {}),
     ...(acc ? { av } : {}),
+    ...(acc && claims.pwc ? { pwc: true } : {}),
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setJti(crypto.randomUUID())
@@ -757,6 +768,22 @@ async function loadEmcrAccountState(accountId: string, options: { fresh?: boolea
   return state;
 }
 
+/**
+ * Whether the account's sign-in still owes a password change, read fresh (token refresh):
+ * 'pending' while the clinic's temporary password is in place, 'done' once the holder chose their
+ * own, 'gone' when there is no password any more (the phone was proven, which cancels a clinic's
+ * password) or no account.
+ */
+export async function emcrAccountPasswordChange(accountId: string): Promise<'pending' | 'done' | 'gone'> {
+  await connectDB();
+  const EmcrAccount = (await import('@/models/EmcrAccount')).default;
+  const account = await EmcrAccount.findById(accountId)
+    .select('mustChangePassword passwordSetAt disabled')
+    .lean<{ mustChangePassword?: boolean; passwordSetAt?: Date; disabled?: boolean } | null>();
+  if (!account || account.disabled || !account.passwordSetAt) return 'gone';
+  return account.mustChangePassword ? 'pending' : 'done';
+}
+
 /** The account's current session version, read fresh (for issuing tokens; never cached). */
 export async function emcrAccountSessionVersion(accountId: string): Promise<number> {
   await connectDB();
@@ -779,6 +806,16 @@ export async function revokeEmcrAccountSessions(accountId: string): Promise<numb
     { new: true, projection: { sessionVersion: 1 } }
   ).lean<{ sessionVersion?: number } | null>();
   emcrAccountCache.delete(String(accountId));
+  // Share links made through this account (a family member's summary) end with its sessions,
+  // as a patient's own links do in revokeAllPatientAccess.
+  if (Types.ObjectId.isValid(accountId)) {
+    const HealthSummaryShareLink = (await import('@/models/HealthSummaryShareLink')).default;
+    const now = new Date();
+    await HealthSummaryShareLink.updateMany(
+      { account: new Types.ObjectId(accountId), revokedAt: null, expiresAt: { $gt: now } },
+      { $set: { revokedAt: now } }
+    );
+  }
   return updated?.sessionVersion ?? 0;
 }
 
@@ -843,6 +880,7 @@ export async function verifyPatientSession(
     if (p.acc !== undefined && (typeof p.acc !== 'string' || !OBJECT_ID_FORMAT.test(p.acc))) return null;
     if (p.rel !== undefined && (p.rel !== 'guardian' || p.acc === undefined)) return null;
     if (p.av !== undefined && (typeof p.av !== 'number' || !Number.isInteger(p.av))) return null;
+    if (p.pwc !== undefined && (p.pwc !== true || p.acc === undefined)) return null;
     // Older tokens were issued for 30 days; cap every token at the current TTL.
     if (typeof payload.iat === 'number' && Date.now() / 1000 - payload.iat > PATIENT_TOKEN_TTL_SECONDS) {
       return null;

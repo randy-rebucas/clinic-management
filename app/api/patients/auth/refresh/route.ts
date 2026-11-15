@@ -3,7 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
-import { emcrAccountSessionVersion, issuePatientToken, PATIENT_TOKEN_TTL_SECONDS } from '@/app/lib/dal';
+import { emcrAccountPasswordChange, emcrAccountSessionVersion, issuePatientToken, PATIENT_TOKEN_TTL_SECONDS } from '@/app/lib/dal';
 import {
   consumeRefreshToken,
   issueRefreshToken,
@@ -25,6 +25,9 @@ import { jsonObject } from '@/lib/api/validate';
  * The new access token keeps the clinic scope (`tid`) and eMCR account (`acc`, `rel`) of the
  * original sign-in. It carries no
  * `amr`, so a refreshed token never counts as a fresh OTP sign-in.
+ * A chain begun with a clinic's temporary eMCR password keeps the pending-password-change claim
+ * (`passwordChangeRequired: true`) until the account's password has been changed; it dies
+ * (REFRESH_INVALID) if the password was cancelled by a phone sign-in meanwhile.
  */
 export async function POST(request: NextRequest) {
   // Not the strict sign-in limit: refresh tokens are 256-bit random (nothing to guess), and
@@ -46,6 +49,7 @@ export async function POST(request: NextRequest) {
     const consumed = await consumeRefreshToken(body.refreshToken, 'patient');
     if (!consumed.ok) return invalid(consumed.code);
     const { subjectId, sessionVersion, family, tid, acc, rel, av } = consumed.value;
+    let { pwc } = consumed.value;
 
     await connectDB();
     const patient = await Patient.findById(subjectId).select('active patientCode email sessionVersion');
@@ -70,8 +74,20 @@ export async function POST(request: NextRequest) {
       return invalid('REFRESH_INVALID');
     }
 
-    const token = await issuePatientToken(patient, { tid, acc, rel, av: accountVersion });
-    const refreshToken = await issueRefreshToken('patient', patient._id, sessionVersion, family, { tid, acc, rel, av: accountVersion });
+    // A chain begun with a clinic's temporary password keeps owing the change (`pwc`) until the
+    // holder has chosen their own password. If the password is gone instead (the phone was proven,
+    // which cancels a clinic's password), whoever held the temporary one must sign in again.
+    if (pwc && acc) {
+      const state = await emcrAccountPasswordChange(acc);
+      if (state === 'gone') {
+        await revokeRefreshFamily(family);
+        return invalid('REFRESH_INVALID');
+      }
+      if (state === 'done') pwc = undefined;
+    }
+
+    const token = await issuePatientToken(patient, { tid, acc, rel, av: accountVersion, pwc });
+    const refreshToken = await issueRefreshToken('patient', patient._id, sessionVersion, family, { tid, acc, rel, av: accountVersion, pwc });
 
     return NextResponse.json({
       success: true,
@@ -80,6 +96,7 @@ export async function POST(request: NextRequest) {
       expiresIn: PATIENT_TOKEN_TTL_SECONDS,
       refreshToken,
       refreshExpiresIn: REFRESH_TOKEN_TTL_SECONDS,
+      passwordChangeRequired: !!pwc,
     });
   } catch (error) {
     logger.error('Error refreshing patient token', error as Error);

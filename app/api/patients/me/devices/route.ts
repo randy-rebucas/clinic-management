@@ -20,7 +20,7 @@ import { jsonObject } from '@/lib/api/validate';
  * Body: { deviceId, platform: 'ios' | 'android', pushToken?, appVersion? }
  */
 export async function POST(request: NextRequest) {
-  const session = await verifyPatientAuth(request, { profile: 'ignore' });
+  const session = await verifyPatientAuth(request, { profile: 'ignore', allowPendingPasswordChange: true });
   if (!session) return patientAuthError(request);
 
   let body: Record<string, any>;
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
  * audit trail of what was ever registered.
  */
 export async function DELETE(request: NextRequest) {
-  const session = await verifyPatientAuth(request, { profile: 'ignore' });
+  const session = await verifyPatientAuth(request, { profile: 'ignore', allowPendingPasswordChange: true });
   if (!session) return patientAuthError(request);
 
   const deviceId = request.nextUrl.searchParams.get('deviceId')?.trim();

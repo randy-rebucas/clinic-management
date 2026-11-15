@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Types } from 'mongoose';
 import { recordPatientRefused } from '@/lib/audit';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
@@ -7,9 +8,46 @@ import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { parsePagination, resolveTenantFilter } from '../_lib/patient-scope';
 import { linkedRecords } from '../_lib/linked-records';
-import { invoiceBalance } from '../_lib/invoice-balance';
+import { OPEN_INVOICE_STATUSES, PATIENT_INVOICE_SELECT } from '../_lib/invoice-fields';
 
 const INVOICE_STATUSES = ['unpaid', 'partial', 'paid', 'refunded'];
+
+/** An id as an ObjectId: aggregate() does not cast filter values the way find() does. */
+function objectId(id: unknown): unknown {
+  return typeof id === 'string' && Types.ObjectId.isValid(id) ? new Types.ObjectId(id) : id;
+}
+
+function castIds(value: unknown): unknown {
+  if (value && typeof value === 'object' && '$in' in value && Array.isArray((value as { $in: unknown[] }).$in)) {
+    return { $in: (value as { $in: unknown[] }).$in.map(objectId) };
+  }
+  return objectId(value);
+}
+
+/**
+ * Outstanding balance across every open invoice, summed in the database instead of loading each
+ * one. Same rule as invoiceBalance() for unpaid/partial invoices: total - payments, floored at 0.
+ */
+async function outstandingSummary(filter: Record<string, unknown>): Promise<{ outstandingBalance: number; unpaidCount: number }> {
+  const match: Record<string, unknown> = { ...filter, status: { $in: OPEN_INVOICE_STATUSES } };
+  if (match.patient !== undefined) match.patient = castIds(match.patient);
+  if (match.tenantId !== undefined) match.tenantId = castIds(match.tenantId);
+  const [row] = await Invoice.aggregate<{ outstandingBalance: number; unpaidCount: number }>([
+    { $match: match },
+    {
+      $group: {
+        _id: null,
+        outstandingBalance: {
+          $sum: {
+            $max: [0, { $subtract: [{ $ifNull: ['$total', 0] }, { $sum: { $ifNull: ['$payments.amount', []] } }] }],
+          },
+        },
+        unpaidCount: { $sum: 1 },
+      },
+    },
+  ]);
+  return { outstandingBalance: row?.outstandingBalance ?? 0, unpaidCount: row?.unpaidCount ?? 0 };
+}
 
 /**
  * GET /api/patients/me/invoices
@@ -53,28 +91,22 @@ export async function GET(request: NextRequest) {
       invoiceQuery.status = statusFilter;
     }
 
-    const [invoices, total, unpaidInvoices] = await Promise.all([
+    const [invoices, total, summary] = await Promise.all([
       Invoice.find(invoiceQuery)
+        .select(PATIENT_INVOICE_SELECT)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
       Invoice.countDocuments(invoiceQuery),
-      // Always compute outstanding balance across all unpaid/partial invoices
-      Invoice.find({ ...baseQuery, status: { $in: ['unpaid', 'partial'] } })
-        .select('total payments status')
-        .lean(),
+      // Always the outstanding balance across all unpaid/partial invoices, whatever the filter.
+      outstandingSummary(baseQuery),
     ]);
-
-    const outstandingBalance = unpaidInvoices.reduce((sum: number, inv: any) => sum + invoiceBalance(inv).balance, 0);
 
     return NextResponse.json({
       success: true,
       data: invoices,
-      summary: {
-        outstandingBalance,
-        unpaidCount: unpaidInvoices.length,
-      },
+      summary,
       pagination: {
         total,
         page,

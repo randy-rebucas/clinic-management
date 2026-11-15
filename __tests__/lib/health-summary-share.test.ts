@@ -255,7 +255,8 @@ describe('GET /api/share/:token', () => {
   const open = (token: string) => openShare(new NextRequest(`http://localhost/api/share/${token}`), { params: Promise.resolve({ token }) });
 
   it('serves the PDF privately, counts the open and audits it per clinic', async () => {
-    const row = link({ tid: CLINIC_A });
+    // The route reads the clock itself; keep the fixture link inside its validity window.
+    const row = link({ tid: CLINIC_A, expiresAt: new Date(Date.now() + DAY) });
     vi.mocked(HealthSummaryShareLink.findOne).mockReturnValue(lean(row) as any);
     vi.mocked(renderHealthSummaryPdf).mockResolvedValue({
       pdf: new Uint8Array([37, 80, 68, 70]),

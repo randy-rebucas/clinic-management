@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse, after } from 'next/server';
 import { createAuditLog } from '@/lib/audit';
 import DocumentRequest from '@/models/DocumentRequest';
+// Registers the model behind .populate('visit') (a cold server would throw MissingSchemaError).
+import '@/models/Visit';
 import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { requireActiveEmcr } from '@/lib/emcr/activation';

@@ -1,5 +1,8 @@
 import 'server-only';
-import '@/models/Specialization'; // registered for the nested populate
+// Both models must be registered before .populate(PATIENT_DOCTOR_POPULATE): a route that imports
+// neither (the /me appointment list and detail) failed with MissingSchemaError on a fresh server.
+import '@/models/Doctor';
+import '@/models/Specialization';
 
 /**
  * Doctor fields shown to patients. Doctor stores `specializationId` (ref Specialization), not a

@@ -3,11 +3,15 @@ import { recordPatientRefused } from '@/lib/audit';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import Queue from '@/models/Queue';
+// Register the models behind .populate('doctor') / .populate('room'): a cold server would throw MissingSchemaError.
+import '@/models/Doctor';
+import '@/models/Room';
 import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { queuePosition } from '@/lib/queue-position';
 import { resolveTenantFilter } from '../_lib/patient-scope';
 import { linkedRecords } from '../_lib/linked-records';
+import { PATIENT_QUEUE_FIELDS, toPatientQueueEntry } from '../_lib/queue-fields';
 import { requireActiveEmcr } from '@/lib/emcr/activation';
 
 /**
@@ -51,6 +55,8 @@ export async function GET(request: NextRequest) {
     };
 
     const queueEntry = await Queue.findOne(query)
+      // `priority` is read for the position count only; toPatientQueueEntry() leaves it out.
+      .select(`${PATIENT_QUEUE_FIELDS.join(' ')} priority`)
       .populate('doctor', 'firstName lastName')
       .populate('room', 'name')
       .sort({ queuedAt: -1 })
@@ -67,7 +73,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: { ...queueEntry, position },
+      data: toPatientQueueEntry(queueEntry as Record<string, unknown>, position),
     });
   } catch (error) {
     logger.error('Error fetching patient queue status', error as Error);

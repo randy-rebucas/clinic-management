@@ -7,7 +7,7 @@ import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { parsePagination, resolveTenantFilter } from '../_lib/patient-scope';
 import { linkedRecords } from '../_lib/linked-records';
-import { PATIENT_LAB_RESULT_HIDDEN, PATIENT_LAB_RESULT_VISIBLE } from '../_lib/lab-result-fields';
+import { PATIENT_LAB_RESULT_HIDDEN, PATIENT_LAB_RESULT_VISIBLE, toPatientLabResult } from '../_lib/lab-result-fields';
 
 /**
  * GET /api/patients/me/lab-results
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: labResults,
+      data: labResults.map((r) => toPatientLabResult(r as Record<string, unknown>)),
       pagination: {
         total,
         page,

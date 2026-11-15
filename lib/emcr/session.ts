@@ -88,8 +88,11 @@ export async function accountSessionFields(
   const tid = amr === 'password' && account.passwordTenantId ? String(account.passwordTenantId) : undefined;
   // The account's session version goes on both, so a later bump ends this guardian session.
   const av = await emcrAccountSessionVersion(acc);
-  const token = await issuePatientToken(patient, { tid, amr, acc, rel, av });
-  const refreshToken = await issueRefreshToken('patient', patient._id, patient.sessionVersion ?? 0, undefined, { tid, acc, rel, av });
+  // Signed in with the clinic's temporary password: the session can do nothing but replace it
+  // (verifyPatientAuth), and refreshing keeps it that way until the holder has (`pwc`).
+  const pwc = amr === 'password' && !!account.mustChangePassword;
+  const token = await issuePatientToken(patient, { tid, amr, acc, rel, av, pwc });
+  const refreshToken = await issueRefreshToken('patient', patient._id, patient.sessionVersion ?? 0, undefined, { tid, acc, rel, av, pwc });
   return {
     token,
     tokenType: 'Bearer',
@@ -97,6 +100,8 @@ export async function accountSessionFields(
     refreshToken,
     refreshExpiresIn: REFRESH_TOKEN_TTL_SECONDS,
     guardianOnly: rel === 'guardian',
+    // Every other route answers 403 PASSWORD_CHANGE_REQUIRED until POST /api/emcr/account/password.
+    passwordChangeRequired: pwc,
     patient: {
       id: patient._id.toString(),
       patientCode: patient.patientCode ?? null,

@@ -3,6 +3,7 @@ import Invoice from '@/models/Invoice';
 import logger from '@/lib/logger';
 import { ownedRecordContext, isOwnedRecordError, recordNotFound } from '../../_lib/owned-record';
 import { invoiceBalance } from '../../_lib/invoice-balance';
+import { PATIENT_INVOICE_SELECT } from '../../_lib/invoice-fields';
 
 /**
  * GET /api/patients/me/invoices/[id]
@@ -18,7 +19,7 @@ export async function GET(
     const ctx = await ownedRecordContext(request, id, 'Invoice');
     if (isOwnedRecordError(ctx)) return ctx;
 
-    const invoice = await Invoice.findOne(ctx.filter).lean<any>();
+    const invoice = await Invoice.findOne(ctx.filter).select(PATIENT_INVOICE_SELECT).lean<any>();
     if (!invoice) return recordNotFound('Invoice');
 
     return NextResponse.json({

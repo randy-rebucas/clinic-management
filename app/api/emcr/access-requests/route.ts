@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { z } from 'zod';
 import { Types } from 'mongoose';
 import connectDB from '@/lib/mongodb';
@@ -30,7 +30,9 @@ const RequestSchema = z
  * with that name and birth date, sign-in instructions go to the phone/email **on that record**,
  * never to the contact typed here (anyone could type someone else's name). Otherwise the
  * request waits for the clinic's staff, who use the typed contact only to call the person back.
- * Always the same answer, so it can't be used to learn who is a patient where.
+ * Always the same answer, sent before any lookup (the work runs in `after()`), so neither the
+ * reply nor its timing tells who is a patient where. A repeat request for the same person keeps
+ * the contact given first.
  */
 export async function POST(request: NextRequest) {
   const limited = await applyRateLimit(request, rateLimiters.auth);
@@ -66,66 +68,78 @@ export async function POST(request: NextRequest) {
       'Thank you. If the clinic has your record, we’ll send sign-in instructions to the phone number or email the clinic has on file. If not, the clinic will contact you.',
   });
 
-  try {
-    await connectDB();
-    const tenantId = new Types.ObjectId(body.tenantId);
-    const tenant = await Tenant.findOne({ _id: tenantId, status: 'active' }).select('name displayName').lean<{ name?: string; displayName?: string } | null>();
-    if (!tenant) return generic;
+  // Everything that depends on whether the person is a patient there happens after the answer is
+  // sent: the reply (and how long it takes) is the same whether or not the clinic has them.
+  after(() =>
+    handleAccessRequest(body, contactPhone).catch((error) => logger.error('Error in eMCR access request', error as Error))
+  );
+  return generic;
+}
 
-    const dayStart = new Date(`${body.dateOfBirth}T00:00:00Z`);
-    const candidates = await Patient.find({
-      tenantIds: tenantId,
-      active: { $ne: false },
-      dateOfBirth: { $gte: new Date(dayStart.getTime() - 14 * 3600 * 1000), $lt: new Date(dayStart.getTime() + 38 * 3600 * 1000) },
-    })
-      .select('firstName lastName dateOfBirth phone email')
-      .limit(200)
-      .lean<{ _id: Types.ObjectId; firstName?: string; lastName?: string; dateOfBirth?: Date; phone?: string; email?: string }[]>();
-    const matches = candidates.filter(
-      (p) =>
-        birthDay(p.dateOfBirth) === body.dateOfBirth &&
-        firstNameMatches(body.firstName, p.firstName) &&
-        normalizeName(p.lastName) === normalizeName(body.lastName)
-    );
-    const match = matches.length === 1 ? matches[0] : null;
+type AccessRequestBody = z.infer<typeof RequestSchema>;
 
-    if (match && (normalizePhone(match.phone ?? '') || match.email)) {
-      const sent = await sendSignInInstructions({
-        firstName: match.firstName,
-        phone: match.phone,
-        email: match.email,
-        clinicName: tenant.displayName || tenant.name,
-      });
-      if (sent.sms || sent.email) {
-        logger.info('eMCR access request answered automatically', { tenantId: body.tenantId, patientId: String(match._id) });
-        return generic;
-      }
+async function handleAccessRequest(body: AccessRequestBody, contactPhone: string | null): Promise<void> {
+  await connectDB();
+  const tenantId = new Types.ObjectId(body.tenantId);
+  const tenant = await Tenant.findOne({ _id: tenantId, status: 'active' }).select('name displayName').lean<{ name?: string; displayName?: string } | null>();
+  if (!tenant) return;
+
+  const dayStart = new Date(`${body.dateOfBirth}T00:00:00Z`);
+  const candidates = await Patient.find({
+    tenantIds: tenantId,
+    active: { $ne: false },
+    dateOfBirth: { $gte: new Date(dayStart.getTime() - 14 * 3600 * 1000), $lt: new Date(dayStart.getTime() + 38 * 3600 * 1000) },
+  })
+    .select('firstName lastName dateOfBirth phone email')
+    .limit(200)
+    .lean<{ _id: Types.ObjectId; firstName?: string; lastName?: string; dateOfBirth?: Date; phone?: string; email?: string }[]>();
+  const matches = candidates.filter(
+    (p) =>
+      birthDay(p.dateOfBirth) === body.dateOfBirth &&
+      firstNameMatches(body.firstName, p.firstName) &&
+      normalizeName(p.lastName) === normalizeName(body.lastName)
+  );
+  const match = matches.length === 1 ? matches[0] : null;
+
+  if (match && (normalizePhone(match.phone ?? '') || match.email)) {
+    const sent = await sendSignInInstructions({
+      firstName: match.firstName,
+      phone: match.phone,
+      email: match.email,
+      clinicName: tenant.displayName || tenant.name,
+    });
+    if (sent.sms || sent.email) {
+      logger.info('eMCR access request answered automatically', { tenantId: body.tenantId, patientId: String(match._id) });
+      return;
     }
+  }
 
-    // Nothing on file to reach them, or no single match: the clinic takes it from here.
-    await EmcrAccessRequest.updateOne(
-      {
+  // Nothing on file to reach them, or no single match: the clinic takes it from here. The contact
+  // is kept from the first request: anyone who knows the name and birth date can send another,
+  // and must not be able to redirect the clinic's callback to their own number.
+  await EmcrAccessRequest.updateOne(
+    {
+      kind: 'access',
+      tenantId,
+      status: 'pending',
+      firstName: body.firstName,
+      lastName: body.lastName,
+      dateOfBirth: dayStart,
+    },
+    {
+      $setOnInsert: {
         kind: 'access',
         tenantId,
         status: 'pending',
         firstName: body.firstName,
         lastName: body.lastName,
         dateOfBirth: dayStart,
+        ...(contactPhone ? { contactPhone } : {}),
+        ...(body.contactEmail ? { contactEmail: body.contactEmail.toLowerCase() } : {}),
       },
-      {
-        $setOnInsert: { kind: 'access', tenantId, status: 'pending', firstName: body.firstName, lastName: body.lastName, dateOfBirth: dayStart },
-        $set: {
-          ...(match ? { patientId: match._id } : {}),
-          ...(contactPhone ? { contactPhone } : {}),
-          ...(body.contactEmail ? { contactEmail: body.contactEmail.toLowerCase() } : {}),
-        },
-      },
-      { upsert: true }
-    );
-    logger.info('eMCR access request queued for clinic', { tenantId: body.tenantId, matched: !!match });
-    return generic;
-  } catch (error) {
-    logger.error('Error in eMCR access request', error as Error);
-    return NextResponse.json({ success: false, error: 'Something went wrong. Please try again.' }, { status: 500 });
-  }
+      ...(match ? { $set: { patientId: match._id } } : {}),
+    },
+    { upsert: true }
+  );
+  logger.info('eMCR access request queued for clinic', { tenantId: body.tenantId, matched: !!match });
 }
