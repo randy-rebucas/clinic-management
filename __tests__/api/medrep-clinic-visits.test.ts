@@ -113,7 +113,7 @@ describe('GET /api/medical-representatives/visits', () => {
   it('keeps newest first by default and refuses unknown statuses or sorts', async () => {
     await get('status=completed');
     expect((vi.mocked(MedicalRepresentativeVisit.find).mock.calls[0] as unknown[])[0]).toMatchObject({ status: 'completed' });
-    expect(chain.sort).toHaveBeenCalledWith({ date: -1, createdAt: -1 });
+    expect(chain.sort).toHaveBeenCalledWith({ date: -1, time: -1, createdAt: -1 });
     expect((await get('status=requested,bogus')).status).toBe(400);
     expect((await get('sort=sideways')).status).toBe(400);
   });

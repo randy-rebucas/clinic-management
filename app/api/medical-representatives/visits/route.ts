@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withIdempotency } from '@/lib/idempotency';
 import connectDB from '@/lib/mongodb';
 import MedicalRepresentativeVisit from '@/models/MedicalRepresentativeVisit';
 import { Types } from 'mongoose';
@@ -131,7 +132,7 @@ export async function GET(request: NextRequest) {
  * `date: "YYYY-MM-DD"` and a `time` from the clinic's slots, starts as `requested`, and the
  * clinic's name, location and slot length are filled in from the clinic.
  */
-export async function POST(request: NextRequest) {
+async function create(request: NextRequest) {
   try {
     const rep = await requireRepSession();
     if (isRepSessionError(rep)) return rep;
@@ -262,4 +263,14 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * POST: create, at most once per `Idempotency-Key` (the app resends after a timeout with the same
+ * key, so a save that already landed isn't made twice). See lib/idempotency.ts.
+ */
+export async function POST(request: NextRequest) {
+  const rep = await requireRepSession();
+  if (isRepSessionError(rep)) return rep;
+  return withIdempotency(request, rep.userObjectId, 'rep-visit', () => create(request));
 }
