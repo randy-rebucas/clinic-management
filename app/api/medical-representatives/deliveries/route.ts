@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withIdempotency } from '@/lib/idempotency';
 import { Types } from 'mongoose';
 import { z } from 'zod';
 import connectDB from '@/lib/mongodb';
@@ -94,7 +95,7 @@ const createSchema = z.object({
  * rep's own active ones; a line without an expiry takes the
  * product's. The clinic is told and confirms receipt.
  */
-export async function POST(request: NextRequest) {
+async function create(request: NextRequest) {
   try {
     const rep = await requireRepSession();
     if (isRepSessionError(rep)) return rep;
@@ -170,4 +171,14 @@ export async function POST(request: NextRequest) {
     console.error('Create rep delivery error:', error);
     return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
+}
+
+/**
+ * POST: create, at most once per `Idempotency-Key` (the app resends after a timeout with the same
+ * key, so a save that already landed isn't made twice). See lib/idempotency.ts.
+ */
+export async function POST(request: NextRequest) {
+  const rep = await requireRepSession();
+  if (isRepSessionError(rep)) return rep;
+  return withIdempotency(request, rep.userObjectId, 'rep-delivery', () => create(request));
 }

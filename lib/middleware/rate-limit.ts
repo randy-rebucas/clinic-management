@@ -288,6 +288,14 @@ export const rateLimiters = {
   }),
 
   // Unauthenticated writes that create records and send SMS (online booking, self-registration)
+  // Crash reports from the mobile apps: generous enough for a crash loop's first few, never a flood.
+  clientErrorReport: rateLimit({
+    name: 'client-error-report',
+    windowMs: 60 * 60 * 1000,
+    maxRequests: 30,
+    message: 'Too many reports.',
+  }),
+
   publicWrite: rateLimit({
     name: 'public-write',
     windowMs: 60 * 60 * 1000,
