@@ -7,7 +7,9 @@ import LayoutWrapper from "@/components/LayoutWrapper";
 import { SidebarProvider } from "@/components/SidebarContext";
 import { SettingsProvider } from "@/components/SettingsContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { getTenantContext } from "@/lib/tenant";
+import { headers } from "next/headers";
+import { getTenantContext, getTenantSubdomain } from "@/lib/tenant";
+import { clinicHostRedirect } from "@/lib/subdomain";
 import { verifySession } from "@/app/lib/dal";
 import TenantNotFound from "@/components/TenantNotFound";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
@@ -54,6 +56,24 @@ export default async function AppLayout({
 
   // Single tenant context call — internally reads host header and queries DB
   const tenantContext = await getTenantContext();
+
+  // Clinic staff use their clinic's own subdomain: the main site (www) or another clinic's
+  // subdomain would show the console without the clinic's identity. The session cookie is
+  // shared across subdomains, so this is where that is enforced.
+  if (session.tenantId && tenantContext.tenantId !== session.tenantId) {
+    const h = await headers();
+    const host = (h.get('x-forwarded-host') || h.get('host') || '').toLowerCase();
+    const proto = h.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https');
+    // A lookup failure leaves the page as it is: /login would bounce a signed-in user straight back.
+    let target: string | null = null;
+    try {
+      const subdomain = await getTenantSubdomain(session.tenantId);
+      target = clinicHostRedirect(host, proto, subdomain, h.get('x-pathname') || '/dashboard');
+    } catch (err) {
+      console.error('Staff session has no clinic subdomain:', err);
+    }
+    if (target) redirect(target);
+  }
 
   // Subdomain detected but no matching active tenant — show error page
   if (tenantContext.subdomain && !tenantContext.tenant) {

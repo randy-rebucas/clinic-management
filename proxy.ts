@@ -141,6 +141,8 @@ export function proxy(request: NextRequest): NextResponse {
   const next = () => {
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set('x-nonce', nonce);
+    // Lets the staff layout send a page to the session's clinic subdomain without losing the path.
+    requestHeaders.set('x-pathname', `${pathname}${request.nextUrl.search}`);
     requestHeaders.set('Content-Security-Policy', csp);
     const response = addSecurityHeaders(NextResponse.next({ request: { headers: requestHeaders } }), csp);
     if (isNonCanonicalHost(request.headers.get('host') ?? host, pathname)) {
