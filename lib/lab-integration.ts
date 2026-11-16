@@ -252,6 +252,29 @@ export function getConfiguredLab(labCode: string | undefined, tenantId: string):
   }
 }
 
+/** A partner lab as staff see it: name and code only, never the endpoint or keys. */
+export interface PartnerLab {
+  labCode: string;
+  labName: string;
+}
+
+/** The labs in LAB_INTEGRATIONS that this clinic may send orders to, by name. */
+export function listConfiguredLabs(tenantId: string): PartnerLab[] {
+  if (!process.env.LAB_INTEGRATIONS) return [];
+  try {
+    const entries = JSON.parse(process.env.LAB_INTEGRATIONS);
+    if (!Array.isArray(entries)) return [];
+    return entries
+      .filter((e: any) => e && e.labCode && e.apiEndpoint && e.apiKey)
+      .filter((e: any) => !Array.isArray(e.tenantIds) || e.tenantIds.map(String).includes(String(tenantId)))
+      .map((e: any) => ({ labCode: String(e.labCode), labName: String(e.labName || e.labCode) }))
+      .sort((a: PartnerLab, b: PartnerLab) => a.labName.localeCompare(b.labName));
+  } catch {
+    console.error('LAB_INTEGRATIONS is not valid JSON');
+    return [];
+  }
+}
+
 /** How far a delivery's timestamp may be from now. */
 const WEBHOOK_TOLERANCE_SECONDS = 5 * 60;
 
@@ -319,6 +342,26 @@ export function labsWithOwnWebhookSecret(): string[] {
   }
 }
 
+/**
+ * What to show staff when a lab refuses an order. Labs answer `{ error: { code, message } }`
+ * (the lab partner contract); the message is shown as plain text, cut to 200 characters.
+ */
+export function labErrorMessage(status: number, body: string | undefined): string {
+  let message = '';
+  try {
+    const data = JSON.parse(body || '{}');
+    const raw = data?.error?.message ?? (typeof data?.error === 'string' ? data.error : data?.message);
+    if (typeof raw === 'string') message = raw.replace(/\s+/g, ' ').trim().slice(0, 200);
+  } catch {
+    /* not JSON: fall back to the status */
+  }
+  if (message) return `The lab said: ${message}`;
+  if (status === 401 || status === 403) return 'The lab refused the connection key. Ask MyClinicSoft support to check the lab setup.';
+  if (status === 429) return 'The lab is receiving too many orders right now. Try again in a minute.';
+  if (status >= 500) return 'The lab’s system had a problem. Try again in a few minutes.';
+  return `The lab refused the order (HTTP ${status}).`;
+}
+
 // Send lab request to third-party lab via API
 export async function sendLabRequestToThirdParty(
   config: LabIntegrationConfig,
@@ -340,7 +383,8 @@ export async function sendLabRequestToThirdParty(
 
   const urlError = await checkOutboundUrl(config.apiEndpoint);
   if (urlError) {
-    return { success: false, error: urlError };
+    // A setup problem, not something staff can fix: say who can, and keep the detail.
+    return { success: false, error: `The lab’s address in the MyClinicSoft setup can’t be used (${urlError}). Ask MyClinicSoft support to check it.` };
   }
 
   try {
@@ -368,10 +412,7 @@ export async function sendLabRequestToThirdParty(
 
     // 3xx counts as failure: a redirect target was never validated.
     if (response.status < 200 || response.status >= 300) {
-      return {
-        success: false,
-        error: `Lab API error (HTTP ${response.status})`,
-      };
+      return { success: false, error: labErrorMessage(response.status, response.body) };
     }
 
     const data = JSON.parse(response.body || '{}') || {};
@@ -383,7 +424,7 @@ export async function sendLabRequestToThirdParty(
     console.error('Error sending lab request to third party:', error);
     return {
       success: false,
-      error: 'Failed to send request to lab',
+      error: 'The lab couldn’t be reached. Try again in a few minutes.',
     };
   }
 }
