@@ -10,7 +10,10 @@
 			"path": "../clinic-management-mobile"
 		},
 		{
-			"path": "../clinic-management-rep"
+			"path": "../lab-partner-app"
+		},
+		{
+			"path": "../lab-partner-desktop"
 		}
 	],
 	"settings": {}

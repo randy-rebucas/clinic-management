@@ -49,7 +49,15 @@ interface LabResult {
     fastingRequired?: boolean;
     preparationNotes?: string;
   };
-  thirdPartyLab?: { labName?: string; status?: 'pending' | 'sent' | 'received' | 'error'; sentAt?: string; receivedAt?: string; errorMessage?: string } | null;
+  thirdPartyLab?: {
+    labName?: string;
+    labCode?: string;
+    integrationType?: string;
+    status?: 'pending' | 'sent' | 'received' | 'error';
+    sentAt?: string;
+    receivedAt?: string;
+    errorMessage?: string;
+  } | null;
   results?: ValueMap | string | null;
   resultDate?: string;
   interpretation?: string;
@@ -72,6 +80,7 @@ const ICONS = {
   send: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
   flask: 'M9 3h6m-5 0v6L4.5 18.5A2 2 0 006.2 21.5h11.6a2 2 0 001.7-3L14 9V3',
   download: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4',
+  share: 'M14 5l7 7m0 0l-7 7m7-7H3',
 };
 
 const longDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
@@ -84,11 +93,18 @@ const METHOD_WORDS: Record<string, string> = { sms: 'text message', email: 'emai
 
 type Confirm = 'cancel' | null;
 
+/** A partner lab this clinic can send orders to (GET /api/lab-results/third-party/labs). */
+interface PartnerLab {
+  labCode: string;
+  labName: string;
+}
+
 export default function LabResultDetailClient({ labResultId, permissions }: { labResultId: string; permissions: LabResultDetailPermissions }) {
   const router = useRouter();
   const lab = useKeyedFetch<LabResult>(`/api/lab-results/${labResultId}`);
   const [editing, setEditing] = useState(false);
   const [telling, setTelling] = useState(false);
+  const [sendingToLab, setSendingToLab] = useState(false);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -104,6 +120,10 @@ export default function LabResultDetailClient({ labResultId, permissions }: { la
   const l = lab.value;
   const history = (Array.isArray(lab.raw?.history) ? lab.raw.history : []) as EarlierResult[];
   const orderTests = (Array.isArray(lab.raw?.orderTests) ? lab.raw.orderTests : []) as OrderTest[];
+  // Partner labs are only asked for while the test is still waiting and this person can act on it.
+  const partnerLabs = useKeyedFetch<PartnerLab[]>(
+    l && permissions.canUpdate && (l.status === 'ordered' || l.status === 'in-progress') ? '/api/lab-results/third-party/labs' : null
+  );
 
   const setStatus = async (status: LabStatus, message: string, fallback: string) => {
     setConfirm(null);
@@ -224,6 +244,10 @@ export default function LabResultDetailClient({ labResultId, permissions }: { la
   const hasValues = Boolean(values && Object.keys(values).length);
   // Once reviewed, a result is the clinicians' to change (the API refuses lab staff too).
   const canAct = permissions.canUpdate && !cancelled && !(permissions.isLab && l.status === 'reviewed');
+  const labs = partnerLabs.value ?? [];
+  const sentToPartner = l.thirdPartyLab?.integrationType === 'api' && (l.thirdPartyLab.status === 'sent' || l.thirdPartyLab.status === 'received');
+  const canSendToPartner = canAct && waiting && labs.length > 0 && !sentToPartner;
+  const waitingOnOrder = orderTests.filter((t) => t.status === 'ordered' || t.status === 'in-progress').length;
 
   return (
     <Shell>
@@ -236,6 +260,12 @@ export default function LabResultDetailClient({ labResultId, permissions }: { la
             <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${st.badge}`}>{st.label}</span>
             {urgency && !cancelled && <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${urgency.badge}`}>{urgency.label}</span>}
             {l.requestCode && <span className="font-mono text-sm text-gray-500">{l.requestCode}</span>}
+            {sentToPartner && !cancelled && (
+              <span className="inline-flex items-center gap-1 rounded bg-brand-teal-light px-2 py-0.5 text-xs font-semibold text-brand-teal-deep ring-1 ring-inset ring-brand-teal/30">
+                <Svg d={ICONS.flask} className="h-3.5 w-3.5" />
+                {l.thirdPartyLab?.status === 'received' ? 'Result from' : 'Sent to'} {l.thirdPartyLab?.labName}
+              </span>
+            )}
           </div>
           <p className="mt-1 text-sm sm:text-base text-gray-600">
             <span className="font-semibold text-gray-900">{l.request?.testType}</span> · ordered {longDate(l.orderDate)} · {l.orderedBy?.name ?? 'No doctor recorded'}
@@ -289,7 +319,12 @@ export default function LabResultDetailClient({ labResultId, permissions }: { la
               Request form
             </a>
           )}
-          {canAct && l.status === 'ordered' && !editing && (
+          {canSendToPartner && !editing && (
+            <SecondaryButton onClick={() => setSendingToLab(true)} disabled={busy} icon={ICONS.share}>
+              {l.thirdPartyLab?.status === 'error' ? 'Send to lab again' : 'Send to partner lab'}
+            </SecondaryButton>
+          )}
+          {canAct && l.status === 'ordered' && !editing && !sentToPartner && (
             <SecondaryButton
               onClick={() =>
                 setStatus('in-progress', permissions.isLab ? 'Request received by the lab.' : 'Marked as at the lab.', 'The status could not be changed')
@@ -477,6 +512,28 @@ export default function LabResultDetailClient({ labResultId, permissions }: { la
           )}
         </aside>
       </div>
+
+      {sendingToLab && (
+        <SendToLabDialog
+          labResultId={l._id}
+          testType={l.request?.testType ?? 'this test'}
+          who={who}
+          labs={labs}
+          lastLabCode={l.thirdPartyLab?.labCode}
+          waitingOnOrder={waitingOnOrder}
+          orderCode={l.orderCode}
+          onClose={() => {
+            setSendingToLab(false);
+            lab.reload(); // a failed attempt is recorded on the test too
+          }}
+          onDone={(message, failed) => {
+            setSendingToLab(false);
+            lab.reload();
+            if (message) setNotice(message);
+            setActionError(failed);
+          }}
+        />
+      )}
 
       {telling && l.patient && (
         <TellPatientDialog
@@ -851,6 +908,146 @@ function TellPatientDialog({
         >
           <Svg d={ICONS.send} />
           {busy ? 'Sending…' : 'Send'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Send to a partner lab
+// ---------------------------------------------------------------------------
+
+type SendOutcome = { labResultId: string; testType: string; success: boolean; skipped?: string; error?: string };
+
+function SendToLabDialog({
+  labResultId,
+  testType,
+  who,
+  labs,
+  lastLabCode,
+  waitingOnOrder,
+  orderCode,
+  onClose,
+  onDone,
+}: {
+  labResultId: string;
+  testType: string;
+  who: string;
+  labs: PartnerLab[];
+  lastLabCode?: string;
+  waitingOnOrder: number;
+  orderCode?: string;
+  onClose: () => void;
+  /** message: what went (null if nothing did); failed: what didn't, for the error banner. */
+  onDone: (message: string | null, failed: string | null) => void;
+}) {
+  const ids = useId();
+  const router = useRouter();
+  const [labCode, setLabCode] = useState(() => (lastLabCode && labs.some((x) => x.labCode === lastLabCode) ? lastLabCode : (labs[0]?.labCode ?? '')));
+  const [wholeOrder, setWholeOrder] = useState(waitingOnOrder > 1);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const chosen = labs.find((x) => x.labCode === labCode);
+
+  const send = async () => {
+    if (!chosen) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/lab-results/third-party/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ labResultId, labConfig: { labCode: chosen.labCode, labName: chosen.labName }, wholeOrder: wholeOrder && waitingOnOrder > 1 }),
+      });
+      if (res.status === 401) {
+        router.push('/login');
+        return;
+      }
+      const json = await res.json().catch(() => null);
+      const tests = (Array.isArray(json?.data?.tests) ? json.data.tests : []) as SendOutcome[];
+      if (!res.ok || !tests.length) {
+        setError(formatApiError(json, 'Nothing was sent'));
+        return;
+      }
+      const went = tests.filter((t) => t.success && !t.skipped);
+      const already = tests.filter((t) => t.success && t.skipped);
+      const failed = tests.filter((t) => !t.success);
+      if (!went.length && !already.length) {
+        // Nothing went: keep the dialog open with the reason, so they can try again or pick another lab.
+        // The same reason for every test (a lab setup problem, the lab offline) is said once.
+        const reasons = [...new Set(failed.map((t) => t.error ?? 'Nothing was sent'))];
+        setError(reasons.length === 1 ? `Nothing was sent. ${reasons[0]}` : failed.map((t) => `${t.testType}: ${t.error}`).join(' · '));
+        return;
+      }
+      const names = (list: SendOutcome[]) => list.map((t) => t.testType).join(', ');
+      const message = went.length
+        ? `Sent to ${chosen.labName}: ${names(went)}. ${who} can go to the lab; results come back here by themselves when the lab releases them.`
+        : `Already with a lab: ${names(already)}.`;
+      onDone(message, failed.length ? `Not sent: ${failed.map((t) => `${t.testType} (${t.error})`).join('; ')}` : null);
+    } catch {
+      setError('The server couldn’t be reached. Nothing was sent; try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open onOpenChange={(o) => !o && !busy && onClose()} className="max-w-md" labelledBy={`${ids}-t`}>
+      <div className="px-6 py-5">
+        <h2 id={`${ids}-t`} className="text-lg font-bold tracking-tight text-gray-900">
+          Send to a partner lab
+        </h2>
+        <p className="mt-1 text-sm text-gray-600">
+          The lab gets the order at once. They see {who}’s name, birth date and sex, the test and its urgency, and the visit’s diagnosis and complaint. Results come
+          back here when the lab releases them.
+        </p>
+        <fieldset className="mt-4">
+          <legend className="mb-2 text-sm font-semibold text-gray-900">Lab</legend>
+          <div className="flex flex-col gap-2">
+            {labs.map((x) => (
+              <label
+                key={x.labCode}
+                className="flex cursor-pointer items-center gap-3 rounded-md border border-gray-300 px-3 py-2.5 text-sm transition-colors hover:border-gray-900 has-[:checked]:border-brand-teal-dark has-[:checked]:bg-brand-teal-light/50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-teal"
+              >
+                <input type="radio" name={`${ids}-lab`} value={x.labCode} checked={labCode === x.labCode} onChange={() => setLabCode(x.labCode)} className="accent-brand-teal-dark" />
+                <span className="font-medium">{x.labName}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        {waitingOnOrder > 1 ? (
+          <label className="mt-4 flex cursor-pointer items-start gap-3 text-sm text-gray-700">
+            <input type="checkbox" checked={wholeOrder} onChange={(e) => setWholeOrder(e.target.checked)} className="mt-0.5 accent-brand-teal-dark" />
+            <span>
+              Send all <span className="font-mono">{waitingOnOrder}</span> waiting tests on order <span className="font-mono">{orderCode}</span>
+              <span className="block text-gray-500">{wholeOrder ? 'Tests already sent to a lab are left as they are.' : `Only ${testType} is sent.`}</span>
+            </span>
+          </label>
+        ) : (
+          <p className="mt-4 text-sm text-gray-700">
+            Test: <span className="font-semibold text-gray-900">{testType}</span>
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="mt-3 text-sm font-medium text-red-700">
+            {error}
+          </p>
+        )}
+      </div>
+      <div className="flex justify-end gap-2 border-t border-gray-200 px-6 py-4">
+        <button type="button" onClick={onClose} disabled={busy} className={`rounded-md px-3.5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 hover:text-gray-900 ${FOCUS_RING}`}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={send}
+          disabled={busy || !chosen}
+          aria-busy={busy}
+          className={`inline-flex items-center gap-1.5 rounded-md bg-brand-teal-dark px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal-deep disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`}
+        >
+          <Svg d={ICONS.share} />
+          {busy ? 'Sending…' : chosen ? `Send to ${chosen.labName}` : 'Send'}
         </button>
       </div>
     </Modal>

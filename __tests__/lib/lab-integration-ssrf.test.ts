@@ -128,7 +128,7 @@ describe('DNS rebinding on lab send', () => {
     );
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe('Failed to send request to lab');
+    expect(result.error).toBe('The lab couldn’t be reached. Try again in a few minutes.');
     expect(lookupMock).toHaveBeenCalledTimes(2);
     expect(errSpy.mock.calls[0][1]?.code).toBe('EBLOCKEDADDRESS');
     errSpy.mockRestore();
