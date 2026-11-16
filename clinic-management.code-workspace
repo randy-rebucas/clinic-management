@@ -14,6 +14,9 @@
 		},
 		{
 			"path": "../lab-partner-desktop"
+		},
+		{
+			"path": "../myclinicsoft-desktop"
 		}
 	],
 	"settings": {}
