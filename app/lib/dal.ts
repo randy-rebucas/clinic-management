@@ -784,6 +784,14 @@ export async function emcrAccountPasswordChange(accountId: string): Promise<'pen
   return account.mustChangePassword ? 'pending' : 'done';
 }
 
+/**
+ * Whether the eMCR account still exists and isn't disabled, with its session version, read fresh
+ * (token refresh: a refresh must not succeed for a session every request would then reject).
+ */
+export async function emcrAccountRefreshState(accountId: string): Promise<EmcrAccountState> {
+  return loadEmcrAccountState(accountId, { fresh: true });
+}
+
 /** The account's current session version, read fresh (for issuing tokens; never cached). */
 export async function emcrAccountSessionVersion(accountId: string): Promise<number> {
   await connectDB();

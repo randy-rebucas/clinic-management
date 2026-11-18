@@ -10,6 +10,7 @@ import { linkRecordsByVerifiedPhone } from '@/app/api/patients/me/_lib/linked-re
 import { FAMILY_RELATIONSHIPS, isMinor, personRecordIds } from '@/lib/patient-family';
 import { attachSelf, forgetAccountCache, type EmcrAccountLean } from '@/lib/emcr/account';
 import { createSignedLinkToken, readSignedLinkToken } from '@/lib/signed-link';
+import { normalizeName, firstNameMatches } from '@/lib/emcr/name-match';
 
 /**
  * Claiming clinic records for an eMCR account, after the caller proved their phone by OTP:
@@ -53,27 +54,7 @@ export function readClaimToken(token: unknown): { accountId: string; phone: stri
   return { accountId: parts[0], phone: parts[1] };
 }
 
-/** Lowercase, no accents, single spaces: "  José  Mari " → "jose mari". */
-export function normalizeName(value: unknown): string {
-  return String(value ?? '')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9ñ\s-]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/**
- * The typed first name matches the record's: the whole first name, or its first word
- * ("Maria" for "Maria Clara"). Nicknames don't match.
- */
-export function firstNameMatches(typed: unknown, stored: unknown): boolean {
-  const t = normalizeName(typed);
-  const s = normalizeName(stored);
-  if (!t || !s) return false;
-  return t === s || t === s.split(' ')[0];
-}
+export { normalizeName, firstNameMatches } from '@/lib/emcr/name-match';
 
 /** "YYYY-MM-DD" of a date (UTC, as birth dates are stored), or null. */
 export function birthDay(value: unknown): string | null {

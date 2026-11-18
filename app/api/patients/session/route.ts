@@ -2,23 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { recordPatientRefused } from '@/lib/audit';
 import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
-import Doctor from '@/models/Doctor';
-import Appointment from '@/models/Appointment';
-import Visit from '@/models/Visit';
-import Prescription from '@/models/Prescription';
-import LabResult from '@/models/LabResult';
-import Invoice from '@/models/Invoice';
-import Document from '@/models/Document';
-import Referral from '@/models/Referral';
 import MobileDevice from '@/models/MobileDevice';
 import { Types } from 'mongoose';
 import logger from '@/lib/logger';
 import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
-import { PATIENT_VISIT_EXCLUDE, PATIENT_VISIT_VISIBLE } from '../me/_lib/visit-fields';
-import { PATIENT_LAB_RESULT_HIDDEN, PATIENT_LAB_RESULT_VISIBLE, toPatientLabResult } from '../me/_lib/lab-result-fields';
-import { PATIENT_PRESCRIPTION_SELECT } from '../me/_lib/prescription-fields';
-import { PATIENT_INVOICE_SELECT } from '../me/_lib/invoice-fields';
-import { PATIENT_REFERRAL_FILTER, PATIENT_REFERRAL_SELECT } from '../me/referrals/_lib/referral-view';
 import {
   findRefreshTokenSubject,
   readRefreshTokenFromBody,
@@ -27,12 +14,8 @@ import {
 import { revokeAllPatientAccess } from '../auth/shared';
 import { revokeEmcrAccountSessions, revokePatientToken } from '@/app/lib/dal';
 
-// Ensure Doctor model is registered for populate calls
-void Doctor;
-
 /**
- * Get patient session data
- * Returns patient profile and related data based on patient session cookie
+ * GET /api/patients/session: the signed-in patient's basic profile.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -60,11 +43,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get query params for optional data loading
-    const searchParams = request.nextUrl.searchParams;
-    const include = searchParams.get('include')?.split(',') || [];
-
-    const responseData: any = {
+    // Profile only. No app or page reads this route (the app signs out with DELETE and reads
+    // records from the /api/patients/me routes, which apply the patient field allowlists and
+    // eMCR feature gates); it used to take `?include=` and return records without them.
+    const responseData = {
       patient: {
         _id: patient._id,
         patientCode: patient.patientCode,
@@ -79,189 +61,9 @@ export async function GET(request: NextRequest) {
         address: patient.address,
         emergencyContact: patient.emergencyContact,
         allergies: patient.allergies,
-        medicalHistory: patient.medicalHistory,
         preExistingConditions: patient.preExistingConditions,
-        discountEligibility: patient.discountEligibility,
       },
     };
-
-    // A clinic-scoped session (tid) only sees that clinic; otherwise the patient's first clinic.
-    const patientTenantId = sessionData.tid
-      ? new Types.ObjectId(sessionData.tid)
-      : patient.tenantIds?.[0];
-
-    // Optionally load related data (tenant-scoped)
-    if (include.includes('appointments') || include.includes('all')) {
-      const appointmentQuery: any = { patient: patient._id };
-      if (patientTenantId) {
-        appointmentQuery.tenantId = patientTenantId;
-      } else {
-        appointmentQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const doctorPopulateOptions: any = {
-        path: 'doctor',
-        select: 'firstName lastName',
-      };
-      if (patientTenantId) {
-        doctorPopulateOptions.match = { tenantId: patientTenantId };
-      } else {
-        doctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-      }
-      
-      const appointments = await Appointment.find(appointmentQuery)
-        // Staff notes are internal, and video rooms are only handed out inside their join window.
-        .select('-notes -createdBy -teleconsult')
-        .populate(doctorPopulateOptions)
-        .sort({ appointmentDate: -1 })
-        .limit(10)
-        .lean();
-      responseData.appointments = appointments;
-    }
-
-    if (include.includes('visits') || include.includes('all')) {
-      const visitQuery: any = { patient: patient._id, ...PATIENT_VISIT_VISIBLE };
-      if (patientTenantId) {
-        visitQuery.tenantId = patientTenantId;
-      } else {
-        visitQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const providerPopulateOptions: any = {
-        path: 'provider',
-        select: 'name email',
-      };
-      if (patientTenantId) {
-        providerPopulateOptions.match = { tenantId: patientTenantId };
-      } else {
-        providerPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-      }
-      
-      const visits = await Visit.find(visitQuery)
-        .select(PATIENT_VISIT_EXCLUDE)
-        .populate(providerPopulateOptions)
-        .sort({ date: -1 })
-        .limit(10)
-        .lean();
-      responseData.visits = visits;
-    }
-
-    if (include.includes('prescriptions') || include.includes('all')) {
-      const prescriptionQuery: any = { patient: patient._id };
-      if (patientTenantId) {
-        prescriptionQuery.tenantId = patientTenantId;
-      } else {
-        prescriptionQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const prescribedByPopulateOptions: any = {
-        path: 'prescribedBy',
-        select: 'name email',
-      };
-      if (patientTenantId) {
-        prescribedByPopulateOptions.match = { tenantId: patientTenantId };
-      } else {
-        prescribedByPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-      }
-      
-      const prescriptions = await Prescription.find(prescriptionQuery)
-        .select(PATIENT_PRESCRIPTION_SELECT)
-        .populate(prescribedByPopulateOptions)
-        .sort({ issuedAt: -1 })
-        .limit(10)
-        .lean();
-      responseData.prescriptions = prescriptions;
-    }
-
-    if (include.includes('labResults') || include.includes('all')) {
-      const labResultQuery: any = { patient: patient._id, ...PATIENT_LAB_RESULT_VISIBLE };
-      if (patientTenantId) {
-        labResultQuery.tenantId = patientTenantId;
-      } else {
-        labResultQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const labResults = await LabResult.find(labResultQuery)
-        .select(PATIENT_LAB_RESULT_HIDDEN)
-        .sort({ orderDate: -1 })
-        .limit(10)
-        .lean();
-      responseData.labResults = labResults.map((r) => toPatientLabResult(r as Record<string, unknown>));
-    }
-
-    if (include.includes('invoices') || include.includes('all')) {
-      const invoiceQuery: any = { patient: patient._id };
-      if (patientTenantId) {
-        invoiceQuery.tenantId = patientTenantId;
-      } else {
-        invoiceQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const invoices = await Invoice.find(invoiceQuery)
-        .select(PATIENT_INVOICE_SELECT)
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .lean();
-      responseData.invoices = invoices;
-    }
-
-    if (include.includes('documents') || include.includes('all')) {
-      const documentQuery: any = { 
-        patient: patient._id,
-        status: 'active',
-        isConfidential: { $ne: true } // Don't show confidential documents
-      };
-      if (patientTenantId) {
-        documentQuery.tenantId = patientTenantId;
-      } else {
-        documentQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const documents = await Document.find(documentQuery)
-        .select('documentCode title description category documentType filename size uploadDate')
-        .sort({ uploadDate: -1 })
-        .limit(20)
-        .lean();
-      responseData.documents = documents;
-    }
-
-    if (include.includes('referrals') || include.includes('all')) {
-      const referralQuery: any = { patient: patient._id, ...PATIENT_REFERRAL_FILTER };
-      if (patientTenantId) {
-        referralQuery.tenantId = patientTenantId;
-      } else {
-        referralQuery.$or = [{ tenantId: { $exists: false } }, { tenantId: null }];
-      }
-      
-      const referringDoctorPopulateOptions: any = {
-        path: 'referringDoctor',
-        select: 'firstName lastName',
-      };
-      if (patientTenantId) {
-        referringDoctorPopulateOptions.match = { tenantId: patientTenantId };
-      } else {
-        referringDoctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-      }
-      
-      const receivingDoctorPopulateOptions: any = {
-        path: 'receivingDoctor',
-        select: 'firstName lastName',
-      };
-      if (patientTenantId) {
-        receivingDoctorPopulateOptions.match = { tenantId: patientTenantId };
-      } else {
-        receivingDoctorPopulateOptions.match = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
-      }
-      
-      const referrals = await Referral.find(referralQuery)
-        .select(PATIENT_REFERRAL_SELECT)
-        .populate(referringDoctorPopulateOptions)
-        .populate(receivingDoctorPopulateOptions)
-        .sort({ referredDate: -1 })
-        .limit(10)
-        .lean();
-      responseData.referrals = referrals;
-    }
 
     return NextResponse.json({
       success: true,

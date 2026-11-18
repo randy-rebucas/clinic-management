@@ -80,7 +80,15 @@ export async function POST(request: NextRequest) {
     // (Unset sorts before true.)
     let patient = await Patient.findOne(ownPhone).sort({ selfRegistered: 1, updatedAt: -1 });
     if (!patient) {
-      const contact = await Patient.findOne(query);
+      // Only an active minor's record can sign in through a contact number. Filter on that in the
+      // query: an adult or inactive record listing the same number came back first before, failed
+      // isMinor, and no code was sent for the child. (A day of slack on the cutoff; isMinor decides.)
+      const minorCutoff = new Date();
+      minorCutoff.setUTCFullYear(minorCutoff.getUTCFullYear() - 18);
+      minorCutoff.setUTCDate(minorCutoff.getUTCDate() - 1);
+      const contact = await Patient.findOne({ ...query, active: { $ne: false }, dateOfBirth: { $gt: minorCutoff } }).sort({
+        updatedAt: -1,
+      });
       if (contact && isMinor(contact.dateOfBirth)) patient = contact;
     }
 

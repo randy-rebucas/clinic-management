@@ -46,7 +46,7 @@ import Appointment from '@/models/Appointment';
 import Doctor from '@/models/Doctor';
 import Patient from '@/models/Patient';
 import User from '@/models/User';
-import { PATCH } from '@/app/api/patients/appointments/[id]/route';
+import { DELETE, PATCH } from '@/app/api/patients/appointments/[id]/route';
 
 const TENANT = new Types.ObjectId('507f1f77bcf86cd799439011');
 const PATIENT = new Types.ObjectId('507f1f77bcf86cd799439012');
@@ -242,5 +242,59 @@ describe('PATCH /api/patients/appointments/[id] (reschedule)', () => {
 
   it('400 for a malformed time', async () => {
     expect((await call({ appointmentDate: '2027-01-16', appointmentTime: '10am' })).status).toBe(400);
+  });
+});
+
+describe('DELETE /api/patients/appointments/[id] (cancel)', () => {
+  const cancel = (id = APPT) =>
+    DELETE(new NextRequest(`http://localhost/api/patients/appointments/${id}`, { method: 'DELETE' }), {
+      params: Promise.resolve({ id }),
+    });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(Appointment.findOne).mockReset();
+    vi.mocked(Appointment.findOneAndUpdate).mockReset();
+    vi.mocked(verifyPatientAuth).mockResolvedValue({ patientId: String(PATIENT), email: 'p@x.y', type: 'patient' } as any);
+    vi.mocked(Patient.findById).mockReturnValue(lean({ _id: PATIENT, tenantIds: [TENANT], firstName: 'Juan', lastName: 'Reyes' }) as any);
+    vi.mocked(linkedRecords).mockResolvedValue({ patientIds: [PATIENT], tenantIds: [TENANT] } as any);
+    vi.mocked(User.find).mockReturnValue(lean([{ _id: DOCTOR_USER }]) as any);
+  });
+
+  it('cancels only while still open, then logs it and tells the front desk and the doctor', async () => {
+    vi.mocked(Appointment.findOne).mockResolvedValueOnce(current() as any);
+    vi.mocked(Appointment.findOneAndUpdate).mockResolvedValueOnce(current({ status: 'cancelled' }) as any);
+
+    const res = await cancel();
+    expect(res.status).toBe(200);
+    const [filter, update] = vi.mocked(Appointment.findOneAndUpdate).mock.calls[0] as any[];
+    expect(filter).toMatchObject({ _id: new Types.ObjectId(APPT), tenantId: TENANT, status: { $nin: ['completed', 'cancelled', 'no-show'] } });
+    expect(update.$set.status).toBe('cancelled');
+    // The staff notice runs in after(): let its lookups settle.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ resource: 'appointment', changes: [{ field: 'status', oldValue: 'confirmed', newValue: 'cancelled' }] })
+    );
+    expect(notifyStaff).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Appointment cancelled by patient',
+        audience: expect.objectContaining({ userIds: [DOCTOR_USER] }),
+      })
+    );
+  });
+
+  it('409 when staff closed the appointment meanwhile (never overwrites completed or no-show)', async () => {
+    vi.mocked(Appointment.findOne).mockResolvedValueOnce(current() as any);
+    vi.mocked(Appointment.findOneAndUpdate).mockResolvedValueOnce(null);
+
+    expect((await cancel()).status).toBe(409);
+    expect(createAuditLog).not.toHaveBeenCalled();
+    expect(notifyStaff).not.toHaveBeenCalled();
+  });
+
+  it('400 for an appointment already closed', async () => {
+    vi.mocked(Appointment.findOne).mockResolvedValueOnce(current({ status: 'no-show' }) as any);
+    expect((await cancel()).status).toBe(400);
+    expect(Appointment.findOneAndUpdate).not.toHaveBeenCalled();
   });
 });

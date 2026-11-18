@@ -8,6 +8,8 @@ import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { parsePagination, resolveTenantFilter } from '../_lib/patient-scope';
 import { linkedRecords } from '../_lib/linked-records';
 import { PATIENT_LAB_RESULT_HIDDEN, PATIENT_LAB_RESULT_VISIBLE, toPatientLabResult } from '../_lib/lab-result-fields';
+import { LOCKED_LAB_RESULT_FIELDS, pickFields } from '../_lib/locked-list';
+import { requireActiveEmcr } from '@/lib/emcr/activation';
 
 /**
  * GET /api/patients/me/lab-results
@@ -51,9 +53,16 @@ export async function GET(request: NextRequest) {
       LabResult.countDocuments(query),
     ]);
 
+    // Without an active eMCR year: which tests exist, not their values (_lib/locked-list.ts).
+    const locked = (await requireActiveEmcr(session, 'records')) !== null;
+    const data = labResults.map((r) =>
+      locked ? pickFields(r as Record<string, unknown>, LOCKED_LAB_RESULT_FIELDS) : toPatientLabResult(r as Record<string, unknown>)
+    );
+
     return NextResponse.json({
       success: true,
-      data: labResults.map((r) => toPatientLabResult(r as Record<string, unknown>)),
+      data,
+      ...(locked ? { activationRequired: true } : {}),
       pagination: {
         total,
         page,

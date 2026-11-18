@@ -482,6 +482,8 @@ const PatientSchema: Schema = new Schema(
 
     // Automation sent markers (prevent duplicate outreach on cron reruns)
     lastBirthdayGreetingAt: { type: Date },
+    // Last eMCR sign-in instructions sent for an access request (one per day: app/api/emcr/access-requests).
+    emcrInstructionsSentAt: { type: Date },
     lastHealthReminderAt: { type: Date },
     reengagementSentAt: { type: Date },
     appointmentRestriction: {
@@ -503,6 +505,11 @@ PatientSchema.index({ tenantIds: 1, dateOfBirth: 1 }); // Tenant-scoped age quer
 PatientSchema.index({ tenantIds: 1, sex: 1 }); // Tenant-scoped gender queries
 PatientSchema.index({ tenantIds: 1, active: 1 }); // Tenant-scoped active patient queries
 PatientSchema.index({ loginQrTokenHash: 1 }, { sparse: true });
+// Sign-in lookups run before a clinic is known (phone OTP, email + password, eMCR claim and
+// record linking), so they can't use the tenant-scoped indexes above.
+PatientSchema.index({ phone: 1 });
+PatientSchema.index({ 'contacts.phone': 1 }, { sparse: true });
+PatientSchema.index({ email: 1 }, { sparse: true });
 PatientSchema.index({ 'guardians.patient': 1 }, { sparse: true }); // Family accounts: a guardian's dependents
 PatientSchema.index({ tenantIds: 1, 'identifiers.philHealth': 1 }); // Tenant-scoped PhilHealth lookups
 PatientSchema.index({ tenantIds: 1, 'identifiers.govId': 1 }); // Tenant-scoped government ID lookups

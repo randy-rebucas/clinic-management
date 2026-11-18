@@ -28,11 +28,11 @@ describe('linkRecordsByVerifiedPhone', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("links the same person's record at another clinic, not a family member sharing the phone", async () => {
-    vi.mocked(Patient.findById).mockReturnValue(one({ _id: SELF, phone: '09171234567', dateOfBirth: DOB }) as any);
+    vi.mocked(Patient.findById).mockReturnValue(one({ _id: SELF, firstName: 'Ana', lastName: 'Cruz', phone: '09171234567', dateOfBirth: DOB }) as any);
     vi.mocked(Patient.find).mockReturnValue(
       many([
-        { _id: OTHER, dateOfBirth: new Date('1990-05-01T00:00:00Z') },
-        { _id: CHILD, dateOfBirth: new Date('2015-02-03T00:00:00Z') },
+        { _id: OTHER, firstName: 'Ana Marie', lastName: 'Cruz', dateOfBirth: new Date('1990-05-01T00:00:00Z') },
+        { _id: CHILD, firstName: 'Ben', lastName: 'Cruz', dateOfBirth: new Date('2015-02-03T00:00:00Z') },
       ])
     );
 
@@ -47,8 +47,8 @@ describe('linkRecordsByVerifiedPhone', () => {
 
   it('merges into an existing account', async () => {
     const ACCOUNT = new Types.ObjectId('507f1f77bcf86cd799439066');
-    vi.mocked(Patient.findById).mockReturnValue(one({ _id: SELF, phone: '09171234567', dateOfBirth: DOB }) as any);
-    vi.mocked(Patient.find).mockReturnValue(many([{ _id: OTHER, dateOfBirth: DOB, accountId: ACCOUNT }]));
+    vi.mocked(Patient.findById).mockReturnValue(one({ _id: SELF, firstName: 'Ana', lastName: 'Cruz', phone: '09171234567', dateOfBirth: DOB }) as any);
+    vi.mocked(Patient.find).mockReturnValue(many([{ _id: OTHER, firstName: 'ANA', lastName: 'Cruz', dateOfBirth: DOB, accountId: ACCOUNT }]));
 
     await linkRecordsByVerifiedPhone(String(SELF), '09171234567');
 
@@ -56,6 +56,19 @@ describe('linkRecordsByVerifiedPhone', () => {
       { $or: [{ _id: { $in: [SELF, OTHER] } }, { accountId: { $in: [ACCOUNT] } }] },
       { $set: { accountId: ACCOUNT } }
     );
+  });
+
+  it('keeps twins on one number apart (same birth date, different first name)', async () => {
+    vi.mocked(Patient.findById).mockReturnValue(
+      one({ _id: SELF, firstName: 'Maria Clara', lastName: 'Cruz', phone: '09171234567', dateOfBirth: DOB }) as any
+    );
+    vi.mocked(Patient.find).mockReturnValue(
+      many([{ _id: OTHER, firstName: 'Maria Teresa', lastName: 'Cruz', dateOfBirth: DOB }])
+    );
+
+    await linkRecordsByVerifiedPhone(String(SELF), '09171234567');
+
+    expect(Patient.updateMany).not.toHaveBeenCalled();
   });
 
   it("links nothing when the code was sent to the record's contact number, not its own phone", async () => {

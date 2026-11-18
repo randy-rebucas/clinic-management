@@ -8,6 +8,8 @@ import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { parsePagination, resolveTenantFilter } from '../_lib/patient-scope';
 import { linkedRecords } from '../_lib/linked-records';
 import { PATIENT_VISIT_EXCLUDE, PATIENT_VISIT_VISIBLE } from '../_lib/visit-fields';
+import { LOCKED_VISIT_FIELDS, pickFields } from '../_lib/locked-list';
+import { requireActiveEmcr } from '@/lib/emcr/activation';
 
 /**
  * GET /api/patients/me/visits
@@ -53,9 +55,13 @@ export async function GET(request: NextRequest) {
       Visit.countDocuments(visitQuery),
     ]);
 
+    // Without an active eMCR year: when and with whom, not the clinical content (locked-list.ts).
+    const locked = (await requireActiveEmcr(session, 'records')) !== null;
+
     return NextResponse.json({
       success: true,
-      data: visits,
+      data: locked ? visits.map((v) => pickFields(v as Record<string, any>, LOCKED_VISIT_FIELDS)) : visits,
+      ...(locked ? { activationRequired: true } : {}),
       pagination: {
         total,
         page,

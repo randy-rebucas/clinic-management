@@ -114,6 +114,20 @@ describe('patient referrals', () => {
     for (const hidden of ['notes', 'followUpNotes', 'feedback', 'declinedReason']) expect(item).not.toHaveProperty(hidden);
   });
 
+  it('without an active eMCR year the list shows who to and when, never why', async () => {
+    const { NextResponse } = await import('next/server');
+    vi.mocked(requireActiveEmcr).mockResolvedValueOnce(NextResponse.json({ code: 'ACTIVATION_REQUIRED' }, { status: 402 }));
+    vi.mocked(Referral.find).mockReturnValue(chain([referralRow()]));
+    vi.mocked(Referral.countDocuments).mockResolvedValue(1 as any);
+
+    const res = await list(new NextRequest('http://localhost/api/patients/me/referrals'));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.activationRequired).toBe(true);
+    expect(body.data[0]).toMatchObject({ _id: REFERRAL_ID, status: 'accepted', specialty: 'Cardiology' });
+    expect(body.data[0].reason).toBeUndefined();
+  });
+
   it('detail is gated by eMCR records and scoped like the other /me detail routes', async () => {
     vi.mocked(Referral.findOne).mockReturnValue(chain(referralRow()));
     expect((await call(detail)).status).toBe(200);

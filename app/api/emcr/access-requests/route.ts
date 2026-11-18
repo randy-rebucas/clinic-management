@@ -80,6 +80,8 @@ export async function POST(request: NextRequest) {
 
 type AccessRequestBody = z.infer<typeof RequestSchema>;
 
+const INSTRUCTIONS_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
 async function handleAccessRequest(body: AccessRequestBody, contactPhone: string | null): Promise<void> {
   await connectDB();
   const tenantId = new Types.ObjectId(body.tenantId);
@@ -104,6 +106,19 @@ async function handleAccessRequest(body: AccessRequestBody, contactPhone: string
   const match = matches.length === 1 ? matches[0] : null;
 
   if (match && (normalizePhone(match.phone ?? '') || match.email)) {
+    // At most one set of instructions per patient per day: anyone who knows a name, birth date and
+    // clinic can send requests, and each one used to text the patient again.
+    const claimed = await Patient.updateOne(
+      {
+        _id: match._id,
+        $or: [{ emcrInstructionsSentAt: { $exists: false } }, { emcrInstructionsSentAt: { $lt: new Date(Date.now() - INSTRUCTIONS_INTERVAL_MS) } }],
+      },
+      { $set: { emcrInstructionsSentAt: new Date() } }
+    );
+    if (claimed.modifiedCount === 0) {
+      logger.info('eMCR access request: instructions already sent today', { tenantId: body.tenantId, patientId: String(match._id) });
+      return;
+    }
     const sent = await sendSignInInstructions({
       firstName: match.firstName,
       phone: match.phone,
@@ -114,6 +129,8 @@ async function handleAccessRequest(body: AccessRequestBody, contactPhone: string
       logger.info('eMCR access request answered automatically', { tenantId: body.tenantId, patientId: String(match._id) });
       return;
     }
+    // Nothing went out: free the day's slot so the next request can try again.
+    await Patient.updateOne({ _id: match._id }, { $unset: { emcrInstructionsSentAt: 1 } });
   }
 
   // Nothing on file to reach them, or no single match: the clinic takes it from here. The contact
