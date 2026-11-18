@@ -76,6 +76,8 @@ MobileDeviceSchema.index(
 
 // The rep devices route drops other registrations of the same push token (a reinstalled phone).
 MobileDeviceSchema.index({ pushToken: 1 }, { partialFilterExpression: { pushToken: { $type: 'string' } } });
+// Registering a device revokes other accounts' rows for the same deviceId (patient devices route).
+MobileDeviceSchema.index({ deviceId: 1 });
 
 export default mongoose.models.MobileDevice ||
   mongoose.model<IMobileDevice>('MobileDevice', MobileDeviceSchema);

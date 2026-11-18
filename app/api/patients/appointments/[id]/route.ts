@@ -87,14 +87,73 @@ export async function DELETE(
       );
     }
 
-    appointment.status = 'cancelled';
-    appointment.notes = `${appointment.notes ? appointment.notes + '\n' : ''}Cancelled by patient on ${new Date().toISOString()}`;
-    await appointment.save();
+    // Only while still open: a status staff set meanwhile (completed, no-show) is never overwritten.
+    const cancelled = await Appointment.findOneAndUpdate(
+      { _id: appointment._id, tenantId: appointment.tenantId, status: { $nin: CLOSED_STATUSES } },
+      {
+        $set: {
+          status: 'cancelled',
+          notes: `${appointment.notes ? appointment.notes + '\n' : ''}Cancelled by patient on ${new Date().toISOString()}`,
+        },
+      },
+      { new: true }
+    );
+    if (!cancelled) {
+      return NextResponse.json(
+        { success: false, error: 'This appointment was just changed. Please refresh and try again.' },
+        { status: 409 }
+      );
+    }
 
     logger.info('Patient cancelled appointment', {
       patientId: sessionData.patientId,
       appointmentId: id,
       appointmentCode: appointment.appointmentCode,
+    });
+
+    // As a reschedule does: an audit entry, and the front desk and the doctor are told.
+    const tenantId = appointment.tenantId;
+    const code: string = appointment.appointmentCode ?? 'an appointment';
+    const when = appointment.appointmentDate
+      ? slotLabel(appointment.appointmentDate, appointment.appointmentTime || '00:00', tz)
+      : 'its scheduled time';
+    after(() =>
+      createAuditLog({
+        userId: sessionData.guardianId ?? sessionData.patientId,
+        userEmail: sessionData.email,
+        userRole: 'patient',
+        tenantId,
+        action: 'update',
+        resource: 'appointment',
+        resourceId: String(appointment._id),
+        dataSubject: String(appointment.patient),
+        description: `Patient cancelled appointment ${code} on ${when}${sessionData.guardianId ? ' (by a family member)' : ''}`,
+        changes: [{ field: 'status', oldValue: appointment.status, newValue: 'cancelled' }],
+      })
+    );
+    after(async () => {
+      try {
+        const [person, doctorUsers] = await Promise.all([
+          Patient.findById(appointment.patient).select('firstName lastName').lean<{ firstName?: string; lastName?: string } | null>(),
+          appointment.doctor
+            ? User.find({ tenantId, doctorProfile: appointment.doctor, status: 'active' }).select('_id').lean<{ _id: unknown }[]>()
+            : Promise.resolve([] as { _id: unknown }[]),
+        ]);
+        const name = `${person?.firstName ?? ''} ${person?.lastName ?? ''}`.trim() || 'A patient';
+        await notifyStaff({
+          tenantId: String(tenantId),
+          audience: { roles: FRONT_DESK_ROLES, userIds: doctorUsers.map((u) => String(u._id)) },
+          type: 'appointment',
+          priority: 'normal',
+          title: 'Appointment cancelled by patient',
+          message: `${name} cancelled ${code} on ${when}. The slot is free again.`,
+          actionUrl: `/appointments/${appointment._id}`,
+          sender: { kind: 'system' },
+          metadata: { appointmentId: String(appointment._id) },
+        });
+      } catch (error) {
+        logger.error('Staff notification for a patient cancellation failed', error as Error);
+      }
     });
 
     return NextResponse.json({

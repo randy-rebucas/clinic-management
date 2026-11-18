@@ -10,7 +10,7 @@ vi.mock('next/server', async (importOriginal) => ({
   },
 }));
 vi.mock('@/lib/mongodb', () => ({ default: vi.fn() }));
-vi.mock('@/models/Patient', () => ({ default: { findById: vi.fn(), find: vi.fn() } }));
+vi.mock('@/models/Patient', () => ({ default: { findById: vi.fn(), find: vi.fn(), updateOne: vi.fn().mockResolvedValue({ modifiedCount: 1 }) } }));
 vi.mock('@/models/Tenant', () => ({ default: { findOne: vi.fn(), find: vi.fn() } }));
 vi.mock('@/models/EmcrAccount', () => ({ default: { findById: vi.fn() } }));
 vi.mock('@/models/EmcrAccessRequest', () => ({ default: { updateOne: vi.fn() } }));
@@ -151,6 +151,7 @@ describe('POST /api/emcr/access-requests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(Tenant.findOne).mockReturnValue(selectLean({ name: 'Clinic A' }) as any);
+    vi.mocked(Patient.updateOne).mockResolvedValue({ modifiedCount: 1 } as any);
   });
 
   function records(list: unknown[]) {
@@ -164,6 +165,15 @@ describe('POST /api/emcr/access-requests', () => {
     expect(response.status).toBe(200);
     expect(sendSignInInstructions).toHaveBeenCalledWith(expect.objectContaining({ phone: '09171234567' }));
     expect(JSON.stringify(vi.mocked(sendSignInInstructions).mock.calls)).not.toContain('9998887777');
+    expect(EmcrAccessRequest.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('texts a patient at most once a day, however many requests arrive', async () => {
+    records([{ _id: new Types.ObjectId(CHILD), firstName: 'Maria', lastName: 'Santos', dateOfBirth: new Date('1990-03-04T00:00:00Z'), phone: '09171234567' }]);
+    vi.mocked(Patient.updateOne).mockResolvedValueOnce({ modifiedCount: 0 } as any);
+    const response = await call();
+    expect(response.status).toBe(200);
+    expect(sendSignInInstructions).not.toHaveBeenCalled();
     expect(EmcrAccessRequest.updateOne).not.toHaveBeenCalled();
   });
 

@@ -4,6 +4,7 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import { normalizePhone } from '@/lib/phone';
 import { phoneVariants } from '@/app/api/patients/auth/shared';
+import { sameStoredName } from '@/lib/emcr/name-match';
 
 /**
  * One person usually has a separate patient record at each clinic they visit (clinics register
@@ -12,8 +13,8 @@ import { phoneVariants } from '@/app/api/patients/auth/shared';
  *
  * Linking happens on phone-OTP sign-in only: the OTP proves the caller controls the phone, and a
  * record is linked when its own phone (not an emergency-contact number) is that number and its
- * date of birth matches. The birth-date check keeps a parent and children who share one phone
- * number in separate logins.
+ * date of birth and name match. The birth-date check keeps a parent and children who share one
+ * phone number in separate logins; the name check keeps twins on one number apart.
  */
 
 /** Upper bound on records one phone number links (a shared clinic or family line stays bounded). */
@@ -84,15 +85,23 @@ function birthDay(value: unknown): string | null {
 
 /**
  * After a phone-OTP sign-in to `patientId` with `phone`: give every active record of the same
- * person (same own phone number, same date of birth) one shared `accountId`, merging any groups
+ * person (same own phone number, date of birth and name) one shared `accountId`, merging any groups
  * those records were already in. Does nothing when the signed-in record's own phone is not that
  * number (the code went to it as an emergency contact).
  */
 export async function linkRecordsByVerifiedPhone(patientId: string, phone: string): Promise<void> {
   await connectDB();
   const self = await Patient.findById(patientId)
-    .select('phone dateOfBirth accountId selfRegistered')
-    .lean<{ _id: Types.ObjectId; phone?: string; dateOfBirth?: Date; accountId?: Types.ObjectId; selfRegistered?: boolean } | null>();
+    .select('firstName lastName phone dateOfBirth accountId selfRegistered')
+    .lean<{
+      _id: Types.ObjectId;
+      firstName?: string;
+      lastName?: string;
+      phone?: string;
+      dateOfBirth?: Date;
+      accountId?: Types.ObjectId;
+      selfRegistered?: boolean;
+    } | null>();
   // Unreviewed public-form records never join a cross-clinic login (Patient.selfRegistered).
   if (!self?.phone || self.selfRegistered) return;
 
@@ -107,11 +116,12 @@ export async function linkRecordsByVerifiedPhone(patientId: string, phone: strin
     active: { $ne: false },
     selfRegistered: { $ne: true },
   })
-    .select('dateOfBirth accountId')
+    .select('firstName lastName dateOfBirth accountId')
     .limit(MAX_LINKED_RECORDS)
-    .lean<{ _id: Types.ObjectId; dateOfBirth?: Date; accountId?: Types.ObjectId }[]>();
+    .lean<{ _id: Types.ObjectId; firstName?: string; lastName?: string; dateOfBirth?: Date; accountId?: Types.ObjectId }[]>();
 
-  const samePerson = candidates.filter((c) => birthDay(c.dateOfBirth) === dob);
+  // Twins registered on one number share a birth date: the name tells them apart.
+  const samePerson = candidates.filter((c) => birthDay(c.dateOfBirth) === dob && sameStoredName(self, c));
   if (!samePerson.length) return;
 
   const groups = uniqueIds([self.accountId, ...samePerson.map((c) => c.accountId)]);

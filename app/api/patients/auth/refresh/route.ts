@@ -3,7 +3,8 @@ import connectDB from '@/lib/mongodb';
 import Patient from '@/models/Patient';
 import logger from '@/lib/logger';
 import { applyRateLimit, rateLimiters } from '@/lib/middleware/rate-limit';
-import { emcrAccountPasswordChange, emcrAccountSessionVersion, issuePatientToken, PATIENT_TOKEN_TTL_SECONDS } from '@/app/lib/dal';
+import { emcrAccountPasswordChange, emcrAccountRefreshState, issuePatientToken, PATIENT_TOKEN_TTL_SECONDS } from '@/app/lib/dal';
+import { accountAccess } from '@/lib/emcr/account';
 import {
   consumeRefreshToken,
   issueRefreshToken,
@@ -66,12 +67,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // A guardian chain also dies when its eMCR account's session version moves on (account
-    // password set/reset, "sign out everywhere"): no Patient.sessionVersion bump reaches it.
-    const accountVersion = acc ? await emcrAccountSessionVersion(acc) : undefined;
-    if (rel === 'guardian' && (av ?? 0) !== accountVersion) {
+    // The chain dies with its eMCR account (deleted or disabled by the clinic): every request
+    // would refuse the new token anyway (verifyPatientSession), which left the app in a
+    // 401 → refresh → 401 loop.
+    const account = acc ? await emcrAccountRefreshState(acc) : undefined;
+    if (account && !account.ok) {
       await revokeRefreshFamily(family);
       return invalid('REFRESH_INVALID');
+    }
+    const accountVersion = account?.sessionVersion;
+    if (rel === 'guardian') {
+      // A guardian chain also dies when its account's session version moves on (account
+      // password set/reset, "sign out everywhere"): no Patient.sessionVersion bump reaches it.
+      // And when the account no longer manages the record (dependent removed, turned 18, or the
+      // link's clinic is outside this session's scope), as verifyPatientAuth would refuse it.
+      const access = acc ? await accountAccess(acc, subjectId) : null;
+      const outOfScope = !!(access?.tid && tid && access.tid !== tid);
+      if ((av ?? 0) !== accountVersion || !access || outOfScope) {
+        await revokeRefreshFamily(family);
+        return invalid('REFRESH_INVALID');
+      }
     }
 
     // A chain begun with a clinic's temporary password keeps owing the change (`pwc`) until the

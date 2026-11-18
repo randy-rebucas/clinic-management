@@ -8,6 +8,8 @@ import { patientAuthError, verifyPatientAuth } from '@/app/lib/patient-auth';
 import { parsePagination, resolveTenantFilter } from '../_lib/patient-scope';
 import { linkedRecords } from '../_lib/linked-records';
 import { clinicNames } from '../_lib/clinic-names';
+import { dropFields, LOCKED_REFERRAL_DROP } from '../_lib/locked-list';
+import { requireActiveEmcr } from '@/lib/emcr/activation';
 import {
   PATIENT_REFERRAL_FILTER,
   PATIENT_REFERRAL_SELECT,
@@ -54,9 +56,14 @@ export async function GET(request: NextRequest) {
     ]);
     const names = await clinicNames(rows.map((r) => r.tenantId));
 
+    // Without an active eMCR year: who to and when, not why (locked-list.ts).
+    const locked = (await requireActiveEmcr(session, 'records')) !== null;
+    const data = rows.map((r) => toPatientReferral(r, names));
+
     return NextResponse.json({
       success: true,
-      data: rows.map((r) => toPatientReferral(r, names)),
+      data: locked ? data.map((r) => dropFields(r as Record<string, any>, LOCKED_REFERRAL_DROP)) : data,
+      ...(locked ? { activationRequired: true } : {}),
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     });
   } catch (error) {
