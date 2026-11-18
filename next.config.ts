@@ -121,6 +121,10 @@ const nextConfig: NextConfig = {
   // Turbopack configuration (Next.js 16 uses Turbopack by default)
   // Empty config to silence the warning about webpack vs turbopack
   turbopack: {},
+
+  experimental: {
+    agentUpgrade: "security",
+  },
 };
 
 // Always inline the browser DSN (empty when unset): Turbopack leaves an undefined NEXT_PUBLIC_* var

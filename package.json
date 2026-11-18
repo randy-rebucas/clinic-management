@@ -67,7 +67,7 @@
     "jose": "^6.1.2",
     "lucide-react": "^0.563.0",
     "mongoose": "^8.24.9",
-    "next": "^16.4.1",
+    "next": "^16.4.6",
     "otplib": "^13.4.0",
     "puppeteer-core": "^25.14.0",
     "qrcode": "^1.5.4",
@@ -81,7 +81,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@next/bundle-analyzer": "^16.4.1",
+    "@next/bundle-analyzer": "^16.4.6",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.1.5",
     "@testing-library/react": "^16.0.1",
@@ -96,7 +96,7 @@
     "baseline-browser-mapping": "^2.10.11",
     "dotenv": "^17.2.3",
     "eslint": "^9",
-    "eslint-config-next": "16.4.1",
+    "eslint-config-next": "16.4.6",
     "tailwindcss": "^4",
     "tsx": "^4.20.6",
     "typescript": "^5",
