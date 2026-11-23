@@ -114,7 +114,7 @@ const sections: LegalSection[] = [
         </P>
         <List
           items={[
-            'Some features may require activation with a voucher bought for cash at a participating clinic (₱80)',
+            'Some features may require activation with a voucher bought for cash at a participating clinic (₱80) or online on this website through PayMongo',
             'Each voucher activates the eMCR account for one year; renewals add a year to the current expiry',
             'Vouchers are non-refundable and cannot be exchanged for cash',
             'You can always view a basic summary of your own records without activation',

@@ -1,3 +1,4 @@
+import QRCode from 'qrcode';
 import { formatInTz } from '@/lib/tz';
 import type { IssuedSeal } from '@/lib/document-seal';
 import type { Signer } from '@/lib/doctor-signature';
@@ -8,6 +9,9 @@ import { escapeHtml as e, sealedDocumentParts } from '@/lib/document-protection'
  * patient app's e-prescription download, so both produce the same document.
  */
 export type PaperSize = 'A5' | 'A4';
+
+/** Fixed target of the eMCR app QR, so every clinic's prescription links to the same page. */
+const EMCR_DOWNLOAD_URL = 'https://www.myclinicsoft.solutions/download';
 
 // A5 is half of A4, so it gets a tighter margin, narrower screen preview and smaller type.
 const A5_OVERRIDES = `
@@ -26,9 +30,11 @@ const A5_OVERRIDES = `
     .signature-box { margin-top: 28px; min-width: 160px; }
     .footer { font-size: 10px; }
     .footer p { line-height: 12px; }
+    .emcr-app { font-size: 9px; gap: 6px; }
+    .emcr-app img { width: 56px; height: 56px; }
 `;
 
-export function generatePrescriptionHTML(
+export async function generatePrescriptionHTML(
   prescription: any,
   copyType: string,
   signer: Signer | null,
@@ -37,8 +43,14 @@ export function generatePrescriptionHTML(
   seal: IssuedSeal,
   paperSize: PaperSize,
   tz: string
-): string {
+): Promise<string> {
   const isA5 = paperSize === 'A5';
+  // eMCR app QR: /download sends the scanner to their phone's app store.
+  const emcrQrSrc = await QRCode.toDataURL(EMCR_DOWNLOAD_URL, {
+    errorCorrectionLevel: 'M',
+    margin: 1,
+    width: 200,
+  });
 
   const patient = prescription.patient || {};
   const provider = prescription.prescribedBy;
@@ -152,6 +164,19 @@ export function generatePrescriptionHTML(
       margin: unset;
       line-height: 14px;
     }
+    .emcr-app {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-align: left;
+      font-size: 11px;
+      line-height: 1.3;
+    }
+    .emcr-app img {
+      width: 72px;
+      height: 72px;
+      flex: 0 0 auto;
+    }
     ${isA5 ? A5_OVERRIDES : ''}
   </style>
 </head>
@@ -169,7 +194,7 @@ export function generatePrescriptionHTML(
           <div style="font-size: 14px; color: #333;">${settingInfo?.clinicEmail ? 'Email: ' + e(settingInfo.clinicEmail) : ''}</div>
         </div>
         <div style="text-align: right;">
-          <h2 style="margin: 0; color: #333;">PRESCRIPTION ${isPatientCopy ? '(PATIENT COPY)' : '(CLINIC COPY)'}</h2>
+          <h2 style="margin: 0; color: #333;">${isPatientCopy ? 'PATIENT COPY' : 'CLINIC COPY'}</h2>
           <strong>Code:</strong> ${e(prescription.prescriptionCode)}<br>
           ${patient.patientCode ? `<strong>Patient Code:</strong> ${e(patient.patientCode)}<br>` : ''}
           ${(() => {
@@ -249,7 +274,7 @@ export function generatePrescriptionHTML(
               ${med.route ? `<span><strong>Route:</strong> ${e(med.route)}</span>` : ''}
               ${med.frequency ? `<span><strong>Freq:</strong> ${e(med.frequency)}</span>` : ''}
               ${med.durationDays ? `<span><strong>For:</strong> ${e(med.durationDays)} day(s)</span>` : ''}
-              ${med.instructions ? `<span><strong>Sig:</strong> <b>${e(med.instructions)}</b></span>` : ''}
+              ${med.instructions ? `<span><b>${e(med.instructions)}</b></span>` : ''}
               ${med.quantity ? `<span><strong>#</strong> ${e(med.quantity)}</span>` : ''}
             </div>
           </div>
@@ -304,13 +329,24 @@ export function generatePrescriptionHTML(
       </div>
       </div>
 
-      <p style="margin-top: 10px;">This prescription was generated digitally by ${e(clinicName)}.</p>
-      <p>Please verify all information before dispensing. For questions or concerns, contact:</p>
-      <p>
-        ${settingInfo?.clinicPhone ? 'Tel: ' + e(settingInfo.clinicPhone) : ''}<br>
-        ${settingInfo?.clinicEmail ? 'Email: ' + e(settingInfo.clinicEmail) : ''}
-      </p>
-      <p style="margin-top: 8px; font-weight: bold; color: #333;">Powered by: DevCom Digital Marketing Services</p>
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 10px;">
+        <div class="emcr-app">
+          <img src="${emcrQrSrc}" alt="QR code to get the eMCR app" />
+          <div>
+            <strong>Get the eMCR app</strong><br>
+            Scan to view your prescriptions,<br>records and results on your phone.
+          </div>
+        </div>
+        <div style="flex: 1 1 auto; text-align: center;">
+          <p>This prescription was generated digitally by ${e(clinicName)}.</p>
+          <p>Please verify all information before dispensing. For questions or concerns, contact:</p>
+          <p>
+            ${settingInfo?.clinicPhone ? 'Tel: ' + e(settingInfo.clinicPhone) : ''}<br>
+            ${settingInfo?.clinicEmail ? 'Email: ' + e(settingInfo.clinicEmail) : ''}
+          </p>
+          <p style="margin-top: 8px; font-weight: bold; color: #333;">Powered by: DevCom Digital Marketing Services</p>
+        </div>
+      </div>
     </div>
   </div>
 </body>

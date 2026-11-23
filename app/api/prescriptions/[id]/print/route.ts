@@ -110,7 +110,7 @@ export async function GET(
       : null;
 
     // Generate HTML for printable prescription
-    const html = generatePrescriptionHTML(prescription, copyType, signer, signatureSrc, settingInfo, seal, paperSize, tz);
+    const html = await generatePrescriptionHTML(prescription, copyType, signer, signatureSrc, settingInfo, seal, paperSize, tz);
     after(() =>
       logPrinted({
         session,
