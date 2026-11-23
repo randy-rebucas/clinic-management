@@ -85,6 +85,7 @@ export const MARKETING_ONLY_PATHS = [
   '/medical-representatives',
   '/marketing-funnel',
   '/delete-account',
+  '/voucher',
 ];
 
 export function isMarketingOnlyPath(pathname: string): boolean {

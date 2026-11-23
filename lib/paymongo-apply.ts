@@ -12,6 +12,7 @@ import { isPaidPlan } from '@/lib/subscription-period';
 import { paidTotal, type CheckoutSession } from '@/lib/paymongo';
 import { applyRepSubscriptionPayment, applyTeamPayment } from '@/lib/rep-billing';
 import { applySponsorshipPayment } from '@/lib/clinic-sponsorship';
+import { applyVoucherPurchasePayment } from '@/lib/emcr/voucher-purchase';
 
 export type ApplyResult = { ok: true; applied: boolean; detail?: string } | { ok: false; retry: boolean; error: string };
 
@@ -19,7 +20,7 @@ const isOid = (v: unknown): v is string => typeof v === 'string' && Types.Object
 
 /**
  * Apply a paid PayMongo checkout to what it was for, once: a subscription period, a payment on
- * an invoice, a medical rep's activation, or a rep's own or team subscription. `session` must come from PayMongo (a signed webhook,
+ * an invoice, a medical rep's activation, a rep's own or team subscription, or an eMCR voucher. `session` must come from PayMongo (a signed webhook,
  * or retrieved with our secret key), so its metadata, which we set, can be trusted.
  * Safe to call again for the same session: each purpose checks it hasn't been applied.
  */
@@ -112,6 +113,11 @@ export async function applyPaidCheckout(session: CheckoutSession): Promise<Apply
   if (m.purpose === 'medrep-subscription' || m.purpose === 'medrep-team') {
     const r = m.purpose === 'medrep-team' ? await applyTeamPayment(m, paid, paymentId) : await applyRepSubscriptionPayment(m, paid, paymentId);
     return r.ok ? { ok: true, applied: r.applied } : { ok: false, retry: false, error: r.error };
+  }
+
+  if (m.purpose === 'emcr-voucher') {
+    // A patient buying an eMCR activation code at /voucher.
+    return applyVoucherPurchasePayment(m, paid, paymentId, session.id);
   }
 
   return { ok: false, retry: false, error: `Unknown checkout purpose ${m.purpose}` };

@@ -24,7 +24,7 @@ interface EmcrAccountView {
   createdAt: string;
 }
 
-const SOURCE_LABEL: Record<string, string> = { code: 'Voucher', manual: 'By hand' };
+const SOURCE_LABEL: Record<string, string> = { code: 'Clinic voucher', online: 'Online voucher', manual: 'By hand' };
 
 /** Support: find an eMCR account by its mobile number, see its activation, grant days by hand. */
 export default function EmcrAccountLookup() {

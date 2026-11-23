@@ -6,12 +6,14 @@ vi.mock('@/models/ActivationCode', () => ({
   default: { findOne: vi.fn(), findOneAndUpdate: vi.fn(), updateOne: vi.fn(), insertMany: vi.fn(), find: vi.fn() },
 }));
 vi.mock('@/models/VoucherBatch', () => ({ default: { findById: vi.fn() } }));
+vi.mock('@/models/VoucherPurchase', () => ({ default: { findById: vi.fn() } }));
 vi.mock('@/models/EmcrAccount', () => ({ default: { findOneAndUpdate: vi.fn(), findById: vi.fn(), findOne: vi.fn() } }));
 vi.mock('@/lib/emcr/account', () => ({ findAccountForSession: vi.fn() }));
 
 import { Types } from 'mongoose';
 import ActivationCode from '@/models/ActivationCode';
 import VoucherBatch from '@/models/VoucherBatch';
+import VoucherPurchase from '@/models/VoucherPurchase';
 import EmcrAccount from '@/models/EmcrAccount';
 import { findAccountForSession } from '@/lib/emcr/account';
 import {
@@ -106,6 +108,25 @@ describe('redeemActivationCode', () => {
     batch('unpaid');
     expect(await redeemActivationCode(ACCOUNT, 'ABCD-EFGH-JKMN', NOW)).toEqual({ ok: false, reason: 'not_paid' });
     expect(ActivationCode.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it('redeems a code bought online once its purchase is paid, with no batch or clinic in the history', async () => {
+    const PURCHASE = new Types.ObjectId('507f1f77bcf86cd799439077');
+    vi.mocked(ActivationCode.findOne).mockReturnValue(query({ _id: CODE_ID, purchaseId: PURCHASE, status: 'unsold' }) as any);
+    vi.mocked(VoucherPurchase.findById).mockReturnValue(query({ status: 'pending', days: 365 }) as any);
+    expect(await redeemActivationCode(ACCOUNT, 'ABCD-EFGH-JKMN', NOW)).toEqual({ ok: false, reason: 'not_paid' });
+
+    vi.mocked(VoucherPurchase.findById).mockReturnValue(query({ status: 'paid', days: 365 }) as any);
+    vi.mocked(ActivationCode.findOneAndUpdate).mockResolvedValue({ _id: CODE_ID } as any);
+    const expiresAt = new Date(NOW.getTime() + 365 * DAY);
+    vi.mocked(EmcrAccount.findOneAndUpdate).mockReturnValue({ lean: vi.fn().mockResolvedValue({ activation: { plan: 'basic', expiresAt } }) } as any);
+    const r = await redeemActivationCode(ACCOUNT, 'ABCD-EFGH-JKMN', NOW);
+    expect(r).toMatchObject({ ok: true, plan: 'basic', clinicName: 'MyClinicSoft (online)' });
+    expect(VoucherBatch.findById).not.toHaveBeenCalled();
+    const pipeline = vi.mocked(EmcrAccount.findOneAndUpdate).mock.calls[0][1] as any[];
+    const entry = pipeline[0].$set.activationHistory.$concatArrays[1][0];
+    expect(entry).not.toHaveProperty('batchId');
+    expect(entry).not.toHaveProperty('tenantId');
   });
 
   it('refuses void codes and codes of a void batch', async () => {

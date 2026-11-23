@@ -35,7 +35,8 @@ export async function GET(request: NextRequest) {
       dependents: account.dependents?.length ?? 0,
       activation: activationView(account),
       history: (account.activationHistory ?? []).map((h: any) => ({
-        source: h.source,
+        // A voucher code with no batch was bought online (/voucher).
+        source: h.source === 'code' && !h.batchId ? 'online' : h.source,
         plan: h.plan,
         days: h.days,
         at: h.at,

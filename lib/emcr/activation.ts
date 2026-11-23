@@ -6,6 +6,7 @@ import connectDB from '@/lib/mongodb';
 import EmcrAccount, { type EmcrPlan } from '@/models/EmcrAccount';
 import ActivationCode from '@/models/ActivationCode';
 import VoucherBatch from '@/models/VoucherBatch';
+import VoucherPurchase from '@/models/VoucherPurchase';
 import { deriveKey, type PatientSessionPayload } from '@/app/lib/dal';
 import { decryptData, encryptData } from '@/lib/encryption';
 import { findAccountForSession, type EmcrAccountLean } from '@/lib/emcr/account';
@@ -14,13 +15,16 @@ import { findAccountForSession, type EmcrAccountLean } from '@/lib/emcr/account'
  * eMCR activation, paid in cash: the patient buys a printed voucher (₱80) at a clinic counter and
  * types its code in the app. Each code gives one year, renewals stack on the current expiry.
  * The clinic bought the codes up front at the wholesale price (₱60, its 25% commission is the
- * difference), so no money moves through the app.
+ * difference), so no money moves through the app. A patient can also buy a code on the website
+ * (/voucher, paid through PayMongo: lib/emcr/voucher-purchase.ts); it redeems the same way.
  */
 
 export const VOUCHER_FACE_VALUE = 80;
 export const VOUCHER_WHOLESALE_PRICE = 60;
 export const ACTIVATION_DAYS = 365;
 export const MAX_BATCH_QUANTITY = 1000;
+/** "Voucher from …" for a code bought online at /voucher. */
+export const ONLINE_SELLER = 'MyClinicSoft (online)';
 
 /** No look-alikes (0/O, 1/I/L). 31^12 ≈ 7.9e17 codes. */
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -138,14 +142,24 @@ export async function redeemActivationCode(accountId: Types.ObjectId, input: unk
   await connectDB();
 
   const row = await ActivationCode.findOne({ codeHash: hashActivationCode(code) })
-    .select('batchId tenantId status')
-    .lean<{ _id: Types.ObjectId; batchId: Types.ObjectId; tenantId: Types.ObjectId; status: string } | null>();
+    .select('batchId tenantId purchaseId status')
+    .lean<{ _id: Types.ObjectId; batchId?: Types.ObjectId; tenantId?: Types.ObjectId; purchaseId?: Types.ObjectId; status: string } | null>();
   if (!row || row.status === 'void') return { ok: false, reason: 'invalid' };
   if (row.status === 'redeemed') return { ok: false, reason: 'used' };
 
-  const batch = await VoucherBatch.findById(row.batchId)
-    .select('status plan days clinicName')
-    .lean<{ _id: Types.ObjectId; status: string; plan?: EmcrPlan; days: number; clinicName: string } | null>();
+  // A code bought online has no batch: its row exists only once PayMongo confirmed the payment.
+  type BatchTerms = { _id?: Types.ObjectId; status: string; plan?: EmcrPlan; days: number; clinicName: string };
+  let batch: BatchTerms | null;
+  if (row.batchId) {
+    batch = await VoucherBatch.findById(row.batchId)
+      .select('status plan days clinicName')
+      .lean<BatchTerms | null>();
+  } else if (row.purchaseId) {
+    const purchase = await VoucherPurchase.findById(row.purchaseId).select('status days').lean<{ status: string; days: number } | null>();
+    batch = purchase ? { status: purchase.status, plan: 'basic', days: purchase.days, clinicName: ONLINE_SELLER } : null;
+  } else {
+    batch = null;
+  }
   if (!batch || batch.status === 'void') return { ok: false, reason: 'invalid' };
   if (batch.status !== 'paid') return { ok: false, reason: 'not_paid' };
 
@@ -175,7 +189,16 @@ export async function redeemActivationCode(accountId: Types.ObjectId, input: unk
           activationHistory: {
             $concatArrays: [
               { $ifNull: ['$activationHistory', []] },
-              [{ source: 'code', plan, ref: String(row._id), batchId: batch._id, tenantId: row.tenantId, days, expiresAt: newExpiry, at: now }],
+              [{
+                source: 'code',
+                plan,
+                ref: String(row._id),
+                ...(batch._id ? { batchId: batch._id } : {}),
+                ...(row.tenantId ? { tenantId: row.tenantId } : {}),
+                days,
+                expiresAt: newExpiry,
+                at: now,
+              }],
             ],
           },
         },

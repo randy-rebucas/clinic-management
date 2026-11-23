@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import type { ComponentType, ReactNode } from 'react';
-import { BadgeCheck, ReceiptText, Smartphone, Ticket, Wallet } from 'lucide-react';
+import { BadgeCheck, ChevronRight, Globe, ReceiptText, Smartphone, Ticket, Wallet } from 'lucide-react';
 import { requirePlatformPage } from '@/lib/platform-auth';
 import { VOUCHER_MONTHS, loadVoucherOverview, type VoucherBatchRow } from '@/lib/emcr/vouchers';
 import { getPlatformFees } from '@/lib/platform-config';
+import { loadOnlineVoucherSummary } from '@/lib/emcr/online-vouchers';
 import NewVoucherBatchForm from '@/components/platform/NewVoucherBatchForm';
 import EmcrAccountLookup from '@/components/platform/EmcrAccountLookup';
 import { ColumnChart } from '@/components/platform/charts';
@@ -64,7 +65,7 @@ function Meter({ value, of }: { value: number; of: number }) {
 export default async function PlatformVouchersPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   await requirePlatformPage();
   const sp = await searchParams;
-  const [data, fees] = await Promise.all([loadVoucherOverview(), getPlatformFees()]);
+  const [data, fees, online] = await Promise.all([loadVoucherOverview(), getPlatformFees(), loadOnlineVoucherSummary()]);
   const { batches, totals: t, byClinic, clinics, byMonth, unpaid } = data;
   const status = STATUS_FILTERS.find((f) => f.key && f.key === sp.status)?.key ?? '';
   const shown = status ? batches.filter((b) => b.status === status) : batches;
@@ -79,7 +80,7 @@ export default async function PlatformVouchersPage({ searchParams }: { searchPar
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-semibold text-gray-900">eMCR vouchers</h1>
-        <p className="mt-0.5 text-sm text-gray-500">Activation codes clinics buy prepaid and sell to patients at the counter.</p>
+        <p className="mt-0.5 text-sm text-gray-500">Activation codes clinics buy prepaid and sell to patients at the counter, and codes patients buy online.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -119,6 +120,26 @@ export default async function PlatformVouchersPage({ searchParams }: { searchPar
         ))}
       </dl>
 
+      <Link
+        href="/platform/vouchers/online"
+        className={`${CARD} group flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 hover:border-gray-400 ${FOCUS_RING}`}
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+          <span className="flex size-7 items-center justify-center rounded-md bg-brand-teal-light text-brand-teal-deep">
+            <Globe aria-hidden="true" className="size-4" />
+          </span>
+          Online vouchers
+        </span>
+        <span className="text-sm text-gray-600">
+          <span className="font-semibold tabular-nums text-gray-900">{php(online.revenue)}</span> from {n(online.sold)} {online.sold === 1 ? 'code' : 'codes'}
+        </span>
+        <span className="text-sm text-gray-600"><span className="font-semibold tabular-nums text-gray-900">{n(online.redeemed)}</span> redeemed</span>
+        <span className="text-sm text-gray-600"><span className="font-semibold tabular-nums text-gray-900">{n(online.unused)}</span> paid, unused</span>
+        <span className="ml-auto inline-flex items-center gap-1 text-sm font-medium text-brand-teal-deep group-hover:underline">
+          Purchases, codes and resend <ChevronRight aria-hidden="true" className="size-4" />
+        </span>
+      </Link>
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <section className={`${CARD} p-4`} aria-labelledby="cash-by-month">
           <div className="flex items-baseline justify-between gap-3">
@@ -136,12 +157,12 @@ export default async function PlatformVouchersPage({ searchParams }: { searchPar
         </section>
         <section className={`${CARD} p-4`} aria-labelledby="redeemed-by-month">
           <div className="flex items-baseline justify-between gap-3">
-            <h2 id="redeemed-by-month" className={H2}>Codes redeemed per month</h2>
+            <h2 id="redeemed-by-month" className={H2}>Codes redeemed per month <span className="font-normal text-gray-500">(clinic + online)</span></h2>
             <span className="text-xs tabular-nums text-gray-500">{n(redeemed12)} in {VOUCHER_MONTHS} months</span>
           </div>
           <div className="mt-3">
             <ColumnChart
-              label="Voucher codes redeemed by patients, per month"
+              label="Voucher codes redeemed by patients (clinic and online), per month"
               height={170}
               format={{ kind: 'count', unit: ['code', 'codes'] }}
               points={byMonth.map((m) => ({ label: monthShort(m.month), full: monthLong(m.month), value: m.redeemed }))}

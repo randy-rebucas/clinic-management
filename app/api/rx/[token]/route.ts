@@ -65,7 +65,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       showSignature && signerWroteContent(prescription, prescription.prescribedBy)
         ? pickSignature(prescription.digitalSignature?.signatureData, signer, true)
         : null;
-    const html = generatePrescriptionHTML(
+    const html = await generatePrescriptionHTML(
       prescription,
       'patient',
       signer,
